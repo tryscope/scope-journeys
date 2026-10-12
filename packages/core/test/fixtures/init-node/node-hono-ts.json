@@ -1,0 +1,20 @@
+{
+  "about": "A TypeScript Hono app whose dev script runs src/index.ts with tsx, pnpm as the package manager: the mount goes after `const app = new Hono()`, pnpm add installs the dependency.",
+  "args": ["--node", "--hosts", "acme.example,docs.acme.example", "--docs-host", "docs.acme.example", "--yes"],
+  "files": {
+    "package.json": "{\n  \"name\": \"acme-api\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": { \"dev\": \"tsx watch src/index.ts\" },\n  \"dependencies\": { \"@hono/node-server\": \"^1.19.0\", \"hono\": \"^4.10.0\" },\n  \"devDependencies\": { \"tsx\": \"^4.23.0\" }\n}\n",
+    "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+    "src/index.ts": "import { serve } from \"@hono/node-server\"\nimport { Hono } from \"hono\"\n\nconst app = new Hono()\n\napp.get(\"/docs/quickstart\", (c) => c.html(\"<h1>Quickstart</h1>\"))\n\nserve({ fetch: app.fetch, port: 3000 })\n",
+    ".gitignore": "node_modules/\n.env*.local\n"
+  },
+  "expected": {
+    "exit_code": 0,
+    "framework": "hono",
+    "hosts": ["acme.example", "docs.acme.example"],
+    "files": {
+      "src/index.ts": "import { honoJourneys } from \"scope-journeys-node\"\nimport { serve } from \"@hono/node-server\"\nimport { Hono } from \"hono\"\n\nconst app = new Hono()\napp.use(honoJourneys())\n\napp.get(\"/docs/quickstart\", (c) => c.html(\"<h1>Quickstart</h1>\"))\n\nserve({ fetch: app.fetch, port: 3000 })\n"
+    },
+    "files_written": ["src/index.ts", ".env.local"],
+    "install": ["pnpm", ["add", "scope-journeys-node@{VERSION}"]]
+  }
+}

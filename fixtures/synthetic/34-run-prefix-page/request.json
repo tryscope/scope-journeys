@@ -1,0 +1,11 @@
+{
+  "method": "GET",
+  "url": "https://acme.example/t/abcd1234/docs/quickstart",
+  "headers": {
+    "accept": "text/html",
+    "user-agent": "Claude-User (claude-code/2.1.0; +https://www.anthropic.com/claude-code)",
+    "cf-connecting-ip": "203.0.113.7",
+    "accept-encoding": "gzip, br"
+  },
+  "body": null
+}

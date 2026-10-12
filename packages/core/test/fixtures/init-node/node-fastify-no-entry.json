@@ -1,0 +1,18 @@
+{
+  "about": "A Fastify app whose package.json names no entry file: the install and the environment are written, the two lines are printed for the person, exit 3.",
+  "args": ["--node", "--hosts", "acme.example", "--docs-host", "same", "--yes"],
+  "files": {
+    "package.json": "{\n  \"name\": \"acme-api\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"dependencies\": { \"fastify\": \"^5.6.0\" }\n}\n",
+    "app.mjs": "import Fastify from \"fastify\";\nconst fastify = Fastify();\nfastify.get(\"/\", async () => ({ ok: true }));\nawait fastify.listen({ port: 3000 });\n",
+    ".gitignore": "node_modules/\n.env.local\n"
+  },
+  "expected": {
+    "exit_code": 3,
+    "framework": "fastify",
+    "files": {
+      "app.mjs": "import Fastify from \"fastify\";\nconst fastify = Fastify();\nfastify.get(\"/\", async () => ({ ok: true }));\nawait fastify.listen({ port: 3000 });\n"
+    },
+    "files_written": [".env.local"],
+    "install": ["npm", ["install", "scope-journeys-node@{VERSION}"]]
+  }
+}

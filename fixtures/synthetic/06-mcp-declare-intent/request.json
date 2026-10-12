@@ -1,0 +1,14 @@
+{
+  "method": "POST",
+  "url": "https://acme.example/mcp?ref=5Z4KJ7N9",
+  "headers": {
+    "content-type": "application/json",
+    "accept": "application/json, text/event-stream",
+    "mcp-protocol-version": "2025-06-18",
+    "mcp-session-id": "sess-fixture-04",
+    "authorization": "Bearer ah_k3y000000000000000000001",
+    "user-agent": "node",
+    "cf-connecting-ip": "203.0.113.7"
+  },
+  "body": "{\"jsonrpc\": \"2.0\", \"id\": 3, \"method\": \"tools/call\", \"params\": {\"name\": \"declare_intent\", \"arguments\": {\"intent\": \"Post to Slack when an order is added\", \"task\": \"notification\", \"found_via\": \"user\", \"agent\": \"codex\"}}}"
+}

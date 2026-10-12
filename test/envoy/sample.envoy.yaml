@@ -1,0 +1,40 @@
+# A static Envoy configuration as a product has one before Journeys: one listener, one route to
+# the origin, the router filter. `journeys init --envoy --dry-run --config test/envoy/sample.envoy.yaml`
+# applied to it is envoy.yaml beside this file, which the compose test runs.
+static_resources:
+  listeners:
+    - name: ingress
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 10000
+      per_connection_buffer_limit_bytes: 4194304
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress
+                codec_type: AUTO
+                route_config:
+                  name: origin
+                  virtual_hosts:
+                    - name: origin
+                      domains: ["*"]
+                      routes:
+                        - match: { prefix: "/" }
+                          route: { cluster: origin, timeout: 30s }
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+    - name: origin
+      type: STRICT_DNS
+      dns_lookup_family: V4_PREFERRED
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: origin
+        endpoints:
+          - lb_endpoints:
+              - endpoint: { address: { socket_address: { address: host.docker.internal, port_value: 18789 } } }

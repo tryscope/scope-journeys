@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache",
+    "mcp-session-id": "sess-fixture-04"
+  },
+  "stream": [
+    ": keepalive\n\n",
+    "event: message\nid: 11\ndata: {\"jsonrpc\": \"2.0\", \"id\": 2, \"result\": {\"tools\": [{\"name\": \"list_hooks\", \"description\": \"List the hooks in the workspace.\", \"inputSchema\": {\"type\": \"object\", \"properties\": {}}}, {\"name\": \"create_hook\", \"description\": \"Create a catch hook.\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}}, \"required\": [\"name\"]}}]}}\n\n"
+  ]
+}

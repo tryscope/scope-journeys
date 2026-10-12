@@ -1,0 +1,17 @@
+{
+  "about": "A Node project depending on none of the three frameworks: exit 2, nothing written, no call to Scope.",
+  "args": ["--node", "--hosts", "acme.example", "--yes"],
+  "files": {
+    "package.json": "{\n  \"name\": \"acme-worker\",\n  \"private\": true,\n  \"main\": \"index.js\",\n  \"dependencies\": { \"koa\": \"^2.15.0\" }\n}\n",
+    "index.js": "console.log(\"hello\");\n",
+    ".gitignore": "node_modules/\n.env.local\n"
+  },
+  "expected": {
+    "exit_code": 2,
+    "files": {
+      "index.js": "console.log(\"hello\");\n"
+    },
+    "files_written": [],
+    "install": null
+  }
+}

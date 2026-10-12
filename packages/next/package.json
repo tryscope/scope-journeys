@@ -1,0 +1,49 @@
+{
+  "name": "scope-journeys-next",
+  "version": "0.1.0",
+  "description": "Scope Journeys in a Next.js application: one condition in your proxy file, an inner hop to your own host, Vercel's facts, shipping after the response.",
+  "type": "module",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tryscope/scope-journeys.git",
+    "directory": "packages/next"
+  },
+  "homepage": "https://journeys.tryscope.com",
+  "engines": {
+    "node": ">=24"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./instrumentation": {
+      "types": "./dist/instrumentation.d.ts",
+      "default": "./dist/instrumentation.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "scope-journeys": "0.1.0"
+  },
+  "peerDependencies": {
+    "next": ">=15"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.0.0",
+    "next": "16.4.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "5.9.3"
+  }
+}

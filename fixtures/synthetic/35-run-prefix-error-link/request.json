@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "url": "https://acme.example/t/abcd1234/api/v1/hooks",
+  "headers": {
+    "accept": "application/json",
+    "user-agent": "python-requests/2.32.3",
+    "cf-connecting-ip": "203.0.113.7"
+  },
+  "body": null
+}

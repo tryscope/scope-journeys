@@ -1,0 +1,11 @@
+{
+  "method": "POST",
+  "url": "https://acme.example/api/docs/find?ref=5Z4KJ7N9",
+  "headers": {
+    "content-type": "application/json",
+    "accept": "application/json",
+    "user-agent": "curl/8.7.1",
+    "cf-connecting-ip": "203.0.113.7"
+  },
+  "body": "{\"task\": \"connect the MCP server to cursor\"}"
+}

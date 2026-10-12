@@ -1,0 +1,19 @@
+{
+  "about": "An ESM Express app with a start script: init --node writes the mount after `const app = express()`, the import at the top, the dependency, the environment.",
+  "args": ["--node", "--hosts", "acme.example", "--docs-host", "same", "--yes"],
+  "files": {
+    "package.json": "{\n  \"name\": \"acme-api\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": { \"start\": \"node server.mjs\" },\n  \"dependencies\": { \"express\": \"^5.1.0\" }\n}\n",
+    "server.mjs": "import express from \"express\";\n\nconst app = express();\n\napp.get(\"/docs/quickstart\", (request, response) => {\n  response.type(\"html\").send(\"<h1>Quickstart</h1>\");\n});\n\napp.listen(3000);\n",
+    ".gitignore": "node_modules/\n.env.local\n"
+  },
+  "expected": {
+    "exit_code": 0,
+    "framework": "express",
+    "files": {
+      "server.mjs": "import { journeys } from \"scope-journeys-node\";\nimport express from \"express\";\n\nconst app = express();\napp.use(journeys());\n\napp.get(\"/docs/quickstart\", (request, response) => {\n  response.type(\"html\").send(\"<h1>Quickstart</h1>\");\n});\n\napp.listen(3000);\n",
+      ".env.local": "JOURNEYS_INSTALL_ID=jin_test0000000000000000000000\nJOURNEYS_SALT=AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA\nJOURNEYS_INSTALL_KEY=sjk_test_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nJOURNEYS_API_URL={API_URL}\n"
+    },
+    "files_written": ["server.mjs", ".env.local"],
+    "install": ["npm", ["install", "scope-journeys-node@{VERSION}"]]
+  }
+}

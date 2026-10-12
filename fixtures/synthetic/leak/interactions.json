@@ -1,0 +1,77 @@
+{
+  "about": "Program 5's finding made permanent: redaction by field name leaked 435 signed values; by value shape, 0. Twelve values of the toy product's signed shape (ah_ plus 24 lowercase alphanumerics) planted where the lab saw leaks: a path segment, query values, JSON body fields under names the field list does not know, a form body, a Location header, an error message body; and two more in a text and an HTML body, which the record may hold only as {bytes, type} or page facts.",
+  "planted": [
+    "ah_a1b2c3d4e5f6g7h8i9j0k1l2",
+    "ah_b2c3d4e5f6g7h8i9j0k1l2m3",
+    "ah_c3d4e5f6g7h8i9j0k1l2m3n4",
+    "ah_d4e5f6g7h8i9j0k1l2m3n4o5",
+    "ah_e5f6g7h8i9j0k1l2m3n4o5p6",
+    "ah_f6g7h8i9j0k1l2m3n4o5p6q7",
+    "ah_g7h8i9j0k1l2m3n4o5p6q7r8",
+    "ah_h8i9j0k1l2m3n4o5p6q7r8s9",
+    "ah_i9j0k1l2m3n4o5p6q7r8s9t0",
+    "ah_j0k1l2m3n4o5p6q7r8s9t0u1",
+    "ah_k1l2m3n4o5p6q7r8s9t0u1v2",
+    "ah_l2m3n4o5p6q7r8s9t0u1v2w3"
+  ],
+  "interactions": [
+    {
+      "name": "path-segment",
+      "hashedWhere": ["url.path"],
+      "planted": ["ah_a1b2c3d4e5f6g7h8i9j0k1l2"],
+      "request": { "method": "GET", "url": "https://acme.example/api/v1/hooks/ah_a1b2c3d4e5f6g7h8i9j0k1l2", "headers": { "accept": "application/json", "user-agent": "curl/8.7.1" }, "body": null },
+      "upstream": { "status": 200, "headers": { "content-type": "application/json" }, "body": "{\"ok\":true}" }
+    },
+    {
+      "name": "query-values",
+      "hashedWhere": ["url.query"],
+      "planted": ["ah_b2c3d4e5f6g7h8i9j0k1l2m3", "ah_c3d4e5f6g7h8i9j0k1l2m3n4"],
+      "request": { "method": "GET", "url": "https://acme.example/api/v1/hooks?lookup=ah_b2c3d4e5f6g7h8i9j0k1l2m3&other=ah_c3d4e5f6g7h8i9j0k1l2m3n4", "headers": { "accept": "application/json", "user-agent": "curl/8.7.1" }, "body": null },
+      "upstream": { "status": 200, "headers": { "content-type": "application/json" }, "body": "{\"ok\":true}" }
+    },
+    {
+      "name": "json-body-unknown-fields",
+      "hashedWhere": ["scope.body.request"],
+      "planted": ["ah_d4e5f6g7h8i9j0k1l2m3n4o5", "ah_e5f6g7h8i9j0k1l2m3n4o5p6"],
+      "request": { "method": "POST", "url": "https://acme.example/api/v1/hooks", "headers": { "content-type": "application/json", "accept": "application/json", "user-agent": "node" }, "body": "{\"nickname\":\"ah_d4e5f6g7h8i9j0k1l2m3n4o5\",\"note\":\"compare with ah_e5f6g7h8i9j0k1l2m3n4o5p6 later\"}" },
+      "upstream": { "status": 201, "headers": { "content-type": "application/json" }, "body": "{\"hook_id\":\"h_1\",\"url\":\"https://acme.example/hooks/catch/h_1\"}" }
+    },
+    {
+      "name": "form-body",
+      "hashedWhere": ["scope.body.request"],
+      "planted": ["ah_f6g7h8i9j0k1l2m3n4o5p6q7"],
+      "request": { "method": "POST", "url": "https://acme.example/api/v1/hooks", "headers": { "content-type": "application/x-www-form-urlencoded", "accept": "application/json", "user-agent": "curl/8.7.1" }, "body": "label=ah_f6g7h8i9j0k1l2m3n4o5p6q7&other=plain" },
+      "upstream": { "status": 201, "headers": { "content-type": "application/json" }, "body": "{\"hook_id\":\"h_2\"}" }
+    },
+    {
+      "name": "location-header",
+      "hashedWhere": ["scope.response.headers"],
+      "planted": ["ah_g7h8i9j0k1l2m3n4o5p6q7r8", "ah_h8i9j0k1l2m3n4o5p6q7r8s9"],
+      "request": { "method": "GET", "url": "https://acme.example/api/v1/go", "headers": { "accept": "*/*", "user-agent": "curl/8.7.1" }, "body": null },
+      "upstream": { "status": 302, "headers": { "content-type": "text/plain", "location": "https://acme.example/dl/ah_g7h8i9j0k1l2m3n4o5p6q7r8?code=ah_h8i9j0k1l2m3n4o5p6q7r8s9" }, "body": "" }
+    },
+    {
+      "name": "error-message-body",
+      "hashedWhere": ["scope.body.response"],
+      "planted": ["ah_i9j0k1l2m3n4o5p6q7r8s9t0", "ah_j0k1l2m3n4o5p6q7r8s9t0u1"],
+      "request": { "method": "POST", "url": "https://acme.example/api/v1/actions/run", "headers": { "content-type": "application/json", "accept": "application/json", "user-agent": "node" }, "body": "{\"action\":\"send\"}" },
+      "upstream": { "status": 401, "headers": { "content-type": "application/json" }, "body": "{\"error\":{\"code\":\"unauthorized\",\"message\":\"the key ah_i9j0k1l2m3n4o5p6q7r8s9t0 is not valid for this workspace; use ah_j0k1l2m3n4o5p6q7r8s9t0u1 instead\"}}" }
+    }
+  ],
+  "bodies": [
+    {
+      "name": "text-body",
+      "planted": ["ah_k1l2m3n4o5p6q7r8s9t0u1v2"],
+      "request": { "method": "GET", "url": "https://acme.example/api/v1/export.txt", "headers": { "accept": "text/plain", "user-agent": "curl/8.7.1" }, "body": null },
+      "upstream": { "status": 200, "headers": { "content-type": "text/plain; charset=utf-8" }, "body": "export for ah_k1l2m3n4o5p6q7r8s9t0u1v2\nline two\n" },
+      "expect": "bytes-and-type"
+    },
+    {
+      "name": "html-body",
+      "planted": ["ah_l2m3n4o5p6q7r8s9t0u1v2w3"],
+      "request": { "method": "GET", "url": "https://acme.example/docs/leak", "headers": { "accept": "text/html", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36" }, "body": null },
+      "upstream": { "status": 200, "headers": { "content-type": "text/html; charset=utf-8" }, "body": "<!doctype html><html><head><title>Leak</title></head><body><h1>Leak</h1><p>Your key is ah_l2m3n4o5p6q7r8s9t0u1v2w3.</p></body></html>" },
+      "expect": "page-facts"
+    }
+  ]
+}

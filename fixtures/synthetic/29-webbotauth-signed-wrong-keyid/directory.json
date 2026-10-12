@@ -1,0 +1,15 @@
+{
+  "url": "https://signer.example/.well-known/http-message-signatures-directory",
+  "status": 200,
+  "body": {
+    "keys": [
+      {
+        "kty": "OKP",
+        "crv": "Ed25519",
+        "kid": "fixture-key-2026-10",
+        "x": "m8Ia5U7NESLSePYmFT0O-tHtDXrsFVc2gAO9deKt8hc",
+        "use": "sig"
+      }
+    ]
+  }
+}

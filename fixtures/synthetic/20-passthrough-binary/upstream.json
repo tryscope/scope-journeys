@@ -1,0 +1,10 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "image/png",
+    "cache-control": "public, max-age=3600",
+    "content-length": "67"
+  },
+  "body": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==",
+  "bodyEncoding": "base64"
+}

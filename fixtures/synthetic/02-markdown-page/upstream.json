@@ -1,0 +1,10 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "text/markdown; charset=utf-8",
+    "cache-control": "no-store",
+    "vary": "Accept",
+    "cf-cache-status": "DYNAMIC"
+  },
+  "body": "# Quickstart\n\nAcme Hooks posts to your app when something happens. Install the CLI, sign in, create a hook.\n\n## Install\n\n```\nnpx -y https://acme.example/dl/acme-cli.tgz init\n```\n\nThen read [the install guide](https://acme.example/docs/install) and [how sign-in works](https://acme.example/docs/auth); pricing is at [pricing](https://acme.example/pricing).\n\n## Call the API\n\n```\ncurl -X POST https://acme.example/api/v1/hooks \\\n  -H \"Authorization: Bearer $ACME_API_KEY\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"hook\":\"orders\"}'\n```\n\n```js\nconst response = await fetch(\"https://acme.example/api/v1/hooks\", {\n  method: \"POST\",\n  headers: {\n    Authorization: `Bearer ${process.env.ACME_API_KEY}`,\n    \"Content-Type\": \"application/json\",\n  },\n  body: JSON.stringify({ hook: \"orders\" }),\n});\n```\n\n## Connect the MCP server\n\nAdd `https://acme.example/mcp` to your coding agent. The server lists your hooks and can create one.\n\nMarkdown twin: https://acme.example/docs/quickstart.md. Sign up at https://acme.example/signup.\n"
+}

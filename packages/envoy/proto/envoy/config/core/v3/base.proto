@@ -1,0 +1,27 @@
+// Trimmed from Envoy's api tree (api/envoy/config/core/v3/base.proto, Apache License 2.0, proto/LICENSE):
+// the header messages ext_proc carries, field numbers as upstream.
+syntax = "proto3";
+
+package envoy.config.core.v3;
+
+message HeaderValue {
+  string key = 1;
+  string value = 2;
+  bytes raw_value = 3;
+}
+
+message HeaderValueOption {
+  enum HeaderAppendAction {
+    APPEND_IF_EXISTS_OR_ADD = 0;
+    ADD_IF_ABSENT = 1;
+    OVERWRITE_IF_EXISTS_OR_ADD = 2;
+    OVERWRITE_IF_EXISTS = 3;
+  }
+  HeaderValue header = 1;
+  HeaderAppendAction append_action = 3;
+  bool keep_empty_value = 4;
+}
+
+message HeaderMap {
+  repeated HeaderValue headers = 1;
+}

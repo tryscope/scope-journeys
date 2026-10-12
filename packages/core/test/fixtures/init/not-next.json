@@ -1,0 +1,14 @@
+{
+  "about": "Not a Next project: exit 2, nothing written, no call to Scope.",
+  "args": ["--key", "--hosts", "acme.example", "--yes"],
+  "files": {
+    "package.json": "{\n  \"name\": \"acme-express\",\n  \"private\": true,\n  \"dependencies\": { \"express\": \"^5.0.0\" }\n}\n",
+    ".gitignore": ".env.local\n"
+  },
+  "expected": {
+    "exit_code": 2,
+    "files": {},
+    "files_written": [],
+    "install": null
+  }
+}

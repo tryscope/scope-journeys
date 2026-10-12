@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://journeys.tryscope.com/schemas/cli/init-output",
+  "title": "journeys init, JSON output",
+  "description": "What `journeys init` prints when stdout is not a terminal or --json was asked: never the key or the salt (they are in the files it wrote).",
+  "type": "object",
+  "required": ["install_id", "form", "hosts", "environment", "oidc", "files_written", "env_written", "env_pending", "claim_url", "next_step", "warnings", "exit_code"],
+  "properties": {
+    "install_id": { "type": ["string", "null"] },
+    "form": { "type": "string", "enum": ["next", "cloudflare", "node", "envoy"] },
+    "framework": { "type": "string", "enum": ["express", "fastify", "hono"] },
+    "processor": { "type": "string" },
+    "observability": { "type": "boolean" },
+    "fragment": { "type": "string" },
+    "hosts": { "type": "array", "items": { "type": "string" } },
+    "environment": { "type": "string", "enum": ["production", "preview", "development"] },
+    "oidc": { "type": "boolean" },
+    "files_written": { "type": "array", "items": { "type": "string" } },
+    "env_written": { "type": "array", "items": { "type": "string" } },
+    "env_pending": { "type": "array", "items": { "type": "string" } },
+    "claim_url": { "type": ["string", "null"] },
+    "next_step": { "type": "string" },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "manual": { "type": "array", "items": { "type": "string" } },
+    "deployment": { "type": ["object", "null"], "properties": { "id": { "type": ["string", "null"] }, "version": { "type": ["string", "null"] } } },
+    "exit_code": { "type": "integer", "enum": [0, 2, 3, 4, 5, 6] }
+  },
+  "additionalProperties": false
+}

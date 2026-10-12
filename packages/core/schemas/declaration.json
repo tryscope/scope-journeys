@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://journeys.tryscope.com/schemas/journeys/1/declaration",
+  "title": "scope.declaration/1",
+  "description": "An intent the sensor collected: from the declaration tool in front of the MCP route (gate), from the intent header on an API call (header), from the docs finder (finder), from the SDK's intent option (sdk) or the CLI (cli). Exported as an OTLP log record with event_name scope.intent. Shipped as its own record beside the request it rode on.",
+  "$defs": {
+    "hash12": { "type": "string", "pattern": "^[0-9a-f]{12}$", "description": "sha256(salt + ':' + value)[0:12]; a join key inside the salt epoch, nothing else" },
+    "reference": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{8}$", "description": "eight base32 characters: three minting-minute characters, four random, one check" },
+    "prefixedId": { "type": "string", "pattern": "^(jin|jrn|vis|int|acc|pol|jds)_[A-Za-z0-9_-]{20,64}$", "description": "a prefixed, opaque id minted by Scope; records themselves carry a UUIDv7 and no prefix" }
+  },
+  "type": "object",
+  "required": ["schema", "id", "ts", "install", "source", "text", "scope.client.address_hash"],
+  "properties": {
+    "schema": { "const": "scope.declaration/1" },
+    "id": { "type": "string", "format": "uuid", "description": "UUIDv7 minted by the sensor; the record's own identity and its idempotency key at the ingest" },
+    "ts": { "type": "string", "format": "date-time" },
+    "install": { "oneOf": [{ "$ref": "#/$defs/prefixedId" }, { "type": "null" }], "description": "the install this sensor runs as; null only on a sensor with no install id (a lab deployment)" },
+    "request": { "type": ["string", "null"], "format": "uuid", "description": "the request record the declaration rode on, when one did" },
+    "source": { "type": "string", "enum": ["gate", "header", "finder", "sdk", "cli"] },
+    "text": { "type": "string", "description": "the sentence the agent gave, verbatim" },
+    "task": { "type": ["string", "null"], "description": "the task category the agent chose, when the declaration tool asked for one" },
+    "found_via": { "type": ["string", "null"], "description": "how the agent says it found the product, when asked" },
+    "agent": { "type": ["string", "null"], "description": "the agent's own name for itself, when it gave one" },
+    "scope.client.address_hash": { "$ref": "#/$defs/hash12" },
+    "scope.key.credential": { "oneOf": [{ "$ref": "#/$defs/hash12" }, { "type": "null" }], "description": "the hashed bearer of the call that carried the declaration" },
+    "mcp.session.id": { "type": ["string", "null"], "description": "the MCP session the declaration was made in" },
+    "scope.key.reference": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }], "description": "the page reference the call arrived with" },
+    "scope.reference_minted": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }], "description": "the reference minted into the finder's answer" }
+  },
+  "additionalProperties": false
+}

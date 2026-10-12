@@ -1,0 +1,4 @@
+{
+  "lab": "predates",
+  "reason": "the sensor verifies Web Bot Auth itself from J3.5; the oracle's sensor records the Signature-Agent and leaves verification to its origin"
+}

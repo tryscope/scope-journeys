@@ -1,0 +1,16 @@
+{
+  "method": "GET",
+  "url": "https://acme.example/api/v1/hooks",
+  "headers": {
+    "accept": "application/json",
+    "authorization": "Bearer ah_k3y000000000000000000001",
+    "x-acme-setup": "5Z4KJ7N9",
+    "x-acme-intent": "<one sentence: what the person asked you to do>",
+    "user-agent": "node",
+    "x-real-ip": "203.0.113.7",
+    "x-vercel-ip-as-number": "64512",
+    "x-vercel-ip-country": "NL",
+    "x-vercel-ja4-digest": "t13d1516h2_8daaf6152771_e5627efa2ab1"
+  },
+  "body": null
+}

@@ -1,0 +1,22 @@
+# Scope Journeys on your Cloudflare account. `journeys init --cloudflare` writes this file with your
+# hosts and your install id; the values below are the shape. Two secrets are set with wrangler and
+# never written here:
+#   npx wrangler@4 secret put JOURNEYS_INSTALL_KEY
+#   npx wrangler@4 secret put JOURNEYS_SALT
+name = "scope-journeys"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+routes = [
+  { pattern = "docs.example.com/*", zone_name = "example.com" },
+  { pattern = "api.example.com/*", zone_name = "example.com" },
+]
+
+[observability]
+enabled = true
+
+[vars]
+JOURNEYS_INSTALL_ID = "jin_your_install_id"
+JOURNEYS_API_URL = "https://api.tryscope.com"
+JOURNEYS_NAME = "scope-journeys"
+# JOURNEYS_ORIGIN is needed only off a route in your own zone (a workers.dev host): on a route the
+# Worker forwards to the request's own url and the platform sends the hop to your origin.

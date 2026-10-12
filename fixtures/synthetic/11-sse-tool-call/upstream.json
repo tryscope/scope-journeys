@@ -1,0 +1,13 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache",
+    "mcp-session-id": "sess-fixture-04"
+  },
+  "stream": [
+    "retry: 1000\n\n",
+    "event: message\nid: 12\ndata: {\"jsonrpc\": \"2.0\", \"method\": \"notifications/progress\", \"params\": {\"progress\": 1, \"total\": 2}}\n\n",
+    "event: message\nid: 13\ndata: {\"jsonrpc\": \"2.0\", \"id\": 4, \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"2 hooks: orders, invoices\"}]}}\n\n"
+  ]
+}

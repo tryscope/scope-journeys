@@ -1,0 +1,22 @@
+{
+  "about": "A Next 16 app whose proxy.ts has a named default export and a matcher: init wraps it so the customer's logic keeps running as next, and merges the matcher.",
+  "args": ["--key", "--hosts", "acme.example", "--docs-host", "docs.acme.example", "--yes"],
+  "files": {
+    "package.json": "{\n  \"name\": \"acme-app\",\n  \"private\": true,\n  \"dependencies\": { \"next\": \"16.4.0\" }\n}\n",
+    "next.config.mjs": "export default {}\n",
+    ".gitignore": ".env*.local\n",
+    "pnpm-lock.yaml": "lockfileVersion: '9.0'\n",
+    "proxy.ts": "import { NextResponse, type NextRequest } from \"next/server\"\n\nexport default function proxy(request: NextRequest) {\n  if (request.nextUrl.pathname.startsWith(\"/dashboard\") && !request.cookies.get(\"session\")) {\n    return NextResponse.redirect(new URL(\"/login\", request.url))\n  }\n  return NextResponse.next()\n}\n\nexport const config = {\n  matcher: [\"/dashboard/:path*\"],\n}\n",
+    "instrumentation.ts": "export async function register() {\n  // nothing yet\n}\n"
+  },
+  "expected": {
+    "exit_code": 0,
+    "files": {
+      "proxy.ts": "import { withJourneys } from \"scope-journeys-next\"\n\nimport { NextResponse, type NextRequest } from \"next/server\"\n\nfunction proxy(request: NextRequest) {\n  if (request.nextUrl.pathname.startsWith(\"/dashboard\") && !request.cookies.get(\"session\")) {\n    return NextResponse.redirect(new URL(\"/login\", request.url))\n  }\n  return NextResponse.next()\n}\n\nexport const config = {\n  matcher: [\"/dashboard/:path*\", \"/((?!_next/static|_next/image|favicon.ico).*)\"],\n}\n\nexport default withJourneys({ next: proxy })\n",
+      "instrumentation.ts": "export async function register() {\n  // nothing yet\n}\n\nexport { onRequestError } from \"scope-journeys-next/instrumentation\"\n"
+    },
+    "files_written": ["proxy.ts", "instrumentation.ts", ".env.local"],
+    "hosts": ["acme.example", "docs.acme.example"],
+    "install": ["pnpm", ["add", "scope-journeys-next@{VERSION}"]]
+  }
+}

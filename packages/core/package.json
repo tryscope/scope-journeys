@@ -1,0 +1,50 @@
+{
+  "name": "scope-journeys",
+  "version": "0.1.0",
+  "description": "Scope Journeys: the sensor core. Pure functions over Request and Response and a policy: classify, extract keys and carriers, redact, mint and inject references, the declaration gate, the docs finder, the helpful 404, the error link, the record.",
+  "type": "module",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tryscope/scope-journeys.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://journeys.tryscope.com",
+  "engines": {
+    "node": ">=24"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "schemas",
+    "bin",
+    "TELEMETRY.md",
+    "SECURITY.md",
+    "SKILL.md",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schemas/*": "./schemas/*.json"
+  },
+  "bin": {
+    "journeys": "bin/journeys.mjs"
+  },
+  "scripts": {
+    "generate": "node ../../scripts/types-from-schemas.mjs && node ../../scripts/telemetry-doc.mjs",
+    "build": "npm run generate && rm -rf dist && tsc -b tsconfig.cli.json && mkdir -p dist/generated && cp src/generated/validators.js src/generated/validators.d.ts dist/generated/ && cp ../../SECURITY.md ./SECURITY.md",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test \"test/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "json-schema-to-typescript": "^16.0.0",
+    "tsx": "^4.23.0",
+    "typescript": "5.9.3"
+  }
+}

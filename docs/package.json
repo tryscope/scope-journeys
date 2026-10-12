@@ -1,0 +1,29 @@
+{
+  "name": "journeys-docs",
+  "private": true,
+  "description": "The docs host: every page with a markdown twin, llms.txt, SKILL.md, the sensor in front of itself.",
+  "scripts": {
+    "predev": "node scripts/generate.mjs",
+    "dev": "next dev",
+    "prebuild": "node scripts/generate.mjs",
+    "build": "next build",
+    "start": "next start",
+    "generate": "node scripts/generate.mjs",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "scope-journeys": "0.1.0",
+    "scope-journeys-next": "0.1.0",
+    "marked": "^18.1.0",
+    "next": "16.4.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "5.9.3"
+  }
+}

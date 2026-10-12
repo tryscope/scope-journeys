@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "url": "https://acme.example/dl/acme-cli.tgz?ref=5Z4KJ7N9",
+  "headers": {
+    "accept": "*/*",
+    "user-agent": "npm/10.9.2 node/v24.13.1 darwin arm64 workspaces/false",
+    "cf-connecting-ip": "203.0.113.7"
+  },
+  "body": null
+}

@@ -1,0 +1,9 @@
+# The OpenTelemetry schema file of Scope Journeys' OTLP export: the schema_url every exported record and span carries.
+# Every log record and span the export relay posts carries this URL as its schema_url; a later
+# release that renames an attribute adds a `versions` entry with the rename, which is how a
+# customer's collector transforms what it already holds (the names are OTel's where a convention
+# exists and `scope.*` where none does, §13.1).
+file_format: 1.1.0
+schema_url: https://journeys.tryscope.com/schemas/1.0.0
+versions:
+  1.0.0:

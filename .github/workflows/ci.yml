@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:node
+      - run: npm run test:node-adapter
+      - run: npm run test:workerd
+      - run: npm run test:identity
+      - run: npm run test:privacy
+      # The real Envoy of test/envoy/docker-compose.yml, pinned by digest; the runner's Docker.
+      - run: npm run test:envoy
+      # The build regenerates the schema types, the validators and TELEMETRY.md; a stale commit fails here.
+      - name: Generated files are committed current
+        run: git status --porcelain packages/core/src/generated packages/core/TELEMETRY.md && test -z "$(git status --porcelain packages/core/src/generated packages/core/TELEMETRY.md)"
+
+  package-smoke:
+    name: package-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Pack every workspace
+        run: |
+          mkdir -p /tmp/journeys-pack
+          npm pack -w scope-journeys -w scope-journeys-cloudflare -w scope-journeys-next -w scope-journeys-node -w scope-journeys-envoy --pack-destination /tmp/journeys-pack
+          ls -la /tmp/journeys-pack
+      - name: The tarballs install into a fresh project and every entry point imports
+        run: |
+          mkdir -p /tmp/journeys-smoke && cd /tmp/journeys-smoke
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund /tmp/journeys-pack/scope-journeys-*.tgz /tmp/journeys-pack/scope-journeys-cloudflare-*.tgz /tmp/journeys-pack/scope-journeys-next-*.tgz next@16
+          node --input-type=module -e "import('scope-journeys').then((m) => { if (typeof m.observe !== 'function' || typeof m.observeResponse !== 'function' || typeof m.compilePolicy !== 'function') throw new Error('core entry point incomplete'); })"
+          node --input-type=module -e "import('scope-journeys-cloudflare').then((m) => { if (typeof m.createHandler !== 'function') throw new Error('cloudflare entry point incomplete'); })"
+          node --input-type=module -e "import('scope-journeys-next').then((m) => { if (typeof m.withJourneys !== 'function') throw new Error('next entry point incomplete'); })"
+          node --input-type=module -e "import('scope-journeys-node').then((m) => { if (typeof m.journeys !== 'function' || typeof m.fastifyJourneys !== 'function' || typeof m.honoJourneys !== 'function' || typeof m.serveProxy !== 'function') throw new Error('node entry point incomplete'); })"
+          node --input-type=module -e "import('scope-journeys-envoy').then((m) => { if (typeof m.serveExtProc !== 'function' || typeof m.createProcessor !== 'function') throw new Error('envoy entry point incomplete'); })"
+          test -f node_modules/scope-journeys-envoy/proto/LICENSE
+          npx --no-install journeys proxy 2>&1 | grep -q 'journeys proxy --origin'
+          npx --no-install journeys-ext-proc --help | grep -q 'JOURNEYS_EXT_PROC_LISTEN'
+          node --input-type=module -e "import('scope-journeys/schemas/request', { with: { type: 'json' } }).then((m) => { if (!m.default.properties) throw new Error('schemas missing from the tarball'); })"
+          test -f node_modules/scope-journeys/TELEMETRY.md
+          test -f node_modules/scope-journeys/SECURITY.md
+          npx --no-install journeys version
+      # The example is a workspace: it builds against the tree's packages (the tarballs are proven above).
+      - name: The Next example builds against the workspace packages
+        run: npm run build -w packages/next/example

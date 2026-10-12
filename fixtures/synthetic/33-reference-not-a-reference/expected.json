@@ -1,0 +1,116 @@
+{
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<!doctype html><html><head><meta charset=\"utf-8\"><title>Sign in a device | Acme Hooks</title></head><body>\n<h1>Approve a device</h1>\n<form method=\"post\" action=\"/api/device/approve\"><label>Code <input name=\"code\" value=\"ABCD-EFGH\"></label><button>Approve</button></form>\n</body></html>"
+  },
+  "forwarded": [
+    {
+      "method": "GET",
+      "url": "/device?code=ABCD-EFGH",
+      "headers": {
+        "accept": "text/html",
+        "cf-connecting-ip": "203.0.113.33",
+        "sec-ch-ua": "\"Chromium\";v=\"130\"",
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "upgrade-insecure-requests": "1",
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        "via": "1.1 fixture-sensor",
+        "x-acme-edge": "journeys"
+      },
+      "body": null
+    }
+  ],
+  "records": [
+    {
+      "schema": "scope.request/1",
+      "id": "MASKED",
+      "ts": "MASKED",
+      "observed_ts": "MASKED",
+      "install": "jin_fixture0000000000000000",
+      "source": "edge",
+      "observer": {
+        "package": "scope-journeys",
+        "version": "0.0.0-fixture",
+        "adapter": "fixture",
+        "policy_version": 3,
+        "salt_epoch": 1,
+        "name": "fixture-sensor"
+      },
+      "request_id": "MASKED",
+      "http.request.method": "GET",
+      "server.address": "acme.example",
+      "url.path": "/device",
+      "url.query": "code=ABCD-EFGH",
+      "http.response.status_code": 200,
+      "scope.route": "other",
+      "http.request.header.content-type": null,
+      "http.response.header.content-type": "text/html; charset=utf-8",
+      "scope.request.bytes": null,
+      "scope.response.bytes": null,
+      "scope.cache": null,
+      "scope.timing": "MASKED",
+      "scope.client.address_hash": "572c018a5a39",
+      "scope.client.address_family": "ipv4",
+      "scope.client.asn": 64512,
+      "scope.client.as_org": "Example Fiber",
+      "scope.client.country": "NL",
+      "scope.client.colo": "AMS",
+      "user_agent.original": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+      "scope.client.accept": "text/html",
+      "scope.client.fetch_metadata": {
+        "sec_ch_ua": true,
+        "sec_fetch_dest": "document",
+        "sec_fetch_mode": "navigate",
+        "upgrade_insecure": true
+      },
+      "tls.protocol.version": "TLSv1.3",
+      "network.protocol.version": "HTTP/2",
+      "scope.client.ja4": "t13d1516h2_8daaf6152771_e5627efa2ab1",
+      "scope.client.tls_ext_sha1": "2e1b4d0e9c8a7f6b5d4c3b2a1f0e9d8c7b6a5f4e",
+      "scope.client.tls_hello_len": 512,
+      "scope.signature": null,
+      "scope.platform_bot": null,
+      "scope.reader": "browser",
+      "scope.key.credential": null,
+      "scope.key.install": null,
+      "scope.key.device_code": null,
+      "scope.key.user_code": null,
+      "scope.key.oauth_client": null,
+      "mcp.session.id": null,
+      "scope.key.hook": null,
+      "scope.key.reference": null,
+      "scope.key.setup_header": null,
+      "scope.key.agent_header": null,
+      "scope.key.client_header": null,
+      "scope.key.intent_header": null,
+      "mcp.protocol.version": null,
+      "mcp.method.name": [],
+      "scope.mcp.tools": [],
+      "scope.mcp.client": null,
+      "scope.oauth": null,
+      "scope.body.request": null,
+      "scope.body.response": null,
+      "scope.body.truncated": false,
+      "scope.response.headers": {
+        "content-type": "text/html; charset=utf-8",
+        "mcp-session-id": null,
+        "www-authenticate": null,
+        "location": null,
+        "cache-control": "no-store",
+        "x-vercel-cache": null,
+        "cf-cache-status": null
+      },
+      "scope.page": null,
+      "scope.reference_minted": null,
+      "scope.decision": [],
+      "scope.gateway": null,
+      "scope.observer.errors": [],
+      "scope.observer.dropped": 0
+    }
+  ]
+}

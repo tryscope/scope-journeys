@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "url": "https://acme.example/docs/quickstart.md",
+  "headers": {
+    "accept": "text/markdown, text/plain;q=0.9, text/html;q=0.8",
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    "cf-connecting-ip": "2001:db8:85a3::8a2e:370:7334"
+  },
+  "body": null
+}

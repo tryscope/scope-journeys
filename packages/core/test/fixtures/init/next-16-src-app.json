@@ -1,0 +1,20 @@
+{
+  "about": "A Next 16 app under src/: the proxy and instrumentation files go to src/.",
+  "args": ["--key", "--hosts", "acme.example", "--docs-host", "same", "--yes"],
+  "files": {
+    "package.json": "{\n  \"name\": \"acme-app\",\n  \"private\": true,\n  \"devDependencies\": { \"next\": \"^16.0.0\" }\n}\n",
+    "next.config.js": "module.exports = {}\n",
+    ".gitignore": ".env.*\n",
+    "yarn.lock": "# yarn lockfile v1\n",
+    "src/app/page.tsx": "export default function Page() { return <main>Acme</main> }\n"
+  },
+  "expected": {
+    "exit_code": 0,
+    "files": {
+      "src/proxy.ts": "import { withJourneys } from \"scope-journeys-next\"\n\nexport default withJourneys()\n\nexport const config = {\n  matcher: [\"/((?!_next/static|_next/image|favicon.ico).*)\"],\n}\n",
+      "src/instrumentation.ts": "export { onRequestError } from \"scope-journeys-next/instrumentation\"\n"
+    },
+    "files_written": ["src/proxy.ts", "src/instrumentation.ts", ".env.local"],
+    "install": ["yarn", ["add", "scope-journeys-next@{VERSION}"]]
+  }
+}

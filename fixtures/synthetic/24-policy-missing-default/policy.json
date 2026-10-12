@@ -1,0 +1,31 @@
+{
+  "schema": "scope.policy/1",
+  "version": 0,
+  "about": "The embedded default: observe and forward only.",
+  "origin": null,
+  "surfaces": {
+    "passthrough": []
+  },
+  "secrets": {
+    "fields": [],
+    "shapes": [],
+    "uri_fields": {}
+  },
+  "headers": {
+    "credential": "authorization",
+    "session": "mcp-session-id",
+    "reference": [],
+    "install": null,
+    "setup": null,
+    "agent": null,
+    "client": null,
+    "intent": null,
+    "signature": "signature-agent"
+  },
+  "forward": {
+    "headers": {},
+    "key_header": null
+  },
+  "record_bodies": false,
+  "rules": []
+}

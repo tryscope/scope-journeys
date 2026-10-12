@@ -1,0 +1,117 @@
+{
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": "{\"hooks\": [{\"id\": \"hk_1\", \"hook\": \"orders\"}]}"
+  },
+  "forwarded": [
+    {
+      "method": "GET",
+      "url": "/api/v1/hooks",
+      "headers": {
+        "accept": "application/json",
+        "authorization": "Bearer ah_k3y000000000000000000001",
+        "user-agent": "node",
+        "via": "1.1 fixture-sensor",
+        "x-acme-edge": "journeys",
+        "x-acme-intent": "<one sentence: what the person asked you to do>",
+        "x-acme-setup": "5Z4KJ7N9",
+        "x-real-ip": "203.0.113.7",
+        "x-vercel-ip-as-number": "64512",
+        "x-vercel-ip-country": "NL",
+        "x-vercel-ja4-digest": "t13d1516h2_8daaf6152771_e5627efa2ab1"
+      },
+      "body": null
+    }
+  ],
+  "records": [
+    {
+      "schema": "scope.request/1",
+      "id": "MASKED",
+      "ts": "MASKED",
+      "observed_ts": "MASKED",
+      "install": "jin_fixture0000000000000000",
+      "source": "edge",
+      "observer": {
+        "package": "scope-journeys",
+        "version": "0.0.0-fixture",
+        "adapter": "fixture",
+        "policy_version": 3,
+        "salt_epoch": 1,
+        "name": "fixture-sensor"
+      },
+      "request_id": "MASKED",
+      "http.request.method": "GET",
+      "server.address": "acme.example",
+      "url.path": "/api/v1/hooks",
+      "url.query": null,
+      "http.response.status_code": 200,
+      "scope.route": "api",
+      "http.request.header.content-type": null,
+      "http.response.header.content-type": "application/json",
+      "scope.request.bytes": null,
+      "scope.response.bytes": 45,
+      "scope.cache": null,
+      "scope.timing": "MASKED",
+      "scope.client.address_hash": "f8d68a8e6b22",
+      "scope.client.address_family": "ipv4",
+      "scope.client.asn": 64512,
+      "scope.client.as_org": null,
+      "scope.client.country": "NL",
+      "scope.client.colo": null,
+      "user_agent.original": "node",
+      "scope.client.accept": "application/json",
+      "scope.client.fetch_metadata": {
+        "sec_ch_ua": false,
+        "sec_fetch_dest": null,
+        "sec_fetch_mode": null,
+        "upgrade_insecure": false
+      },
+      "tls.protocol.version": null,
+      "network.protocol.version": null,
+      "scope.client.ja4": "t13d1516h2_8daaf6152771_e5627efa2ab1",
+      "scope.client.tls_ext_sha1": null,
+      "scope.client.tls_hello_len": null,
+      "scope.signature": null,
+      "scope.platform_bot": null,
+      "scope.reader": "shell",
+      "scope.key.credential": "8280e138fd70",
+      "scope.key.install": null,
+      "scope.key.device_code": null,
+      "scope.key.user_code": null,
+      "scope.key.oauth_client": null,
+      "mcp.session.id": null,
+      "scope.key.hook": null,
+      "scope.key.reference": null,
+      "scope.key.setup_header": "5Z4KJ7N9",
+      "scope.key.agent_header": null,
+      "scope.key.client_header": null,
+      "scope.key.intent_header": "<one sentence: what the person asked you to do>",
+      "mcp.protocol.version": null,
+      "mcp.method.name": [],
+      "scope.mcp.tools": [],
+      "scope.mcp.client": null,
+      "scope.oauth": null,
+      "scope.body.request": null,
+      "scope.body.response": null,
+      "scope.body.truncated": false,
+      "scope.response.headers": {
+        "content-type": "application/json",
+        "mcp-session-id": null,
+        "www-authenticate": null,
+        "location": null,
+        "cache-control": null,
+        "x-vercel-cache": null,
+        "cf-cache-status": null
+      },
+      "scope.page": null,
+      "scope.reference_minted": null,
+      "scope.decision": [],
+      "scope.gateway": null,
+      "scope.observer.errors": [],
+      "scope.observer.dropped": 0
+    }
+  ]
+}

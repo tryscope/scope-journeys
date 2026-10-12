@@ -1,0 +1,16 @@
+{
+  "address": "198.51.100.23",
+  "asn": 8075,
+  "as_org": "Microsoft Corporation",
+  "country": "US",
+  "colo": "IAD",
+  "tls": {
+    "protocol_version": "TLSv1.3",
+    "network_protocol_version": "HTTP/1.1",
+    "ja4": null,
+    "tls_ext_sha1": null,
+    "tls_hello_len": null
+  },
+  "platform_request_id": "7c6d5e4f3a2b1c0d-IAD",
+  "ts": "2026-10-10T12:00:18.000Z"
+}

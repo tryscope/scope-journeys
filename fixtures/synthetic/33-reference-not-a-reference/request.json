@@ -1,0 +1,15 @@
+{
+  "method": "GET",
+  "url": "https://acme.example/device?code=ABCD-EFGH",
+  "headers": {
+    "accept": "text/html",
+    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "sec-ch-ua": "\"Chromium\";v=\"130\"",
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "upgrade-insecure-requests": "1",
+    "cf-connecting-ip": "203.0.113.33",
+    "accept-encoding": "gzip, br"
+  },
+  "body": null
+}

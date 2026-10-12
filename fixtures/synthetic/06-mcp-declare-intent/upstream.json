@@ -1,0 +1,7 @@
+{
+  "status": 500,
+  "headers": {
+    "content-type": "text/plain"
+  },
+  "body": "the gate answers this call; the origin is never reached"
+}

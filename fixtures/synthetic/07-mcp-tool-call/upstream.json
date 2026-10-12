@@ -1,0 +1,8 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "mcp-session-id": "sess-fixture-04"
+  },
+  "body": "{\"jsonrpc\": \"2.0\", \"id\": 4, \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"2 hooks: orders, invoices\"}]}}"
+}

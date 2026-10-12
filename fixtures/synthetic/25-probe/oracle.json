@@ -1,0 +1,4 @@
+{
+  "lab": "predates",
+  "reason": "the probe answer (GET /.well-known/journeys-probe answered 204 by the sensor, recorded as passthrough) is the one route the core gained after the oracle's sensor was frozen; the oracle's sensor forwards it as any other GET and records the origin's 404"
+}

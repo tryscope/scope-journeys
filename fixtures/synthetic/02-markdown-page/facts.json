@@ -1,0 +1,16 @@
+{
+  "address": "2001:db8:85a3::8a2e:370:7334",
+  "asn": 64513,
+  "as_org": "Example Mobile",
+  "country": "DE",
+  "colo": "FRA",
+  "tls": {
+    "protocol_version": "TLSv1.3",
+    "network_protocol_version": "HTTP/2",
+    "ja4": "t13d1516h2_8daaf6152771_e5627efa2ab1",
+    "tls_ext_sha1": "2e1b4d0e9c8a7f6b5d4c3b2a1f0e9d8c7b6a5f4e",
+    "tls_hello_len": 512
+  },
+  "platform_request_id": "9a2b3c4d5e6f7081-FRA",
+  "ts": "2026-10-10T12:00:01.000Z"
+}

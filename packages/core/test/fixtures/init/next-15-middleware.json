@@ -1,0 +1,21 @@
+{
+  "about": "A Next 15 app: the file is middleware.ts, accepted with a warning; its default export is an identifier, wrapped as next.",
+  "args": ["--key", "--hosts", "acme.example", "--docs-host", "same", "--yes"],
+  "files": {
+    "package.json": "{\n  \"name\": \"acme-app\",\n  \"private\": true,\n  \"dependencies\": { \"next\": \"15.5.2\" }\n}\n",
+    "next.config.ts": "export default {}\n",
+    ".gitignore": ".env.local\n",
+    "bun.lock": "{}\n",
+    "middleware.ts": "import { auth } from \"./auth\"\n\nexport default auth\n\nexport const config = { matcher: ['/((?!api|_next/static).*)'] }\n"
+  },
+  "expected": {
+    "exit_code": 0,
+    "files": {
+      "middleware.ts": "import { withJourneys } from \"scope-journeys-next\"\n\nimport { auth } from \"./auth\"\n\nexport const config = { matcher: [\"/((?!api|_next/static).*)\", \"/((?!_next/static|_next/image|favicon.ico).*)\"] }\n\nexport default withJourneys({ next: auth })\n",
+      "instrumentation.ts": "export { onRequestError } from \"scope-journeys-next/instrumentation\"\n"
+    },
+    "files_written": ["middleware.ts", "instrumentation.ts", ".env.local"],
+    "warnings": ["Next 15: the proxy file is middleware.ts; Next 16 is the tested version"],
+    "install": ["bun", ["add", "scope-journeys-next@{VERSION}"]]
+  }
+}

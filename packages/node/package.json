@@ -1,0 +1,43 @@
+{
+  "name": "scope-journeys-node",
+  "version": "0.1.0",
+  "description": "Scope Journeys on Node's own HTTP server: an Express, Fastify or Hono mount over one io, or the standalone proxy in front of an origin you do not run.",
+  "type": "module",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tryscope/scope-journeys.git",
+    "directory": "packages/node"
+  },
+  "homepage": "https://journeys.tryscope.com",
+  "engines": {
+    "node": ">=24"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "scope-journeys": "0.1.0"
+  },
+  "devDependencies": {
+    "@hono/node-server": "^1.19.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.3.0",
+    "express": "^5.1.0",
+    "fastify": "^5.6.0",
+    "hono": "^4.10.0",
+    "typescript": "5.9.3"
+  }
+}

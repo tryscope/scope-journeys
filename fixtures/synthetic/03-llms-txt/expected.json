@@ -1,0 +1,143 @@
+{
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "public, max-age=300",
+      "content-type": "text/plain; charset=utf-8"
+    },
+    "body": "# Acme Hooks\n\n> Looking for the right guide for a task? Open https://acme.example/api/docs/find?task=<one sentence about the task> (or POST `{\"task\":\"one sentence\"}` to it) and it answers with the guide links for that task.\n\n> Acme Hooks posts to your app when something happens.\n\n## Docs\n\n- [Quickstart](https://acme.example/docs/quickstart.md?ref=REF): install, sign in, create a hook\n- [Hooks](https://acme.example/docs/hooks.md?ref=REF): catch hooks and their urls\n- [MCP](https://acme.example/docs/mcp.md?ref=REF): the MCP server\n"
+  },
+  "forwarded": [
+    {
+      "method": "GET",
+      "url": "/llms.txt",
+      "headers": {
+        "accept": "*/*",
+        "cf-connecting-ip": "198.51.100.23",
+        "user-agent": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot",
+        "via": "1.1 fixture-sensor",
+        "x-acme-edge": "journeys"
+      },
+      "body": null
+    }
+  ],
+  "records": [
+    {
+      "schema": "scope.request/1",
+      "id": "MASKED",
+      "ts": "MASKED",
+      "observed_ts": "MASKED",
+      "install": "jin_fixture0000000000000000",
+      "source": "edge",
+      "observer": {
+        "package": "scope-journeys",
+        "version": "0.0.0-fixture",
+        "adapter": "fixture",
+        "policy_version": 3,
+        "salt_epoch": 1,
+        "name": "fixture-sensor"
+      },
+      "request_id": "MASKED",
+      "http.request.method": "GET",
+      "server.address": "acme.example",
+      "url.path": "/llms.txt",
+      "url.query": null,
+      "http.response.status_code": 200,
+      "scope.route": "docs_root",
+      "http.request.header.content-type": null,
+      "http.response.header.content-type": "text/plain; charset=utf-8",
+      "scope.request.bytes": null,
+      "scope.response.bytes": 550,
+      "scope.cache": null,
+      "scope.timing": "MASKED",
+      "scope.client.address_hash": "2c9663b2e68c",
+      "scope.client.address_family": "ipv4",
+      "scope.client.asn": 8075,
+      "scope.client.as_org": "Microsoft Corporation",
+      "scope.client.country": "US",
+      "scope.client.colo": "IAD",
+      "user_agent.original": "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot",
+      "scope.client.accept": "*/*",
+      "scope.client.fetch_metadata": {
+        "sec_ch_ua": false,
+        "sec_fetch_dest": null,
+        "sec_fetch_mode": null,
+        "upgrade_insecure": false
+      },
+      "tls.protocol.version": "TLSv1.3",
+      "network.protocol.version": "HTTP/1.1",
+      "scope.client.ja4": null,
+      "scope.client.tls_ext_sha1": null,
+      "scope.client.tls_hello_len": null,
+      "scope.signature": null,
+      "scope.platform_bot": null,
+      "scope.reader": "openai",
+      "scope.key.credential": null,
+      "scope.key.install": null,
+      "scope.key.device_code": null,
+      "scope.key.user_code": null,
+      "scope.key.oauth_client": null,
+      "mcp.session.id": null,
+      "scope.key.hook": null,
+      "scope.key.reference": null,
+      "scope.key.setup_header": null,
+      "scope.key.agent_header": null,
+      "scope.key.client_header": null,
+      "scope.key.intent_header": null,
+      "mcp.protocol.version": null,
+      "mcp.method.name": [],
+      "scope.mcp.tools": [],
+      "scope.mcp.client": null,
+      "scope.oauth": null,
+      "scope.body.request": null,
+      "scope.body.response": null,
+      "scope.body.truncated": false,
+      "scope.response.headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "mcp-session-id": null,
+        "www-authenticate": null,
+        "location": null,
+        "cache-control": "public, max-age=300",
+        "x-vercel-cache": null,
+        "cf-cache-status": null
+      },
+      "scope.page": {
+        "canonical": "/llms.txt",
+        "face": "txt",
+        "reference_minted": "MASKED",
+        "injected": [
+          "llms-links",
+          "finder-note"
+        ],
+        "bytes": 550
+      },
+      "scope.reference_minted": null,
+      "scope.decision": [
+        {
+          "rule": "llms-links",
+          "kind": "inject",
+          "mode": "live",
+          "outcome": "applied",
+          "reason": "page matched docs face txt"
+        },
+        {
+          "rule": "finder-note",
+          "kind": "inject",
+          "mode": "live",
+          "outcome": "applied",
+          "reason": "page matched docs face txt"
+        },
+        {
+          "rule": "face",
+          "kind": "face",
+          "mode": "live",
+          "outcome": "skipped",
+          "reason": "unsupported_kind:face"
+        }
+      ],
+      "scope.gateway": null,
+      "scope.observer.errors": [],
+      "scope.observer.dropped": 0
+    }
+  ]
+}

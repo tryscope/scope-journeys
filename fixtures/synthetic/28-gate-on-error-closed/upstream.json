@@ -1,0 +1,8 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "application/json",
+    "mcp-session-id": "sess-fixture-04"
+  },
+  "body": "[{\"jsonrpc\": \"2.0\", \"id\": 2, \"result\": {\"tools\": [{\"name\": \"list_hooks\", \"description\": \"List the hooks in the workspace.\", \"inputSchema\": {\"type\": \"object\", \"properties\": {}}}, {\"name\": \"create_hook\", \"description\": \"Create a catch hook.\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}}, \"required\": [\"name\"]}}]}}]"
+}

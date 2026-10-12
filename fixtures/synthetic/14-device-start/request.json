@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "url": "https://acme.example/api/device/start",
+  "headers": {
+    "content-type": "application/json",
+    "accept": "application/json",
+    "user-agent": "acme-cli/0.3.0 node/v24.0.0",
+    "x-acme-install": "ins_0000000000000001",
+    "cf-connecting-ip": "203.0.113.7"
+  },
+  "body": "{\"client\": \"acme-cli\"}"
+}

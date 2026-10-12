@@ -1,0 +1,45 @@
+{
+  "name": "scope-journeys-envoy",
+  "version": "0.1.0",
+  "description": "Scope Journeys as an Envoy external processor: the core behind ext_proc, for Envoy and the meshes built on it.",
+  "type": "module",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tryscope/scope-journeys.git",
+    "directory": "packages/envoy"
+  },
+  "homepage": "https://journeys.tryscope.com",
+  "engines": {
+    "node": ">=24"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "bin",
+    "proto",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "journeys-ext-proc": "bin/journeys-ext-proc.mjs"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.0",
+    "@grpc/proto-loader": "^0.8.0",
+    "scope-journeys": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "5.9.3"
+  }
+}

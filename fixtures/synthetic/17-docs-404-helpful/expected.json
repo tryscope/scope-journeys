@@ -1,0 +1,128 @@
+{
+  "response": {
+    "status": 404,
+    "headers": {
+      "cache-control": "no-store",
+      "content-type": "text/html; charset=utf-8"
+    },
+    "body": "<!doctype html><html><head><meta charset=\"utf-8\"><title>Not found</title></head><body><h1>Not found</h1><p>There is no page at this address. The guides that exist:</p><ul><li><a href=\"https://acme.example/docs/quickstart?ref=REF\">Quickstart</a></li><li><a href=\"https://acme.example/docs/install?ref=REF\">Install the CLI</a></li><li><a href=\"https://acme.example/docs/hooks?ref=REF\">Hooks</a></li><li><a href=\"https://acme.example/docs/mcp?ref=REF\">MCP</a></li><li><a href=\"https://acme.example/docs/auth?ref=REF\">How sign-in works</a></li></ul><p>Looking for the right guide for a task? Open https://acme.example/api/docs/find?task=&lt;one sentence about the task&gt; and it answers with the guide links for that task.</p></body></html>"
+  },
+  "forwarded": [
+    {
+      "method": "GET",
+      "url": "/docs/webhooks/retries",
+      "headers": {
+        "accept": "text/html",
+        "cf-connecting-ip": "203.0.113.7",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        "via": "1.1 fixture-sensor",
+        "x-acme-edge": "journeys"
+      },
+      "body": null
+    }
+  ],
+  "records": [
+    {
+      "schema": "scope.request/1",
+      "id": "MASKED",
+      "ts": "MASKED",
+      "observed_ts": "MASKED",
+      "install": "jin_fixture0000000000000000",
+      "source": "edge",
+      "observer": {
+        "package": "scope-journeys",
+        "version": "0.0.0-fixture",
+        "adapter": "fixture",
+        "policy_version": 3,
+        "salt_epoch": 1,
+        "name": "fixture-sensor"
+      },
+      "request_id": "MASKED",
+      "http.request.method": "GET",
+      "server.address": "acme.example",
+      "url.path": "/docs/webhooks/retries",
+      "url.query": null,
+      "http.response.status_code": 404,
+      "scope.route": "docs",
+      "http.request.header.content-type": null,
+      "http.response.header.content-type": "text/html; charset=utf-8",
+      "scope.request.bytes": null,
+      "scope.response.bytes": null,
+      "scope.cache": null,
+      "scope.timing": "MASKED",
+      "scope.client.address_hash": "f8d68a8e6b22",
+      "scope.client.address_family": "ipv4",
+      "scope.client.asn": 64512,
+      "scope.client.as_org": "Example Fiber",
+      "scope.client.country": "NL",
+      "scope.client.colo": "AMS",
+      "user_agent.original": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+      "scope.client.accept": "text/html",
+      "scope.client.fetch_metadata": {
+        "sec_ch_ua": false,
+        "sec_fetch_dest": null,
+        "sec_fetch_mode": null,
+        "upgrade_insecure": false
+      },
+      "tls.protocol.version": "TLSv1.3",
+      "network.protocol.version": "HTTP/2",
+      "scope.client.ja4": "t13d1516h2_8daaf6152771_e5627efa2ab1",
+      "scope.client.tls_ext_sha1": "2e1b4d0e9c8a7f6b5d4c3b2a1f0e9d8c7b6a5f4e",
+      "scope.client.tls_hello_len": 512,
+      "scope.signature": null,
+      "scope.platform_bot": null,
+      "scope.reader": "unknown",
+      "scope.key.credential": null,
+      "scope.key.install": null,
+      "scope.key.device_code": null,
+      "scope.key.user_code": null,
+      "scope.key.oauth_client": null,
+      "mcp.session.id": null,
+      "scope.key.hook": null,
+      "scope.key.reference": null,
+      "scope.key.setup_header": null,
+      "scope.key.agent_header": null,
+      "scope.key.client_header": null,
+      "scope.key.intent_header": null,
+      "mcp.protocol.version": null,
+      "mcp.method.name": [],
+      "scope.mcp.tools": [],
+      "scope.mcp.client": null,
+      "scope.oauth": null,
+      "scope.body.request": null,
+      "scope.body.response": null,
+      "scope.body.truncated": false,
+      "scope.response.headers": {
+        "content-type": "text/html; charset=utf-8",
+        "mcp-session-id": null,
+        "www-authenticate": null,
+        "location": null,
+        "cache-control": "no-store",
+        "x-vercel-cache": null,
+        "cf-cache-status": null
+      },
+      "scope.page": {
+        "canonical": "/docs/webhooks/retries",
+        "face": "404-html",
+        "reference_minted": "MASKED",
+        "injected": [
+          "notfound"
+        ],
+        "bytes": 762
+      },
+      "scope.reference_minted": null,
+      "scope.decision": [
+        {
+          "rule": "notfound",
+          "kind": "notfound",
+          "mode": "live",
+          "outcome": "applied",
+          "reason": "404 on content path"
+        }
+      ],
+      "scope.gateway": null,
+      "scope.observer.errors": [],
+      "scope.observer.dropped": 0
+    }
+  ]
+}

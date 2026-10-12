@@ -1,0 +1,60 @@
+name: docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "packages/core/TELEMETRY.md"
+      - "packages/core/SKILL.md"
+      - "packages/core/src/cli/openapi.journeys.json"
+      - "packages/core/src/cli/client.ts"
+      - "SECURITY.md"
+      - "CHANGELOG.md"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs
+  cancel-in-progress: false
+
+jobs:
+  docs:
+    name: build, check, deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_DOCS_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # The docs site is a workspace: one lockfile at the root, the sensor packages linked from the tree.
+      - run: npm ci
+      - run: npm run build
+      # The API page fails the build when the vendored OpenAPI document is older than the CLI's pinned version, or than the CLI on the registry.
+      - run: node scripts/generate.mjs --published
+        working-directory: docs
+      - run: npm run typecheck
+        working-directory: docs
+      # Builds, starts the app and checks every twin, llms.txt, SKILL.md and the probe.
+      - run: npm run smoke
+        working-directory: docs
+      # The deploy waits for the Vercel token; without it the build and the checks are the whole job.
+      - if: env.VERCEL_TOKEN != ''
+        run: npx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+        working-directory: docs
+      - if: env.VERCEL_TOKEN != ''
+        run: npx vercel@latest build --prod --token="$VERCEL_TOKEN"
+        working-directory: docs
+      - if: env.VERCEL_TOKEN != ''
+        run: npx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        working-directory: docs

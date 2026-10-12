@@ -1,0 +1,11 @@
+{
+  "name": "journeys-node-sample-express",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env.local server.mjs"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}

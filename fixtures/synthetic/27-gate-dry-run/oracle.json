@@ -1,0 +1,4 @@
+{
+  "lab": "predates",
+  "reason": "mode: dry_run is J3.1 behaviour; the oracle's sensor answers every declaration live and has no would_apply decision"
+}

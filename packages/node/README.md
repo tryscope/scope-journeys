@@ -1,0 +1,64 @@
+# scope-journeys-node
+
+Scope Journeys on Node's own HTTP server: an Express, Fastify or Hono mount in the app you have, or the standalone proxy in front of an origin you do not run. The core is `scope-journeys`; this package binds it to `node:http` (the socket's facts, the hop to the app's own listener or to the origin, the policy cache, shipping after the response). Node 24 or later; no dependency beyond the core.
+
+## Install
+
+```
+npx scope-journeys init --node --hosts api.example.com --docs-host docs.example.com
+```
+
+finds the framework and the entry file, writes the mount and the import, installs this package, creates the install and writes the variables to `.env.local`. By hand, the three mounts:
+
+```js
+import { journeys } from "scope-journeys-node"
+app.use(journeys())                       // Express, placed first
+
+import { fastifyJourneys } from "scope-journeys-node"
+await fastify.register(fastifyJourneys)   // Fastify, before the routes
+
+import { honoJourneys } from "scope-journeys-node"
+app.use(honoJourneys())                   // Hono on @hono/node-server
+```
+
+The standalone proxy, with the CLI installed beside this package:
+
+```
+npx scope-journeys proxy --origin https://docs.example.com --listen :8080 [--trust-proxy]
+```
+
+## The inner hop
+
+A mount forwards every observed request to the app's own listener (`http://127.0.0.1:<the port the request arrived on>`, or `JOURNEYS_ORIGIN`) with `x-journeys-inner: 1`, the request's own `Host`, `x-forwarded-for` and `x-forwarded-proto`; the request carrying the marker is handed to your routes untouched and never observed twice. The proxy forwards to `--origin` with the origin's `Host` and no marker.
+
+## Variables
+
+| name | secret | meaning |
+|---|---|---|
+| `JOURNEYS_INSTALL_ID` | no | your install, `jin_...` |
+| `JOURNEYS_INSTALL_KEY` | yes | the install key |
+| `JOURNEYS_SALT` | yes | 32 random bytes you generate; every hash is salted with it and Scope never receives it |
+| `JOURNEYS_ASSERTION_KEY` | yes | the ES256 key that signs `x-scope-assertion` on the hop |
+| `JOURNEYS_API_URL` | no | Scope's API (the default is the production host) |
+| `JOURNEYS_HOST` | no | optional: observe only this host |
+| `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
+| `JOURNEYS_ORIGIN` | no | where the hop goes; the app's own listener by default on a mount, required on the proxy |
+| `JOURNEYS_TRUST_PROXY` | no | `1` reads the client's address from the first `x-forwarded-for` and the scheme from `x-forwarded-proto`; on a mount also the host from `x-forwarded-host` (the record's `server.address`, the `{host}` the rules fill, what `JOURNEYS_HOST` is matched against; the hop still carries the `Host` as received), while the standalone proxy names the host it serves, the `Host` it receives. Set it only behind a proxy you control |
+| `JOURNEYS_LISTEN` | no | the proxy's listen address; `:8080` by default |
+
+Every mount also takes the same values as options (`journeys({ installId, origin, trustProxy, ... })`).
+
+## What this form cannot see
+
+The AS number, the organisation, the country, the colo, the JA4 digest and the TLS fingerprint are null on every record of this form: a socket does not know them. The address, its family, the TLS version (when Node terminates TLS) and the HTTP version are recorded. Joins lose nothing; the behaviour columns lose the network kind.
+
+## How it fails
+
+| failure | behaviour |
+|---|---|
+| the sensor throws, or the hop fails before a byte was written | a mount hands the request to your routes untouched; the proxy forwards untouched, or answers 502 when the origin is unreachable |
+| no install id or no salt | one log line naming `journeys init --node`; every request passes through under the forward-only default |
+| the policy fetch fails | the last good policy, or the embedded forward-only default |
+| Scope's ingest is down, or answers 429 | one retry (after `Retry-After`, capped at 60 seconds, on a 429), then the record is dropped and counted; nothing waits |
+
+What it records is in `TELEMETRY.md` of `scope-journeys`; the data-handling statement is `SECURITY.md`. The guide: https://journeys.tryscope.com/install/node.

@@ -1,0 +1,45 @@
+{
+  "name": "journeys",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Scope Journeys: the sensor packages. One core on the fetch-handler contract, one adapter per platform.",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tryscope/scope-journeys.git"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/*",
+    "packages/next/example",
+    "docs"
+  ],
+  "scripts": {
+    "build": "npm run build -w scope-journeys && npm run build -w scope-journeys-cloudflare -w scope-journeys-next -w scope-journeys-node -w scope-journeys-envoy",
+    "typecheck": "npm run typecheck -w scope-journeys -w scope-journeys-cloudflare -w scope-journeys-next -w scope-journeys-node -w scope-journeys-envoy",
+    "lint": "node scripts/lint.mjs",
+    "test:node": "node --import tsx --test \"test/node/*.test.ts\" \"test/docs/*.test.ts\" \"packages/core/test/*.test.ts\" \"packages/next/test/*.test.ts\" \"packages/node/test/*.test.ts\" \"packages/envoy/test/*.test.ts\"",
+    "test:node-adapter": "node --import tsx --test \"test/node-adapter/*.test.ts\"",
+    "test:envoy": "node --import tsx --test \"test/envoy/*.test.ts\"",
+    "test:workerd": "vitest run --config test/workerd/vitest.config.mts",
+    "test:identity": "node --test test/identity/identity.test.mjs",
+    "test:privacy": "node --import tsx --test \"test/privacy/*.test.ts\"",
+    "test:oracle": "node --import tsx --test packages/core/test/oracle/oracle.test.ts",
+    "test": "npm run test:node && npm run test:node-adapter && npm run test:workerd && npm run test:identity && npm run test:privacy"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.0",
+    "@types/node": "^24.3.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "jose": "^6.2.12",
+    "json-schema-to-typescript": "^16.0.0",
+    "tsx": "^4.23.0",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.149.0"
+  },
+  "type": "module"
+}

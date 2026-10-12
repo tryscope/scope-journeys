@@ -1,0 +1,8 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "text/plain; charset=utf-8",
+    "cache-control": "public, max-age=300"
+  },
+  "body": "# Acme Hooks\n\n> Acme Hooks posts to your app when something happens.\n\n## Docs\n\n- [Quickstart](https://acme.example/docs/quickstart.md): install, sign in, create a hook\n- [Hooks](https://acme.example/docs/hooks.md): catch hooks and their urls\n- [MCP](https://acme.example/docs/mcp.md): the MCP server\n"
+}

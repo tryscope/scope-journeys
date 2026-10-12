@@ -1,0 +1,16 @@
+{
+  "address": "203.0.113.7",
+  "asn": 64512,
+  "as_org": null,
+  "country": "NL",
+  "colo": null,
+  "tls": {
+    "protocol_version": null,
+    "network_protocol_version": null,
+    "ja4": "t13d1516h2_8daaf6152771_e5627efa2ab1",
+    "tls_ext_sha1": null,
+    "tls_hello_len": null
+  },
+  "platform_request_id": "ams1::abcde-1760097600000-0123456789ab",
+  "ts": "2026-10-10T12:00:22.000Z"
+}

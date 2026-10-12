@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.tgz
+test/identity/out/
+.wrangler/
+.next/
+.vercel/
+.env
+.env.*
+!.env.example
+.DS_Store
+packages/next/example/next-env.d.ts
+packages/core/SECURITY.md
+test/docs/.generated/

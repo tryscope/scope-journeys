@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache"
+  },
+  "stream": [
+    "event: order\ndata: {\"id\":\"ord_1\",\"total\":42}\n\n",
+    "event: order\ndata: {\"id\":\"ord_2\",\"total\":17}\n\n"
+  ]
+}

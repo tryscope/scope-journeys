@@ -1,0 +1,125 @@
+{
+  "response": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "www-authenticate": "Bearer realm=\"acme\""
+    },
+    "body": "{\"error\":{\"code\":\"unauthorized\",\"message\":\"Missing API key. Guide: https://acme.example/docs/auth?ref=REF\"}}"
+  },
+  "forwarded": [
+    {
+      "method": "GET",
+      "url": "/api/v1/hooks",
+      "headers": {
+        "accept": "application/json",
+        "cf-connecting-ip": "203.0.113.7",
+        "user-agent": "python-requests/2.32.3",
+        "via": "1.1 fixture-sensor",
+        "x-acme-edge": "journeys"
+      },
+      "body": null
+    }
+  ],
+  "records": [
+    {
+      "schema": "scope.request/1",
+      "id": "MASKED",
+      "ts": "MASKED",
+      "observed_ts": "MASKED",
+      "install": "jin_fixture0000000000000000",
+      "source": "edge",
+      "observer": {
+        "package": "scope-journeys",
+        "version": "0.0.0-fixture",
+        "adapter": "fixture",
+        "policy_version": 3,
+        "salt_epoch": 1,
+        "name": "fixture-sensor"
+      },
+      "request_id": "MASKED",
+      "http.request.method": "GET",
+      "server.address": "acme.example",
+      "url.path": "/api/v1/hooks",
+      "url.query": null,
+      "http.response.status_code": 401,
+      "scope.route": "api",
+      "http.request.header.content-type": null,
+      "http.response.header.content-type": "application/json",
+      "scope.request.bytes": null,
+      "scope.response.bytes": 66,
+      "scope.cache": null,
+      "scope.timing": "MASKED",
+      "scope.client.address_hash": "f8d68a8e6b22",
+      "scope.client.address_family": "ipv4",
+      "scope.client.asn": 64512,
+      "scope.client.as_org": "Example Fiber",
+      "scope.client.country": "NL",
+      "scope.client.colo": "AMS",
+      "user_agent.original": "python-requests/2.32.3",
+      "scope.client.accept": "application/json",
+      "scope.client.fetch_metadata": {
+        "sec_ch_ua": false,
+        "sec_fetch_dest": null,
+        "sec_fetch_mode": null,
+        "upgrade_insecure": false
+      },
+      "tls.protocol.version": "TLSv1.3",
+      "network.protocol.version": "HTTP/2",
+      "scope.client.ja4": "t13d1516h2_8daaf6152771_e5627efa2ab1",
+      "scope.client.tls_ext_sha1": "2e1b4d0e9c8a7f6b5d4c3b2a1f0e9d8c7b6a5f4e",
+      "scope.client.tls_hello_len": 512,
+      "scope.signature": null,
+      "scope.platform_bot": null,
+      "scope.reader": "shell",
+      "scope.key.credential": null,
+      "scope.key.install": null,
+      "scope.key.device_code": null,
+      "scope.key.user_code": null,
+      "scope.key.oauth_client": null,
+      "mcp.session.id": null,
+      "scope.key.hook": null,
+      "scope.key.reference": null,
+      "scope.key.setup_header": null,
+      "scope.key.agent_header": null,
+      "scope.key.client_header": null,
+      "scope.key.intent_header": null,
+      "mcp.protocol.version": null,
+      "mcp.method.name": [],
+      "scope.mcp.tools": [],
+      "scope.mcp.client": null,
+      "scope.oauth": null,
+      "scope.body.request": null,
+      "scope.body.response": {
+        "error": {
+          "code": "unauthorized",
+          "message": "Missing API key."
+        }
+      },
+      "scope.body.truncated": false,
+      "scope.response.headers": {
+        "content-type": "application/json",
+        "mcp-session-id": null,
+        "www-authenticate": "Bearer realm=\"acme\"",
+        "location": null,
+        "cache-control": null,
+        "x-vercel-cache": null,
+        "cf-cache-status": null
+      },
+      "scope.page": null,
+      "scope.reference_minted": "MASKED",
+      "scope.decision": [
+        {
+          "rule": "error-link",
+          "kind": "error",
+          "mode": "live",
+          "outcome": "applied",
+          "reason": "status 401 gained guide link"
+        }
+      ],
+      "scope.gateway": null,
+      "scope.observer.errors": [],
+      "scope.observer.dropped": 0
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "method": "POST",
+  "url": "https://acme.example/mcp?ref=5Z4KJ7N9",
+  "headers": {
+    "content-type": "application/json",
+    "accept": "application/json, text/event-stream",
+    "mcp-protocol-version": "2025-06-18",
+    "user-agent": "node",
+    "cf-connecting-ip": "203.0.113.7"
+  },
+  "body": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"initialize\", \"params\": {\"protocolVersion\": \"2025-06-18\", \"capabilities\": {}, \"clientInfo\": {\"name\": \"codex-mcp-client\", \"version\": \"0.5.0\"}}}"
+}

@@ -1,0 +1,7 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": "{\"device_code\": \"ah_devcode0000000000000002\", \"user_code\": \"WXYZ-1234\", \"verification_uri\": \"https://acme.example/device\", \"verification_uri_complete\": \"https://acme.example/device?code=WXYZ-1234\", \"expires_in\": 600, \"interval\": 5}"
+}

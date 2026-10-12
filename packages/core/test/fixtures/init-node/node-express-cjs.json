@@ -1,0 +1,18 @@
+{
+  "about": "A CommonJS Express app named by package.json's main, with a use strict directive and semicolons: the require line goes after the directive, the mount keeps the semicolon style.",
+  "args": ["--node", "--hosts", "acme.example", "--docs-host", "same", "--yes"],
+  "files": {
+    "package.json": "{\n  \"name\": \"acme-api\",\n  \"private\": true,\n  \"main\": \"index.js\",\n  \"dependencies\": { \"express\": \"^5.1.0\" }\n}\n",
+    "index.js": "\"use strict\";\nconst express = require(\"express\");\n\nconst app = express();\napp.get(\"/\", (req, res) => res.send(\"ok\"));\napp.listen(3000);\n",
+    ".gitignore": "node_modules/\n.env.local\n"
+  },
+  "expected": {
+    "exit_code": 0,
+    "framework": "express",
+    "files": {
+      "index.js": "\"use strict\";\nconst { journeys } = require(\"scope-journeys-node\");\nconst express = require(\"express\");\n\nconst app = express();\napp.use(journeys());\napp.get(\"/\", (req, res) => res.send(\"ok\"));\napp.listen(3000);\n"
+    },
+    "files_written": ["index.js", ".env.local"],
+    "install": ["npm", ["install", "scope-journeys-node@{VERSION}"]]
+  }
+}

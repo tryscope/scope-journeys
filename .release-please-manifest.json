@@ -1,0 +1,8 @@
+{
+  ".": "0.1.0",
+  "packages/core": "0.1.0",
+  "packages/cloudflare": "0.1.0",
+  "packages/next": "0.1.0",
+  "packages/node": "0.1.0",
+  "packages/envoy": "0.1.0"
+}

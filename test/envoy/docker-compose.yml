@@ -1,0 +1,14 @@
+# The compose stack of `npm run test:envoy` (plan J5.2 step 6): the current stable Envoy, pinned by
+# digest, running envoy.yaml beside this file. The toy origin (port 18789) and the processor (port
+# 18790) run in the test's own process on the host, reached from the container as
+# host.docker.internal; the listener is published on 10000.
+services:
+  envoy:
+    image: envoyproxy/envoy:v1.39.3@sha256:dd85940439de19a0b6ae8419610363ea0ad351d9a994ea007161c206ec1e1865
+    command: ["envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "warn"]
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
+    ports:
+      - "127.0.0.1:10000:10000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

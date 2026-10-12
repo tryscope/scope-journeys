@@ -1,0 +1,5 @@
+{
+  "status": 404,
+  "headers": { "content-type": "text/plain" },
+  "body": "the origin must never see the probe"
+}

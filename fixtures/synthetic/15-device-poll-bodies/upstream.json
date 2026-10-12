@@ -1,0 +1,7 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": "{\"status\": \"approved\", \"api_key\": \"ah_k3y000000000000000000001\", \"install_id\": \"ins_1\", \"verification_uri_complete\": \"https://acme.example/device?code=ABCD-EFGH\"}"
+}

@@ -1,0 +1,42 @@
+{
+  "name": "scope-journeys-cloudflare",
+  "version": "0.1.0",
+  "description": "Scope Journeys on a Cloudflare Worker: the platform's facts, the policy cache, the inner hop to your origin, shipping after the response.",
+  "type": "module",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tryscope/scope-journeys.git",
+    "directory": "packages/cloudflare"
+  },
+  "homepage": "https://journeys.tryscope.com",
+  "engines": {
+    "node": ">=24"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "templates/wrangler.toml",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "default": "./dist/worker.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "scope-journeys": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

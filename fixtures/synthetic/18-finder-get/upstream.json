@@ -1,0 +1,7 @@
+{
+  "status": 404,
+  "headers": {
+    "content-type": "text/plain"
+  },
+  "body": "the finder answers this call; the origin is never reached"
+}

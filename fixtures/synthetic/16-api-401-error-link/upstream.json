@@ -1,0 +1,8 @@
+{
+  "status": 401,
+  "headers": {
+    "content-type": "application/json",
+    "www-authenticate": "Bearer realm=\"acme\""
+  },
+  "body": "{\"error\": {\"code\": \"unauthorized\", \"message\": \"Missing API key.\"}}"
+}

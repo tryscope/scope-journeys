@@ -1,0 +1,20 @@
+{
+  "about": "A fresh Next 16 app with no proxy file and no instrumentation: init writes both, the dependency, the environment.",
+  "args": ["--key", "--hosts", "acme.example", "--docs-host", "same", "--yes"],
+  "files": {
+    "package.json": "{\n  \"name\": \"acme-app\",\n  \"private\": true,\n  \"dependencies\": { \"next\": \"16.4.0\", \"react\": \"^19.0.0\", \"react-dom\": \"^19.0.0\" }\n}\n",
+    "next.config.ts": "import type { NextConfig } from \"next\"\nconst config: NextConfig = {}\nexport default config\n",
+    ".gitignore": "node_modules/\n.next/\n.env.local\n",
+    "app/page.tsx": "export default function Page() { return <main>Acme</main> }\n"
+  },
+  "expected": {
+    "exit_code": 0,
+    "files": {
+      "proxy.ts": "import { withJourneys } from \"scope-journeys-next\"\n\nexport default withJourneys()\n\nexport const config = {\n  matcher: [\"/((?!_next/static|_next/image|favicon.ico).*)\"],\n}\n",
+      "instrumentation.ts": "export { onRequestError } from \"scope-journeys-next/instrumentation\"\n",
+      ".env.local": "JOURNEYS_INSTALL_ID=jin_test0000000000000000000000\nJOURNEYS_SALT=AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA\nJOURNEYS_INSTALL_KEY=sjk_test_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nJOURNEYS_API_URL={API_URL}\n"
+    },
+    "files_written": ["proxy.ts", "instrumentation.ts", ".env.local"],
+    "install": ["npm", ["install", "scope-journeys-next@{VERSION}"]]
+  }
+}

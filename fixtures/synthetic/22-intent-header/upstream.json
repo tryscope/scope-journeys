@@ -1,0 +1,8 @@
+{
+  "status": 201,
+  "headers": {
+    "content-type": "application/json",
+    "location": "https://acme.example/api/v1/hooks/hk_1"
+  },
+  "body": "{\"id\": \"hk_1\", \"hook\": \"orders\", \"url\": \"https://acme.example/hooks/catch/hk_1\", \"token\": \"ah_hook0000000000000000001\"}"
+}

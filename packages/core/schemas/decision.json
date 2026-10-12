@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://journeys.tryscope.com/schemas/journeys/1/decision",
+  "title": "scope.decision/1",
+  "description": "What a rule did to one request. A rule that does not match a request records nothing; a rule that matched records one decision with the reason it had, whether it applied the change (live) or only computed it (dry run).",
+  "type": "object",
+  "required": ["rule", "kind", "mode", "outcome"],
+  "properties": {
+    "rule": { "type": "string", "description": "the rule's id in the policy" },
+    "kind": { "type": "string", "enum": ["observe", "inject", "gate", "finder", "notfound", "error", "face"] },
+    "mode": { "type": "string", "enum": ["dry_run", "live"], "description": "the effective mode the rule ran in on this request" },
+    "outcome": { "type": "string", "enum": ["applied", "would_apply", "skipped", "errored"], "description": "applied: the change went out; would_apply: computed and discarded (dry run); skipped: matched but excluded (the install's environment, or a kind this sensor version does not implement); errored: the rule threw and the original answer was served" },
+    "reason": { "type": ["string", "null"], "description": "the same wording live and dry run, so the counters compare" }
+  },
+  "additionalProperties": false
+}

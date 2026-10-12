@@ -1,0 +1,112 @@
+{
+  "response": {
+    "status": 200,
+    "headers": {
+      "cache-control": "public, max-age=86400",
+      "content-type": "application/gzip"
+    },
+    "body": "base64:H4sIAAAAAAAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1u"
+  },
+  "forwarded": [
+    {
+      "method": "GET",
+      "url": "/dl/acme-cli.tgz?ref=5Z4KJ7N9",
+      "headers": {
+        "accept": "*/*",
+        "cf-connecting-ip": "203.0.113.7",
+        "user-agent": "npm/10.9.2 node/v24.13.1 darwin arm64 workspaces/false",
+        "via": "1.1 fixture-sensor",
+        "x-acme-edge": "journeys"
+      },
+      "body": null
+    }
+  ],
+  "records": [
+    {
+      "schema": "scope.request/1",
+      "id": "MASKED",
+      "ts": "MASKED",
+      "observed_ts": "MASKED",
+      "install": "jin_fixture0000000000000000",
+      "source": "edge",
+      "observer": {
+        "package": "scope-journeys",
+        "version": "0.0.0-fixture",
+        "adapter": "fixture",
+        "policy_version": 3,
+        "salt_epoch": 1,
+        "name": "fixture-sensor"
+      },
+      "request_id": "MASKED",
+      "http.request.method": "GET",
+      "server.address": "acme.example",
+      "url.path": "/dl/acme-cli.tgz",
+      "url.query": "ref=5Z4KJ7N9",
+      "http.response.status_code": 200,
+      "scope.route": "download",
+      "http.request.header.content-type": null,
+      "http.response.header.content-type": "application/gzip",
+      "scope.request.bytes": null,
+      "scope.response.bytes": null,
+      "scope.cache": null,
+      "scope.timing": "MASKED",
+      "scope.client.address_hash": "f8d68a8e6b22",
+      "scope.client.address_family": "ipv4",
+      "scope.client.asn": 64512,
+      "scope.client.as_org": "Example Fiber",
+      "scope.client.country": "NL",
+      "scope.client.colo": "AMS",
+      "user_agent.original": "npm/10.9.2 node/v24.13.1 darwin arm64 workspaces/false",
+      "scope.client.accept": "*/*",
+      "scope.client.fetch_metadata": {
+        "sec_ch_ua": false,
+        "sec_fetch_dest": null,
+        "sec_fetch_mode": null,
+        "upgrade_insecure": false
+      },
+      "tls.protocol.version": "TLSv1.3",
+      "network.protocol.version": "HTTP/2",
+      "scope.client.ja4": "t13d1516h2_8daaf6152771_e5627efa2ab1",
+      "scope.client.tls_ext_sha1": "2e1b4d0e9c8a7f6b5d4c3b2a1f0e9d8c7b6a5f4e",
+      "scope.client.tls_hello_len": 512,
+      "scope.signature": null,
+      "scope.platform_bot": null,
+      "scope.reader": "unknown",
+      "scope.key.credential": null,
+      "scope.key.install": null,
+      "scope.key.device_code": null,
+      "scope.key.user_code": null,
+      "scope.key.oauth_client": null,
+      "mcp.session.id": null,
+      "scope.key.hook": null,
+      "scope.key.reference": "5Z4KJ7N9",
+      "scope.key.setup_header": null,
+      "scope.key.agent_header": null,
+      "scope.key.client_header": null,
+      "scope.key.intent_header": null,
+      "mcp.protocol.version": null,
+      "mcp.method.name": [],
+      "scope.mcp.tools": [],
+      "scope.mcp.client": null,
+      "scope.oauth": null,
+      "scope.body.request": null,
+      "scope.body.response": null,
+      "scope.body.truncated": false,
+      "scope.response.headers": {
+        "content-type": "application/gzip",
+        "mcp-session-id": null,
+        "www-authenticate": null,
+        "location": null,
+        "cache-control": "public, max-age=86400",
+        "x-vercel-cache": null,
+        "cf-cache-status": null
+      },
+      "scope.page": null,
+      "scope.reference_minted": null,
+      "scope.decision": [],
+      "scope.gateway": null,
+      "scope.observer.errors": [],
+      "scope.observer.dropped": 0
+    }
+  ]
+}

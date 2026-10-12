@@ -1,0 +1,91 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release-please:
+    name: release-please
+    runs-on: ubuntu-latest
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          release-type: node
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    name: publish
+    needs: release-please
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # The six test scripts as six steps, so the log names the gate that failed; none continues
+      # on error, and the publish step never runs after a failure.
+      - run: npm run test:node
+      - run: npm run test:node-adapter
+      - run: npm run test:workerd
+      - run: npm run test:identity
+      - run: npm run test:privacy
+      - run: npm run test:envoy
+      # No npm token in this workflow: the registry trusts the workflow through npm's trusted
+      # publishing (configured on each package after the owner's first manual publish), and
+      # --provenance attests the repository and the workflow that built the tarballs. Every
+      # version lands under the `next` dist-tag as a release candidate; the owner moves it to
+      # `latest` with `npm dist-tag add` once gates 2, 4 and 5 are green (RELEASING.md).
+      - run: npm publish -w scope-journeys -w scope-journeys-cloudflare -w scope-journeys-next -w scope-journeys-node -w scope-journeys-envoy --provenance --access public --tag next
+
+  # The processor's image at the same version, from the packages just published; the registry
+  # trusts the workflow's token. The owner moves `latest` with the dist-tags (RELEASING.md).
+  container:
+    name: container
+    needs: [release-please, publish]
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: The version from the tag
+        id: version
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: packages/envoy
+          push: true
+          build-args: VERSION=${{ steps.version.outputs.version }}
+          tags: ghcr.io/${{ github.repository_owner }}/scope-journeys-envoy:${{ steps.version.outputs.version }}

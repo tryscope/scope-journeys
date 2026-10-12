@@ -1,0 +1,12 @@
+name = "journeys-example"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+JOURNEYS_INSTALL_ID = "jin_example0000000000000000"
+JOURNEYS_API_URL = "https://api.tryscope.com"
+JOURNEYS_ORIGIN = "https://acme.example"
+JOURNEYS_NAME = "scope-journeys"
+
+[observability]
+enabled = true
