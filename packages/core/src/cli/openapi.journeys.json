@@ -3,9 +3,9 @@
   "info": {
     "description": "## Overview\n\nThe Journeys API is the part of the Scope API a sensor, a connector and a console use: the operations tagged `journeys` with every schema they reach, and nothing else. HTTP success records or reads facts; it does not mean the stitcher has run.\n\n## Resources\n\nInstalls and their keys, policy and probes (`createInstall`, `readInstall`, `updateInstall`, `createInstallKey`, `readInstallPolicy`, `readInstallProbe`), the policy versions an install pins (`listPolicies`, `createPolicy`, `updatePolicy`), the request records as the sensor ships them (`createRequests`, a batch whose idempotency key is each record's own id) and the debugger's read of them (`listRequests`), what the stitcher derives (`listJourneys`, `readJourney`, `listVisits`, `readVisit`, `listIntents`, each join with its confidence label), the other ways in (`createConnector`, `deliverConnector`, `verifyConnector`, `createAccountEvents`) and the ways out (`createDestination`, `updateDestination`, `createWebhookEndpoint`, `updateWebhookEndpoint` with the events of the `webhooks` section, `createDataExport`, `createTaskProposals`, `decideTaskProposal`, and the console's read-only MCP server, `mcp`).\n\n## Rules\n\n- Every write carries an `Idempotency-Key`; reuse it after an ambiguous response.\n- Every error is a typed code in the error envelope; unknown states fail closed.\n- The contract version travels in `x-scope-contract-version`; the whole Scope API is `openapi.json`.",
     "title": "Scope Journeys (the public API's Journeys resources)",
-    "version": "1.175.0",
+    "version": "1.178.0",
     "x-journeys-vendored-from": {
-      "contract_version": "1.175.0"
+      "contract_version": "1.178.0"
     }
   },
   "paths": {
@@ -149,7 +149,7 @@
         }
       },
       "post": {
-        "description": "### Use when\nRegister one sensor deployment: from `init` with no account yet (the install waits in the system tenant behind a seven-day claim link) or from the console for a customer.\n\n### Preconditions\n- A stable UUIDv4 Idempotency-Key (the CLI mints one per init run)\n- Without a session, at most five unclaimed installs per address per hour\n\n### Durable effect\nMints the install, its key (returned once, absent under the OIDC form) and, when unclaimed, the claim link; with a session the install is created claimed to the customer.\n\n### This response does not mean\nAn unclaimed install records traffic but stitches nothing until it is claimed; the key is never shown again.\n\n### Next endpoint\n`readInstallPolicy`\n\n### Common conflicts\n- 429 when the address created five installs in the hour\n\n### Example\n`POST /v1/installs`",
+        "description": "### Use when\nRegister one sensor deployment: from `init` with no account yet (the install waits in the system tenant behind a seven-day claim link) or from the console for a customer.\n\n### Preconditions\n- A stable UUIDv4 Idempotency-Key (the CLI mints one per init run)\n- Without a session, at most five unclaimed installs per address per hour\n\n### Durable effect\nMints the install, its key (returned once, absent under the OIDC form) and, when unclaimed, the claim link; with a session the install is created claimed to the customer.\n\n### This response does not mean\nAn unclaimed install records traffic but stitches nothing until it is claimed; the key is never shown again.\n\n### Next endpoint\n`readInstallPolicy`\n\n### Common conflicts\n- 429 when the address created five installs in the hour\n- 503 upstream_error: the console origin is not known in this environment (the manifest's web host, or on a branch environment the deployment's branch host), so no claim link can be built\n\n### Example\n`POST /v1/installs`",
         "operationId": "createInstall",
         "parameters": [
           {
@@ -266,7 +266,8 @@
         ],
         "x-scope-flow": {
           "common_conflicts": [
-            "429 when the address created five installs in the hour"
+            "429 when the address created five installs in the hour",
+            "503 upstream_error: the console origin is not known in this environment (the manifest's web host, or on a branch environment the deployment's branch host), so no claim link can be built"
           ],
           "durable_effect": "Mints the install, its key (returned once, absent under the OIDC form) and, when unclaimed, the claim link; with a session the install is created claimed to the customer.",
           "example": "POST /v1/installs",
@@ -1894,7 +1895,7 @@
         }
       },
       "post": {
-        "description": "### Use when\nPromote a version: it becomes the customer's current and every install without a pin fetches it within a minute. Promoting an older version is the rollback.\n\n### Preconditions\n- A console session\n- A stable UUIDv4 Idempotency-Key\n\n### Durable effect\nClears the customer's current, sets this version, stamps promoted_at and emits policy.promoted with the versions.\n\n### This response does not mean\nPinned installs keep their version; a sensor that has not fetched yet stamps the old version on its records for up to a minute.\n\n### Next endpoint\n`listInstalls`\n\n### Common conflicts\n\n\n### Example\n`POST /v1/policies/{policy_id}`",
+        "description": "### Use when\nPromote a version: it becomes the customer's current and every install without a pin fetches it within a minute. Promoting an older version is the rollback.\n\n### Preconditions\n- A console session\n- A stable UUIDv4 Idempotency-Key\n\n### Durable effect\nClears the customer's current, sets this version, stamps promoted_at and emits policy.promoted with the versions.\n\n### This response does not mean\nPinned installs keep their version; a sensor that has not fetched yet stamps the old version on its records for up to a minute.\n\n### Next endpoint\n`listInstalls`\n\n### Common conflicts\n- 409 promotion_refused: a rule going live in production before it was live in preview for 24 hours with one preview request applied; back to dry run never waits\n\n### Example\n`POST /v1/policies/{policy_id}`",
         "operationId": "updatePolicy",
         "parameters": [
           {
@@ -2018,7 +2019,9 @@
           "journeys"
         ],
         "x-scope-flow": {
-          "common_conflicts": [],
+          "common_conflicts": [
+            "409 promotion_refused: a rule going live in production before it was live in preview for 24 hours with one preview request applied; back to dry run never waits"
+          ],
           "durable_effect": "Clears the customer's current, sets this version, stamps promoted_at and emits policy.promoted with the versions.",
           "example": "POST /v1/policies/{policy_id}",
           "next_operation": "listInstalls",
@@ -2063,6 +2066,15 @@
             "required": false,
             "schema": {
               "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "customer",
+            "required": false,
+            "schema": {
               "minLength": 1,
               "type": "string"
             }
@@ -2737,7 +2749,7 @@
             "type": "string"
           },
           "contract_version": {
-            "const": "1.175.0",
+            "const": "1.178.0",
             "type": "string"
           },
           "error": {
@@ -2782,6 +2794,7 @@
                   "journeys_not_entitled",
                   "since_out_of_range",
                   "install_key_expired",
+                  "promotion_refused",
                   "data_export_not_entitled",
                   "signature_invalid",
                   "webhook_url_invalid",
@@ -2830,7 +2843,7 @@
             "type": "string"
           },
           "contract_version": {
-            "const": "1.175.0",
+            "const": "1.178.0",
             "type": "string"
           },
           "error": {
@@ -2852,7 +2865,7 @@
             "type": "object"
           },
           "expected_contract_version": {
-            "const": "1.175.0",
+            "const": "1.178.0",
             "type": "string"
           },
           "request_id": {
@@ -7950,7 +7963,10 @@
                 },
                 "scope.client.address_hash": {
                   "pattern": "^[0-9a-f]{12}$",
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "scope.key.credential": {
                   "pattern": "^[0-9a-f]{12}$",
