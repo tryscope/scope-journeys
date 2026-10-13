@@ -3,10 +3,11 @@
 //   2. the standalone validators in packages/core/src/generated/validators.js (ajv's code
 //      generation, ESM, every format inlined as a regular expression), so the shipped core needs
 //      no validator library at runtime and holds no require().
-// Run by `npm run build` before tsc; the generated files are committed and a test regenerates and
-// diffs them, so a stale commit fails CI.
+// Run by `npm run build` before tsc; the generated files are committed and a test regenerates them
+// into a temporary directory (`--out <dir>`) and compares, so a stale commit fails CI without the
+// test ever rewriting the files that the other test processes are importing.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import standaloneCode from "ajv/dist/standalone/index.js";
@@ -15,7 +16,8 @@ import { compile } from "json-schema-to-typescript";
 const here = dirname(fileURLToPath(import.meta.url));
 const core = join(here, "..", "packages", "core");
 const schemasDir = join(core, "schemas");
-const out = join(core, "src", "generated");
+const outFlag = process.argv.indexOf("--out");
+const out = outFlag > 0 && process.argv[outFlag + 1] ? resolve(process.argv[outFlag + 1]) : join(core, "src", "generated");
 mkdirSync(out, { recursive: true });
 
 const NAMES = { request: "ScopeRequest1", declaration: "ScopeDeclaration1", decision: "ScopeDecision1", policy: "ScopePolicy1" };

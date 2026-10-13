@@ -3,7 +3,8 @@
 // runtime dependency, and the policy validator refuses a secret-shaped value.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
@@ -30,11 +31,20 @@ test("the record, declaration and policy schema ids equal their files' $id", () 
   assert.equal(schema("policy").properties.schema?.const, POLICY_SCHEMA);
 });
 
+// The generator writes into a scratch directory, never into src/generated: the other test files run
+// in parallel processes and import validators.js, and an in-place rewrite mid-run made that import
+// fail with a missing export.
 test("the generated types, validators and TELEMETRY.md are committed current", () => {
-  execFileSync("node", [join(ROOT, "scripts", "types-from-schemas.mjs")], { cwd: CORE, stdio: "pipe" });
-  execFileSync("node", [join(ROOT, "scripts", "telemetry-doc.mjs"), "--check"], { cwd: CORE, stdio: "pipe" });
-  const status = execFileSync("git", ["status", "--porcelain", "--", "packages/core/src/generated", "packages/core/TELEMETRY.md"], { cwd: ROOT, encoding: "utf8" });
-  assert.equal(status.trim(), "", `generated files are stale:\n${status}`);
+  const scratch = mkdtempSync(join(tmpdir(), "journeys-generated-"));
+  try {
+    execFileSync("node", [join(ROOT, "scripts", "types-from-schemas.mjs"), "--out", scratch], { cwd: CORE, stdio: "pipe" });
+    const committed = join(CORE, "src", "generated");
+    const stale = readdirSync(scratch).filter((name) => !existsSync(join(committed, name)) || !readFileSync(join(committed, name)).equals(readFileSync(join(scratch, name))));
+    assert.deepEqual(stale, [], "generated files are stale: run `npm run generate -w scope-journeys` and commit");
+    execFileSync("node", [join(ROOT, "scripts", "telemetry-doc.mjs"), "--check"], { cwd: CORE, stdio: "pipe" });
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 test("the shipped validators carry no runtime dependency", () => {
