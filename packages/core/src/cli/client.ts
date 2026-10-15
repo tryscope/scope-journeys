@@ -6,7 +6,7 @@ import { VERSION } from "../version.js";
  * every operation below exists there). No generator at runtime, no dependency: the CLI is an
  * external caller pinned to the contract version the document carries.
  */
-export const CONTRACT_VERSION_VENDORED = "1.180.0";
+export const CONTRACT_VERSION_VENDORED = "1.181.0";
 
 /** Every operation this client performs; `openapi.journeys.json` must carry each one. */
 export const CLIENT_OPERATIONS: ReadonlyArray<{ method: "get" | "post"; path: string }> = Object.freeze([

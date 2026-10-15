@@ -3,9 +3,9 @@
   "info": {
     "description": "## Overview\n\nThe Journeys API is the part of the Scope API a sensor, a connector and a console use: the operations tagged `journeys` with every schema they reach, and nothing else. HTTP success records or reads facts; it does not mean the stitcher has run.\n\n## Resources\n\nInstalls and their keys, policy and probes (`createInstall`, `readInstall`, `updateInstall`, `createInstallKey`, `readInstallPolicy`, `readInstallProbe`), the policy versions an install pins (`listPolicies`, `createPolicy`, `updatePolicy`), the request records as the sensor ships them (`createRequests`, a batch whose idempotency key is each record's own id) and the debugger's read of them (`listRequests`), what the stitcher derives (`listJourneys`, `readJourney`, `listVisits`, `readVisit`, `listIntents`, each join with its confidence label), the other ways in (`createConnector`, `deliverConnector`, `verifyConnector`, `createAccountEvents`) and the ways out (`createDestination`, `updateDestination`, `createWebhookEndpoint`, `updateWebhookEndpoint` with the events of the `webhooks` section, `createDataExport`, `createTaskProposals`, `decideTaskProposal`, and the console's read-only MCP server, `mcp`).\n\n## Rules\n\n- Every write carries an `Idempotency-Key`; reuse it after an ambiguous response.\n- Every error is a typed code in the error envelope; unknown states fail closed.\n- The contract version travels in `x-scope-contract-version`; the whole Scope API is `openapi.json`.",
     "title": "Scope Journeys (the public API's Journeys resources)",
-    "version": "1.180.0",
+    "version": "1.181.0",
     "x-journeys-vendored-from": {
-      "contract_version": "1.180.0"
+      "contract_version": "1.181.0"
     }
   },
   "paths": {
@@ -2749,7 +2749,7 @@
             "type": "string"
           },
           "contract_version": {
-            "const": "1.180.0",
+            "const": "1.181.0",
             "type": "string"
           },
           "error": {
@@ -2843,7 +2843,7 @@
             "type": "string"
           },
           "contract_version": {
-            "const": "1.180.0",
+            "const": "1.181.0",
             "type": "string"
           },
           "error": {
@@ -2865,7 +2865,7 @@
             "type": "object"
           },
           "expected_contract_version": {
-            "const": "1.180.0",
+            "const": "1.181.0",
             "type": "string"
           },
           "request_id": {
