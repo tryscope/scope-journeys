@@ -1,4 +1,4 @@
-// J0.4: the surface map drives the classifier. Every route value is reached by at least one url
+// The surface map drives the classifier. Every route value is reached by at least one url
 // in the toy map (the test prints the uncovered set and asserts it empty), the precedence holds on
 // three overlapping cases, the routes form still classifies the way the regular expressions did,
 // and the reader table names one agent string per family.

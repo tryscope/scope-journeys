@@ -20,9 +20,9 @@ export interface FragmentOptions {
 const indentBlock = (text: string, indent: string): string => text.split("\n").map((line) => (line ? `${indent}${line}` : line)).join("\n");
 
 /**
- * The filter the customer adds to the HTTP connection manager's `http_filters`, before the router
- * (plan J5.2 step 5): the processor's cluster, headers both ways, no bodies until the processor
- * asks per route (`allow_mode_override`), fail open (architecture §7.9), 2 seconds per message. In
+ * The filter the customer adds to the HTTP connection manager's `http_filters`, before the router:
+ * the processor's cluster, headers both ways, no bodies until the processor
+ * asks per route (`allow_mode_override`), fail open, 2 seconds per message. In
  * observability mode the body modes are the only ones Envoy will use, so the request bodies the
  * record needs arrive streamed and the processor buffers them itself.
  */
@@ -186,7 +186,7 @@ const parseProcessor = (value: string): { host: string; port: number } | null =>
 };
 
 /**
- * `journeys init --envoy` (plan J5.2 steps 4 and 5): the install, the processor's variables in
+ * `journeys init --envoy`: the install, the processor's variables in
  * `.env.local`, the filter and the cluster written for the customer's `envoy.yaml` (applied to it
  * with `--config`) and the Istio twin. Every rule is dry run at install, so the filter starts in
  * observability mode; the Rules page prints the one change when the first rule goes live.

@@ -24,8 +24,8 @@ const removeCommand = (root: string, dependency: string): [string, string[]] => 
 };
 
 /**
- * `journeys uninstall` (plan J2.1 step 7): reverses every write `init` recorded in its lock and
- * never calls the API; the install stays Scope's to show as stale (architecture §16.3).
+ * `journeys uninstall`: reverses every write `init` recorded in its lock and
+ * never calls the API; the install stays Scope's to show as stale.
  */
 export async function uninstallNext(root: string, exec: Exec): Promise<UninstallReport> {
   const lock = readLock(root);
@@ -63,7 +63,7 @@ export async function uninstallNext(root: string, exec: Exec): Promise<Uninstall
   return report;
 }
 
-/** `journeys uninstall --node` (plan J5.1): the entry file as it was before the mount, the dependency and the lock gone; never calls the API. */
+/** `journeys uninstall --node`: the entry file as it was before the mount, the dependency and the lock gone; never calls the API. */
 export async function uninstallNode(root: string, exec: Exec): Promise<UninstallReport> {
   const lock = readLock(root);
   if (!lock) return { ok: false, form: null, removed: [], restored: [], manual: [], next_step: "nothing to undo: no .journeys/init.lock here (was `journeys init --node` run in this directory?)" };
@@ -90,7 +90,7 @@ export async function uninstallNode(root: string, exec: Exec): Promise<Uninstall
   return report;
 }
 
-/** `journeys uninstall --envoy` (plan J5.2): the envoy.yaml as it was before the fragment, the written fragments and the lock gone; never calls the API. */
+/** `journeys uninstall --envoy`: the envoy.yaml as it was before the fragment, the written fragments and the lock gone; never calls the API. */
 export async function uninstallEnvoy(root: string): Promise<UninstallReport> {
   const lock = readLock(root);
   if (!lock) return { ok: false, form: null, removed: [], restored: [], manual: [], next_step: "nothing to undo: no .journeys/init.lock here (was `journeys init --envoy` run in this directory?)" };

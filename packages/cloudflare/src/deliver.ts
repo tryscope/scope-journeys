@@ -1,10 +1,10 @@
 import type { SensorRecord } from "scope-journeys";
 
 /**
- * Shipping (architecture §7.9): records go to `POST ${JOURNEYS_API_URL}/v1/requests` as a gzip
+ * Shipping: records go to `POST ${JOURNEYS_API_URL}/v1/requests` as a gzip
  * JSON array of up to 500, after the response went out; one retry on a network error, a 5xx or a
  * 429 (after `Retry-After`, capped at 60 seconds, else 500 ms), then the batch is dropped and counted
- * into the next record's `scope.observer.dropped`. Nothing waits for a shipment (§7.9).
+ * into the next record's `scope.observer.dropped`. Nothing waits for a shipment.
  * The policy's `report.url` and `report.key_header`, when present, override the destination (the
  * lab's form of shipping).
  */

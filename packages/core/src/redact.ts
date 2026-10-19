@@ -4,8 +4,8 @@ import type { CompiledPolicy } from "./policy.js";
 /**
  * Redaction by value shape: a value of the product's signed shape is replaced, wherever it appears
  * in a string, by `<prefix>:h:<hash>` where the prefix is the shape's first capture group (the
- * product's own key prefix) or `v`. Field names leak (Program 5: 435 signed values in 15,194
- * events until shape hashing, 0 after); shapes do not.
+ * product's own key prefix) or `v`. Field names leak signed values under unexpected names; shapes
+ * do not.
  */
 export async function redactString(value: string, policy: CompiledPolicy, io: Io): Promise<string> {
   let out = value;

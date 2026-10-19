@@ -1,4 +1,4 @@
-// J3.9 step 4: `journeys rotate-salt` against a mocked API and a recording exec: the epoch bumped
+// `journeys rotate-salt` against a mocked API and a recording exec: the epoch bumped
 // on the install first (current plus one, with an idempotency key), then the salt generated and
 // written where init wrote the first, then the deploy instruction with the disclosed window; an
 // unclaimed or revoked install refuses; a refusal from Scope changes no salt.

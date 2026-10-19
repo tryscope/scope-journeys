@@ -32,7 +32,7 @@ export interface InitNextOptions {
   environment: InstallEnvironment;
   /** The adapter version `init` installs and reports: the CLI's own. */
   packageVersion: string;
-  /** J3.4: the install's ES256 key pair, generated before the call; null until the API accepts it. */
+  /** The install's ES256 key pair, generated before the call; null until the API accepts it. */
   assertion?: { publicJwk: Record<string, unknown>; privateJwk: Record<string, unknown> } | null;
 }
 
@@ -79,7 +79,7 @@ function hostOf(url: string | undefined): string | null {
 }
 
 /**
- * `journeys init` in a Next project (architecture §16.2 flow A; plan J2.1): detection, the two
+ * `journeys init` in a Next project: detection, the two
  * questions, the files, one call to `POST /v1/installs`, the environment, the claim URL. No call
  * reaches Scope before the proxy file is written; nothing the command can detect is asked.
  */

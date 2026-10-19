@@ -1,4 +1,4 @@
-// J0.3: the schemas as code. The record and policy majors cannot drift from the files, the
+// The schemas as code. The record and policy majors cannot drift from the files, the
 // generated types and validators are committed current, the shipped validators carry no
 // runtime dependency, and the policy validator refuses a secret-shaped value.
 import assert from "node:assert/strict";

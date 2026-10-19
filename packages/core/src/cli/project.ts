@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** What `init` learns about a Next project before it asks anything (plan J2.1 step 1). */
+/** What `init` learns about a Next project before it asks anything. */
 export interface NextProject {
   root: string;
   nextMajor: number | null;
@@ -114,14 +114,14 @@ export interface InitLock {
   instrumentation_created: boolean;
   instrumentation_added_export: boolean;
   dependency: string | null;
-  /** The Node form (plan J5.1): the entry file the mount was written into, and its source before the write, restored by `uninstall`; the Envoy form (J5.2): the envoy.yaml the fragment was applied to, likewise. */
+  /** The Node form: the entry file the mount was written into, and its source before the write, restored by `uninstall`; the Envoy form: the envoy.yaml the fragment was applied to, likewise. */
   mount_file?: string | null;
   mount_previous?: string | null;
 }
 
 export type NodeFramework = "express" | "fastify" | "hono";
 
-/** What `init --node` learns about a Node project before it asks anything (plan J5.1 step 5). */
+/** What `init --node` learns about a Node project before it asks anything. */
 export interface NodeProject {
   root: string;
   framework: NodeFramework;

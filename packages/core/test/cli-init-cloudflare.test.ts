@@ -1,4 +1,4 @@
-// J2.2: `journeys init --cloudflare` against a mocked wrangler and a mocked Cloudflare API: the
+// `journeys init --cloudflare` against a mocked wrangler and a mocked Cloudflare API: the
 // generated wrangler.toml equals the fixture, the two secrets are put and never written to a
 // tracked file, an unproxied record prints the warning, the deploy runs from journeys/.
 import assert from "node:assert/strict";

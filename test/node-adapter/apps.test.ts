@@ -1,4 +1,4 @@
-// The two sample apps under test/node-adapter/apps (plan J5.1, done when): `init --node`'s mount
+// The two sample apps under test/node-adapter/apps: `init --node`'s mount
 // written into each by the same function the CLI uses, the mounted app started as a child process
 // against this repository's node_modules, and `journeys doctor --local` observing a page through
 // it: the mount without an install forwards untouched under the default policy, and the page

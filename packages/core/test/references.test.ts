@@ -1,4 +1,4 @@
-// The eight-character reference (architecture §7.5): minted with a check character, recognised by
+// The eight-character reference: minted with a check character, recognised by
 // shape and check character, and found in a request only when both hold.
 import assert from "node:assert/strict";
 import { test } from "node:test";

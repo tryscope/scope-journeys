@@ -1,4 +1,4 @@
 {
   "lab": "predates",
-  "reason": "on_error: closed and the template check are J3.1 behaviour; the oracle's sensor fills a missing placeholder with nothing and answers the declaration"
+  "reason": "on_error: closed and the template check are newer than the oracle; the oracle's sensor fills a missing placeholder with nothing and answers the declaration"
 }

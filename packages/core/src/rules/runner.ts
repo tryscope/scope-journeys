@@ -5,7 +5,7 @@ import type { Environment } from "../io.js";
 export type Decision = ScopeDecision1;
 
 /**
- * One writer for decisions (architecture §7.3): every rule application goes through here. In
+ * One writer for decisions: every rule application goes through here. In
  * dry run the caller computes exactly what the rule would have done and discards it; the decision
  * carries the same reason the live path writes, so the would-apply counters compare.
  */

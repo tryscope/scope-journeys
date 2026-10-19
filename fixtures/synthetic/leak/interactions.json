@@ -1,5 +1,5 @@
 {
-  "about": "Program 5's finding made permanent: redaction by field name leaked 435 signed values; by value shape, 0. Twelve values of the toy product's signed shape (ah_ plus 24 lowercase alphanumerics) planted where the lab saw leaks: a path segment, query values, JSON body fields under names the field list does not know, a form body, a Location header, an error message body; and two more in a text and an HTML body, which the record may hold only as {bytes, type} or page facts.",
+  "about": "Redaction by field name misses signed values under unexpected field names; redaction by value shape catches them. Twelve values of the toy product's signed shape (ah_ plus 24 lowercase alphanumerics) planted where the lab saw leaks: a path segment, query values, JSON body fields under names the field list does not know, a form body, a Location header, an error message body; and two more in a text and an HTML body, which the record may hold only as {bytes, type} or page facts.",
   "planted": [
     "ah_a1b2c3d4e5f6g7h8i9j0k1l2",
     "ah_b2c3d4e5f6g7h8i9j0k1l2m3",

@@ -1,6 +1,7 @@
-// V2 on workerd: every synthetic fixture through the core inside the Workers runtime, compared with
-// expected.json, and the masked canonical output handed to scripts/workerd-run.mjs on stdout (the
-// runtime has no filesystem) for test/identity/out/workerd/<nn>.json.
+// The fixture comparison on workerd: every synthetic fixture through the core inside the Workers
+// runtime, compared with expected.json, and the masked canonical output handed to
+// scripts/workerd-run.mjs on stdout (the runtime has no filesystem) for
+// test/identity/out/workerd/<nn>.json.
 import { expect, test } from "vitest";
 
 import { applyMask, canonical, maskResponse, maskText } from "../../scripts/canonical.mjs";

@@ -1,4 +1,4 @@
-// The oracle (J0.2 step 7): the lab's sensor.js, loaded from JOURNEYS_LAB_PATH, and the packaged
+// The oracle: the lab's sensor.js, loaded from JOURNEYS_LAB_PATH, and the packaged
 // core run the same fixtures against the same in-memory upstream with the same clock, entropy and
 // salt; the responses, the forwarded requests and the lab-visible projections of the records are
 // diffed under the volatile mask. The one test allowed a skip: the oracle is private.

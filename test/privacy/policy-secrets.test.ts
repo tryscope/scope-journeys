@@ -1,4 +1,4 @@
-// V10, test one: no secret in a policy. The policy is a public document (architecture §7.4); every
+// No secret in a policy. The policy is a public document; every
 // policy the repository holds, and the embedded default, must scan clean, and the one planted
 // install key in the leak fixture must be found at exactly its path.
 import assert from "node:assert/strict";

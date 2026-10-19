@@ -212,12 +212,11 @@ export async function send(res: ServerResponse, response: Response): Promise<voi
 }
 
 /**
- * The Node form of the sensor (architecture §8, the Node row; plan J5.1 step 2): the request as a
- * Request, the facts from the socket, the policy from the cache, the hop (to the app's own
- * listener on a mount, to the origin on the proxy), the answer written back, the shipment after
- * the response. The inner pass and a host the install does not observe go to `next` untouched;
- * so does every failure of the sensor before a byte was written (the hop itself, when there is no
- * `next` to hand the request to).
+ * The Node form of the sensor: the request as a Request, the facts from the socket, the policy from
+ * the cache, the hop (to the app's own listener on a mount, to the origin on the proxy), the answer
+ * written back, the shipment after the response. The inner pass and a host the install does not
+ * observe go to `next` untouched; so does every failure of the sensor before a byte was written
+ * (the hop itself, when there is no `next` to hand the request to).
  */
 export function createNodeHandler(options: NodeOptions = {}): NodeHandler {
   const sensor = createSensor(options);

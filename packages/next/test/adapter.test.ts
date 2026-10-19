@@ -1,4 +1,4 @@
-// The Next form end to end on Node (the adapter test J0.7 named and did not ship): the policy from
+// The Next form end to end on Node: the policy from
 // the install's route with its environment header, the facts from Vercel's headers, the inner hop
 // to the app's own host marked as such, the records shipped after the response with the install
 // key or the OIDC token as the bearer, the pass-throughs (the inner hop, a host not observed, no

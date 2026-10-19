@@ -1,4 +1,4 @@
-// V2 extended to the Node form (plan J5.1 step 7): every synthetic fixture through
+// The fixture comparison extended to the Node form: every synthetic fixture through
 // scope-journeys-node on real sockets. A toy origin answers from upstream.json on one ephemeral
 // port, the standalone-proxy handler listens on another, the client sends request.json, and the
 // response, what reached the origin and the shipped records are compared with expected.json under

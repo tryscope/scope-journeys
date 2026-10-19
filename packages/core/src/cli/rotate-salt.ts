@@ -34,7 +34,7 @@ export interface RotateSaltReport {
 }
 
 /**
- * `journeys rotate-salt` (plan J3.9): the salt is the customer's secret and never reaches Scope,
+ * `journeys rotate-salt`: the salt is the customer's secret and never reaches Scope,
  * so a rotation is two things that must agree, done in the order that keeps the window small and
  * disclosed: the epoch bumped on the install first (every sensor stamps it within the policy
  * cache's minute), then a new salt generated here and written where `init` wrote the first, then

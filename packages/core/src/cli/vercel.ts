@@ -41,7 +41,7 @@ export interface OidcToken {
   iss: string | null;
 }
 
-/** `VERCEL_OIDC_TOKEN` as `vercel env pull` writes it into `.env.local`, decoded for the form decision (architecture §14.2). */
+/** `VERCEL_OIDC_TOKEN` as `vercel env pull` writes it into `.env.local`, decoded to choose between the OIDC form and an install key. */
 export function oidcTokenFromEnvLocal(root: string): OidcToken | null {
   const env = readEnvFile(join(root, ".env.local"));
   const token = env.VERCEL_OIDC_TOKEN;

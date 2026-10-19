@@ -46,7 +46,7 @@ async function keyOf(value: unknown, io: Io): Promise<string | null> {
  * door (the standards' names by default: RFC 8628's device_code and user_code, RFC 6749's
  * client_id) and the product's hook id (from the catch path's capture group or the creation
  * answer). Read only when the bodies were read; they leave with the bodies, so in the no-bodies
- * form they are null (architecture §14.5: nothing of a body leaves).
+ * form they are null (nothing of a body leaves).
  */
 export async function bodyKeys(route: Route, surfaces: CompiledSurfaces | null, requestBody: unknown, responseBody: unknown, authorizeQueryClientId: string | null, hookIdFromPath: string | null, io: Io): Promise<BodyKeys> {
   const keys: BodyKeys = { device_code: null, user_code: null, oauth_client: null, hook: hookIdFromPath };

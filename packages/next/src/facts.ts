@@ -11,7 +11,7 @@ export interface Identity {
 }
 
 /**
- * What Vercel's edge tells the function about the client (architecture §7.8): the address from
+ * What Vercel's edge tells the function about the client: the address from
  * x-real-ip or the first x-forwarded-for, the AS number, the country and the JA4 digest from the
  * platform's headers; x-vercel-id as the platform's request id; the TLS facts null, which the
  * record allows.

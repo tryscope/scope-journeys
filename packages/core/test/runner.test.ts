@@ -1,4 +1,4 @@
-// J3.1: the mode matrix. A rule is live only in the environments it lists and runs dry everywhere
+// The mode matrix. A rule is live only in the environments it lists and runs dry everywhere
 // else; `on_error: closed` compiles for a gate only; a template that asks for a value its rule
 // cannot fill throws, and the runner records the error's class.
 import assert from "node:assert/strict";

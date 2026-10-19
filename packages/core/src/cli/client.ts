@@ -1,7 +1,7 @@
 import { VERSION } from "../version.js";
 
 /**
- * The CLI's client of Scope's public API (plan D19, J2.1): a thin typed fetch over the Journeys
+ * The CLI's client of Scope's public API: a thin typed fetch over the Journeys
  * resources of the contract's OpenAPI document vendored as `openapi.journeys.json` (the test checks
  * every operation below exists there). No generator at runtime, no dependency: the CLI is an
  * external caller pinned to the contract version the document carries.
@@ -51,7 +51,7 @@ export interface InstallCreateRequest {
   oidc_token?: string;
   package?: { name: string; version: string; adapter: string };
   customer?: string;
-  /** The install's public ES256 key (J3.4); accepted by the API from contract 1.175.0 on. */
+  /** The install's public ES256 key; accepted by the API from contract 1.175.0 on. */
   assertion_jwk?: Record<string, unknown>;
 }
 
@@ -164,5 +164,5 @@ export function createClient(options: ClientOptions): ApiClient {
   };
 }
 
-/** The production API host, the default of JOURNEYS_API_URL (Appendix G.1). */
+/** The production API host, the default of JOURNEYS_API_URL. */
 export const DEFAULT_API_URL = "https://api.tryscope.com";

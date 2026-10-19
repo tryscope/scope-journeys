@@ -60,7 +60,7 @@ Every mount reads the same variables from the process environment; each also tak
 
 ## The inner hop
 
-A mount sits inside the app, so the sensor forwards every observed request to the app's own listener (`http://127.0.0.1:<the port the request arrived on>`, or `JOURNEYS_ORIGIN`) with the header `x-journeys-inner: 1`, the request's own `Host`, `x-forwarded-for` and `x-forwarded-proto`; the request carrying the marker is handed to your routes untouched and never observed twice. Your app therefore runs each observed request once, as before, one hop later. The hop is one loopback round trip; the lab measured the equivalent hop of the Next form at +1 ms on pages and +14 ms on MCP calls at p50.
+A mount sits inside the app, so the sensor forwards every observed request to the app's own listener (`http://127.0.0.1:<the port the request arrived on>`, or `JOURNEYS_ORIGIN`) with the header `x-journeys-inner: 1`, the request's own `Host`, `x-forwarded-for` and `x-forwarded-proto`; the request carrying the marker is handed to your routes untouched and never observed twice. Your app therefore runs each observed request once, as before, one hop later. The hop is one loopback round trip; the equivalent hop of the Next form measured +1 ms on pages and +14 ms on MCP calls at p50.
 
 ## The standalone proxy
 

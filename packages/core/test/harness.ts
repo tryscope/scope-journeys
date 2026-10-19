@@ -38,10 +38,10 @@ export interface FixtureFacts {
   platform_bot?: Facts["platform_bot"];
   environment?: Facts["environment"];
   ts?: string;
-  /** The salt the adapter hashes with and the epoch it stamps (plan J3.9); the fixture salt and epoch 1 otherwise. */
+  /** The salt the adapter hashes with and the epoch it stamps; the fixture salt and epoch 1 otherwise. */
   salt?: string;
   salt_epoch?: number;
-  /** The install's assertion key (plan J3.4): the private JWK with its kid, and the issuer URL. */
+  /** The install's assertion key: the private JWK with its kid, and the issuer URL. */
   assertion?: { kid: string; issuer: string; private_jwk: JsonWebKey & { kid?: string } };
 }
 

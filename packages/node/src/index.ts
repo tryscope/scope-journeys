@@ -1,5 +1,5 @@
 /**
- * Scope Journeys on Node's own HTTP server (architecture §8, the Node row): three mounts over one
+ * Scope Journeys on Node's own HTTP server: three mounts over one
  * io, and the standalone proxy. The core is `scope-journeys`; this package binds it to
  * node:http (the socket's facts, the hop to the app's own listener or to an origin, the policy
  * cache, shipping after the response).

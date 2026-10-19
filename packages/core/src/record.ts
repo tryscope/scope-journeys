@@ -16,7 +16,7 @@ export interface ReadBody {
 
 /**
  * A body as the record keeps it: JSON or a form parsed and redacted by field and by shape, capped
- * at 64 KB; a text or HTML body is `{bytes, type}` and nothing else (architecture §7.6).
+ * at 64 KB; a text or HTML body is `{bytes, type}` and nothing else.
  */
 export async function readBody(text: string, contentType: string, policy: CompiledPolicy, io: Io): Promise<ReadBody> {
   const truncated = text.length > BODY_LIMIT;

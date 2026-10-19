@@ -1,4 +1,4 @@
-// V10, test three: TELEMETRY.md says exactly what the sensor records. The committed document is
+// TELEMETRY.md says exactly what the sensor records. The committed document is
 // regenerated and diffed (a stale commit fails), every field of scope.request/1 appears in it, and
 // every field name in it is a property of one of the two record schemas or a section of the policy.
 import assert from "node:assert/strict";

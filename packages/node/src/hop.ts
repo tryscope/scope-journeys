@@ -27,11 +27,11 @@ export function headersOf(message: IncomingMessage): Headers {
 }
 
 /**
- * The hop to the origin over node:http (architecture §7.2 step 8): exactly the headers the core
- * built, nothing of this process's own (no accept-encoding, no user agent, so the hop is
- * uncompressed and the origin sees the client's agent string), the body sent with its length (the
- * core buffered it already; an origin that refuses a chunked request body still gets it), the
- * answer's body streamed down as it arrives, a redirect returned as received and never followed.
+ * The hop to the origin over `node:http`: exactly the headers the core built, nothing of this
+ * process's own (no accept-encoding, no user agent, so the hop is uncompressed and the origin sees
+ * the client's agent string), the body sent with its length (the core buffered it already; an
+ * origin that refuses a chunked request body still gets it), the answer's body streamed down as it
+ * arrives, a redirect returned as received and never followed.
  */
 export async function hop(outbound: Request, options: HopOptions): Promise<Response> {
   const body = outbound.body ? Buffer.from(await outbound.arrayBuffer()) : null;

@@ -1,4 +1,4 @@
 {
   "lab": "predates",
-  "reason": "the signed assertion on the hop to the origin is J3.4 behaviour; the oracle's sensor forwarded with the lab's edge key instead"
+  "reason": "the signed assertion on the hop to the origin is newer than the oracle; the oracle's sensor forwarded with the lab's edge key instead"
 }

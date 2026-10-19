@@ -1,7 +1,7 @@
 import type { NodeFramework } from "./project.js";
 
 /**
- * The mount `init --node` writes into the app's entry file (plan J5.1 step 5). As conservative as
+ * The mount `init --node` writes into the app's entry file. As conservative as
  * the Next wrap: it understands one line, the one that creates the app (`const app = express()`,
  * `const fastify = Fastify(...)`, `const app = new Hono()`), adds the mount on the line after it
  * and the import at the top, and refuses everything else so the person adds the two lines by hand

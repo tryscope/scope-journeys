@@ -1,4 +1,4 @@
-// Vendors the Journeys subset of Scope's OpenAPI document into the CLI (plan D19, J2.1): the CLI is
+// Vendors the Journeys subset of Scope's OpenAPI document into the CLI: the CLI is
 // an external caller of the public API, typed against one pinned version of the contract, never
 // against the private contract package. Usage:
 //   node scripts/vendor-openapi.mjs [--source <openapi.json>] [--check]

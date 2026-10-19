@@ -1,4 +1,4 @@
-// `npm run test:envoy` (plan J5.2 step 6): every synthetic fixture through the real Envoy of the
+// `npm run test:envoy`: every synthetic fixture through the real Envoy of the
 // compose stack beside this file, the processor and the toy origin running in this process on the
 // ports envoy.yaml names (18790 and 18789), the listener on 10000. The response, what reached the
 // origin and the shipped records are compared with expected.json (expected.envoy.json for the

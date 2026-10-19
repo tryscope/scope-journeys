@@ -4,7 +4,7 @@ import type { CompiledRule } from "../policy.js";
  * The docs finder: a route the policy names, answered by the sensor. The agent posts (or asks by
  * query) one sentence about its task and gets the guide links for it, chosen by the rule's keyword
  * map, each carrying a reference minted for this answer; the sentence is a declaration against
- * that reference, so the reads that follow join it (architecture §9, Program 9).
+ * that reference, so the reads that follow join it.
  */
 export function finderAnswer(rule: CompiledRule, text: string, host: string, prefix: string, token: string): { task: string; guides: string[] } {
   const links: string[] = [];

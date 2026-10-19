@@ -7,7 +7,7 @@ const HOP_BY_HOP = ["host", "connection", "keep-alive", "transfer-encoding", "te
 const REBUILT_DROPS = ["content-length", "content-encoding", "transfer-encoding", "connection", "keep-alive"];
 
 /**
- * What leaves for the origin (architecture §7.2 step 8): the client's headers, the Via a gateway
+ * What leaves for the origin: the client's headers, the Via a gateway
  * must add (RFC 9110 section 7.6.3), no accept-encoding (the hop is uncompressed: bodies are read
  * and rewritten here, the platform compresses the answer to the client), the hop-by-hop headers
  * and the client's content-length removed, the policy's forward headers with {host} filled. The

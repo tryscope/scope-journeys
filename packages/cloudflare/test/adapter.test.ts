@@ -1,5 +1,6 @@
-// J0.6 under the workerd pool: the platform facts from a synthetic request.cf, the policy cache's
-// states, delivery's batching and retry, the inner hop's headers on a request with a body.
+// The Cloudflare form under the workerd pool: the platform facts from a synthetic request.cf, the
+// policy cache's states, delivery's batching and retry, the inner hop's headers on a request with a
+// body.
 import { expect, test, beforeEach } from "vitest";
 
 import { createHandler, deliver, loadPolicy, platformFacts, resetDelivery, resetPolicyCache } from "../src/index.js";
