@@ -1,8 +1,8 @@
-// The Web Bot Auth fixtures (J3.5): a synthetic signer (an Ed25519 key derived from a fixed seed,
+// The Web Bot Auth fixtures: a synthetic signer (an Ed25519 key derived from a fixed seed,
 // so nothing secret is committed and the files are reproducible), its key directory, and one
 // request per variant signed for the host it was sent to. `--write` regenerates the fixtures'
 // `request.json` and `directory.json`; `test/node/webbotauth-fixtures.test.ts` fails when they are
-// stale. No recorded traffic of any real signer is used (D17).
+// stale. No recorded traffic of any real signer is used.
 import { createHash, createPrivateKey, createPublicKey, sign } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,8 +26,8 @@ export const directory = { keys: [{ kty: "OKP", crv: "Ed25519", kid: KEY_ID, x: 
 const COMPONENTS = ["@authority", "@method", "signature-agent"];
 
 /** The request's signature headers for `authority`, per RFC 9421 with the components above. */
-export function signed(authority, method, keyid = KEY_ID) {
-  const agent = `"${SIGNER}"`;
+export function signed(authority, method, keyid = KEY_ID, signer = SIGNER) {
+  const agent = `"${signer}"`;
   const params = `(${COMPONENTS.map((c) => `"${c}"`).join(" ")});created=${CREATED};expires=${EXPIRES};keyid="${keyid}";alg="ed25519";tag="web-bot-auth"`;
   const value = (c) => (c === "@authority" ? authority : c === "@method" ? method.toUpperCase() : c === "signature-agent" ? agent : null);
   const base = [...COMPONENTS.map((c) => `"${c}": ${value(c)}`), `"@signature-params": ${params}`].join("\n");
@@ -42,7 +42,7 @@ const request = (host, headers, extra = {}) => ({
   body: null,
 });
 
-/** The five variants: what each fixture's `request.json` and `directory.json` hold. */
+/** The variants: what each fixture's `request.json` and `directory.json` hold. */
 export function variants() {
   const good = signed("acme.example", "GET");
   const wrongKey = { ...good, "signature-input": good["signature-input"].replace(`keyid="${KEY_ID}"`, 'keyid="no-such-key"') };
@@ -53,8 +53,10 @@ export function variants() {
     "29-webbotauth-signed-expired": { request: request("acme.example", good), directory: reachable },
     "29-webbotauth-signed-wrong-keyid": { request: request("acme.example", wrongKey), directory: reachable },
     "29-webbotauth-signed-directory-unreachable": { request: request("acme.example", good), directory: { url: DIRECTORY_URL, unreachable: true } },
-    // Sent to the origin's own host while signed for the host the agent spoke to (the Program 9 finding as a test).
+    // Sent to the origin's own host while signed for the host the agent spoke to: behind another host a good signature fails.
     "29-webbotauth-signed-authority-mismatch": { request: request("origin.acme.example", forOtherHost, { "x-forwarded-host": "acme.example" }), directory: reachable },
+    // A good signature from a signer the policy does not list; the world would serve its directory, so a fetch would show.
+    "29-webbotauth-signed-unlisted-signer": { request: request("acme.example", signed("acme.example", "GET", KEY_ID, "https://unlisted.example")), directory: { ...reachable, url: "https://unlisted.example/.well-known/http-message-signatures-directory" } },
   };
 }
 

@@ -47,22 +47,6 @@ for (const file of customerRead) {
 }
 
 const PRIVATE_POINTER = /[Aa]rchitecture (§|section )?\d|§\s?\d|\bAppendix [A-Z]\b|\bplan [A-Z]|\bJ[A-Z]?\d*\.\d+\b|\bD\d{1,2}\b|\b[Pp]rogram(me)? ?\d+\b|\b[Dd]ecision #?\d+\b|\bENG-\d+\b/;
-// Still to clean, with the Web Bot Auth change that edits them; delete each entry as it is cleaned.
-const POINTERS_PENDING = new Set([
-  "fixtures/synthetic/29-webbotauth-signed-authority-mismatch/oracle.json",
-  "fixtures/synthetic/29-webbotauth-signed-directory-unreachable/oracle.json",
-  "fixtures/synthetic/29-webbotauth-signed-expired/oracle.json",
-  "fixtures/synthetic/29-webbotauth-signed-wrong-keyid/oracle.json",
-  "fixtures/synthetic/29-webbotauth-signed/README.md",
-  "fixtures/synthetic/29-webbotauth-signed/oracle.json",
-  "packages/cloudflare/src/cache.ts",
-  "packages/core/src/webbotauth.ts",
-  "packages/core/test/webbotauth.test.ts",
-  "packages/envoy/src/cache.ts",
-  "packages/next/src/cache.ts",
-  "packages/node/src/cache.ts",
-  "scripts/sign-webbotauth.mjs",
-]);
 for (const file of tracked) {
   if (file === "scripts/lint.mjs") continue;
   const text = readFileSync(`${ROOT}${file}`, "utf8");
@@ -71,10 +55,8 @@ for (const file of tracked) {
   // Lockfile hashes and generated code are not prose and would match by chance.
   if (file === "package-lock.json" || file.includes("/src/generated/")) continue;
   const pointed = text.match(PRIVATE_POINTER);
-  if (pointed && !POINTERS_PENDING.has(file)) violations.push(`${file}: points at private material (${pointed[0]})`);
-  if (!pointed && POINTERS_PENDING.has(file)) violations.push(`${file}: clean now; remove it from POINTERS_PENDING`);
+  if (pointed) violations.push(`${file}: points at private material (${pointed[0]})`);
 }
-for (const file of POINTERS_PENDING) if (!tracked.includes(file)) violations.push(`${file}: not tracked; remove it from POINTERS_PENDING`);
 
 if (violations.length > 0) {
   console.error("lint: violations");

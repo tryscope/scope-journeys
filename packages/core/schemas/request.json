@@ -84,8 +84,8 @@
       "properties": {
         "agent": { "type": "string", "description": "the Signature-Agent header: the origin that publishes the signing key" },
         "keyid": { "type": ["string", "null"] },
-        "valid": { "type": "boolean", "description": "true only after the sensor verified the signature against the key directory (sensor 0.1 records unverified; verification is a later version)" },
-        "reason": { "type": ["string", "null"], "description": "unverified, verified, expired, not_yet_valid, unknown_key, directory_unreachable, bad_signature, unsupported_alg, authority_mismatch" },
+        "valid": { "type": "boolean", "description": "true only after the sensor verified the signature against the listed signer's key directory" },
+        "reason": { "type": ["string", "null"], "description": "verified, expired, not_yet_valid, unknown_key, directory_unreachable, bad_signature, unsupported_alg, authority_mismatch, or unlisted_signer (a signer the policy's signers do not list; no directory is fetched)" },
         "authority": { "type": "string", "description": "the host the signature covers and is verified against (the sensor's)" }
       },
       "additionalProperties": false

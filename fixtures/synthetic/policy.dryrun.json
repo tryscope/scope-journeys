@@ -150,6 +150,9 @@
     "intent": "x-acme-intent",
     "signature": "signature-agent"
   },
+  "signers": [
+    "https://signer.example"
+  ],
   "forward": {
     "headers": {
       "x-acme-edge": "journeys"

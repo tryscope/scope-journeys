@@ -294,6 +294,10 @@ export type ScopePolicy1 = {
     enabled?: boolean;
     audience?: string[];
   };
+  /**
+   * the Web Bot Auth signers whose key directories the sensor fetches, each an exact https origin such as https://chatgpt.com (an entry that is not one is ignored and named in the notices); a signature from any other signer is recorded as unlisted_signer and causes no outbound request
+   */
+  signers?: string[];
   destinations?: {
     kind?: "scope" | "otlp" | "webhook";
     url?: string;

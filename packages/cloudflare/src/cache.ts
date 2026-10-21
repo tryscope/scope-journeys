@@ -10,7 +10,7 @@ export function resetCache(): void {
 }
 
 /**
- * The Worker's cache (architecture §7.2): the Cache API, shared by every isolate on the colo and
+ * The Worker's cache: the Cache API, shared by every isolate on the colo and
  * expiring entries itself by `max-age`, with isolate memory in front of it for a minute. A Cache
  * API failure is a miss, never an exception.
  */

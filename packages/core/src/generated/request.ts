@@ -173,11 +173,11 @@ export interface ScopeRequest1 {
     agent: string;
     keyid?: string | null;
     /**
-     * true only after the sensor verified the signature against the key directory (sensor 0.1 records unverified; verification is a later version)
+     * true only after the sensor verified the signature against the listed signer's key directory
      */
     valid: boolean;
     /**
-     * unverified, verified, expired, not_yet_valid, unknown_key, directory_unreachable, bad_signature, unsupported_alg, authority_mismatch
+     * verified, expired, not_yet_valid, unknown_key, directory_unreachable, bad_signature, unsupported_alg, authority_mismatch, or unlisted_signer (a signer the policy's signers do not list; no directory is fetched)
      */
     reason?: string | null;
     /**

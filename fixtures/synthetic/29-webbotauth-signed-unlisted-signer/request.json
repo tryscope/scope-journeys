@@ -1,0 +1,13 @@
+{
+  "method": "GET",
+  "url": "https://acme.example/docs/quickstart",
+  "headers": {
+    "accept": "text/html",
+    "user-agent": "Mozilla/5.0 (compatible; fixture-signer/1.0)",
+    "cf-connecting-ip": "203.0.113.9",
+    "signature-agent": "\"https://unlisted.example\"",
+    "signature-input": "sig1=(\"@authority\" \"@method\" \"signature-agent\");created=1791633509;expires=1791633809;keyid=\"fixture-key-2026-10\";alg=\"ed25519\";tag=\"web-bot-auth\"",
+    "signature": "sig1=:nxxjjrljbNKW4JsJMme/s27a1y2Ok5i8Ai1th5rxzU3ac8npfapn2RES49KBpHHWS0tXTRIls9fAgLzLMRV1DQ==:"
+  },
+  "body": null
+}

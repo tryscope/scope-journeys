@@ -298,7 +298,7 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
     record["http.request.header.content-type"] = reqType || null;
     // Verified against the host the agent spoke to, which behind this sensor is this host; the
     // forwarded-host header a proxy in front set is the one candidate for an authority mismatch.
-    record["scope.signature"] = signatureAgent ? await verifyWebBotAuth(request.headers, method, host, io, [request.headers.get("x-forwarded-host") ?? ""]) : null;
+    record["scope.signature"] = signatureAgent ? await verifyWebBotAuth(request.headers, method, host, policy.signers, io, [request.headers.get("x-forwarded-host") ?? ""]) : null;
     record["scope.reader"] = classifyReader(ua, state.accept, fetchMetadata, signatureAgent, facts.platform_bot, policy.surfaces?.clients ?? null);
     record["scope.key.credential"] = await hashedOrNull(bearer, io);
     record["scope.key.install"] = await hashedOrNull(install, io);

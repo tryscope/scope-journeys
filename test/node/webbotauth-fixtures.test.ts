@@ -8,7 +8,7 @@ import { serialize, variants } from "../../scripts/sign-webbotauth.mjs";
 
 const SYNTHETIC = new URL("../../fixtures/synthetic/", import.meta.url).pathname;
 
-test("the five Web Bot Auth fixtures carry the request and directory the signer script produces", () => {
+test("the Web Bot Auth fixtures carry the request and directory the signer script produces", () => {
   for (const [name, files] of Object.entries(variants())) {
     assert.equal(readFileSync(join(SYNTHETIC, name, "request.json"), "utf8"), serialize(files.request), `${name}/request.json is stale: node scripts/sign-webbotauth.mjs --write`);
     assert.equal(readFileSync(join(SYNTHETIC, name, "directory.json"), "utf8"), serialize(files.directory), `${name}/directory.json is stale`);

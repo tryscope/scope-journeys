@@ -12,7 +12,7 @@ Generated from `schemas/request.json` and `schemas/declaration.json` by `scripts
 
 **The salt.** Every hash is `sha256(salt + ":" + value)` cut to twelve hexadecimal characters, with a salt you generate at install and Scope never receives. A hash is a join key inside your salt epoch and nothing else: Scope cannot reverse it, and you can re-hash a value you know to find it in your own records.
 
-**Signatures.** A request carrying a Web Bot Auth signature (`Signature-Agent`, `Signature-Input`, `Signature`) is verified by the sensor itself against the host the agent spoke to (`server.address`), with the signer's public key fetched from the directory the agent names (`/.well-known/http-message-signatures-directory`) and cached for an hour; that fetch is the only outbound request the sensor makes beside the hop to your origin and the shipment to Scope, it never delays a request beyond two seconds, and a directory that could not be fetched is retried after a minute. The record carries `scope.signature` with `valid` and the reason: `verified`, `expired`, `not_yet_valid`, `unknown_key`, `directory_unreachable`, `bad_signature`, `unsupported_alg`, or `authority_mismatch` (a good signature for a host this sensor does not serve).
+**Signatures.** A request carrying a Web Bot Auth signature (`Signature-Agent`, `Signature-Input`, `Signature`) is verified by the sensor itself against the host the agent spoke to (`server.address`) when its signer is on the policy's `signers` list (exact https origins; by default `https://crawler.exa.ai` and `https://chatgpt.com`), with the signer's public key fetched from that origin's directory (`/.well-known/http-message-signatures-directory`) and cached for an hour; that fetch is the only outbound request the sensor makes beside the hop to your origin, the policy fetch and the shipment to Scope, it never delays a request beyond two seconds, and a directory that could not be fetched is retried after a minute. A signature from a signer the list does not name causes no outbound request. The record carries `scope.signature` with `valid` and the reason: `verified`, `expired`, `not_yet_valid`, `unknown_key`, `directory_unreachable`, `bad_signature`, `unsupported_alg`, `authority_mismatch` (a good signature for a host this sensor does not serve), or `unlisted_signer`.
 
 **Rules and decisions.** Every rule in your policy is `dry_run` when installed: the sensor computes what the rule would have done, records the decision with `outcome: would_apply` and the reason it would have had live, and changes nothing on the wire. A rule you flip to `live` records `applied` with the same reason. You can read every decision in the console's Debugger.
 
@@ -94,8 +94,8 @@ Present: when the request carries a signature, when the zone has bot management;
 | `scope.signature` | object \| null |  |
 | `scope.signature.agent` | string | the Signature-Agent header: the origin that publishes the signing key |
 | `scope.signature.keyid` | string \| null |  |
-| `scope.signature.valid` | boolean | true only after the sensor verified the signature against the key directory (sensor 0.1 records unverified; verification is a later version) |
-| `scope.signature.reason` | string \| null | unverified, verified, expired, not_yet_valid, unknown_key, directory_unreachable, bad_signature, unsupported_alg, authority_mismatch |
+| `scope.signature.valid` | boolean | true only after the sensor verified the signature against the listed signer's key directory |
+| `scope.signature.reason` | string \| null | verified, expired, not_yet_valid, unknown_key, directory_unreachable, bad_signature, unsupported_alg, authority_mismatch, or unlisted_signer (a signer the policy's signers do not list; no directory is fetched) |
 | `scope.signature.authority` | string | the host the signature covers and is verified against (the sensor's) |
 | `scope.platform_bot` | object \| null | the platform's verified-bot match, when the zone has bot management |
 | `scope.platform_bot.verified` | boolean |  |
@@ -222,6 +222,7 @@ The configuration the sensor fetches. Immutable integer versions per customer; p
 | `observe` | reserved for the body allow list |
 | `rules` | array of object |
 | `assertion` | object |
+| `signers` | the Web Bot Auth signers whose key directories the sensor fetches, each an exact https origin such as https://chatgpt.com (an entry that is not one is ignored and named in the notices); a signature from any other signer is recorded as unlisted_signer and causes no outbound request |
 | `destinations` | array of object |
 | `retention_days` | integer |
 | `salt_epoch` | integer |

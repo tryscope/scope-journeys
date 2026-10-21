@@ -49,6 +49,7 @@
     "intent": "x-acme-intent",
     "signature": "signature-agent"
   },
+  "signers": ["https://signer.example"],
   "forward": { "headers": { "x-acme-edge": "journeys" }, "key_header": "x-acme-key" },
   "record_bodies": true,
   "rules": [

@@ -23,6 +23,7 @@ The policy is the document that tells the sensor what to observe and what each r
 | `observe` | the routes whose request and response bodies are recorded, the fields allowed, the limit |
 | `rules` | the rule table, below |
 | `assertion` | whether the sensor signs an assertion of what it saw on each forwarded request, for your app to verify |
+| `signers` | the Web Bot Auth signers whose key directories the sensor fetches to verify a signature, each an exact https origin (`https://chatgpt.com`); absent, Exa's crawler and ChatGPT; a signature from any other signer is recorded as `unlisted_signer` and causes no request |
 | `destinations` | your own OpenTelemetry collector, when records and traces should also go there |
 | `retention_days`, `salt_epoch` | how long records are kept; the epoch of the hash salt, advanced by `journeys rotate-salt` on your request (journeys never join across epochs) |
 
