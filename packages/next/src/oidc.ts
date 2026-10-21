@@ -1,17 +1,14 @@
-export type Credential = { scheme: "oidc"; value: string } | { scheme: "key"; value: string } | null;
-
 /**
  * The Next form proves itself without a secret: when no install key is set
  * and Vercel's OIDC token is on the request (or in the environment at build time), the token is the
  * bearer for the policy fetch and the delivery; the install's subject was bound at init. With
  * neither, the adapter runs the default policy and names `journeys init` once; it never throws.
  */
-export function credential(request: Request, env: Record<string, string | undefined>): Credential {
+export function credential(request: Request, env: Record<string, string | undefined>): string | null {
   const key = env.JOURNEYS_INSTALL_KEY;
-  if (key) return { scheme: "key", value: key };
+  if (key) return key;
   const token = request.headers.get("x-vercel-oidc-token") ?? env.VERCEL_OIDC_TOKEN;
-  if (token) return { scheme: "oidc", value: token };
-  return null;
+  return token || null;
 }
 
 /** The claims of a JWT without verification (the API verifies); for `init`'s detection only. */

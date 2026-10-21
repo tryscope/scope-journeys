@@ -12,11 +12,13 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import { join } from "node:path";
 import { test } from "node:test";
 
+import { resetPolicyCache } from "scope-journeys";
+
 import { applyMask, canonical, maskResponse, maskText } from "../../scripts/canonical.mjs";
 import type { FixtureDirectory, FixtureFacts, FixtureRequest, FixtureUpstream } from "../../packages/core/test/harness.js";
 import { validateRecord } from "../../packages/core/src/validate.js";
 import { VERSION } from "../../packages/core/src/version.js";
-import { createNodeHandler, resetCache, resetDelivery, resetPolicyCache } from "../../packages/node/src/index.js";
+import { createNodeHandler, resetCache, resetDelivery } from "../../packages/node/src/index.js";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
 const FIXTURES = join(ROOT, "fixtures", "synthetic");
@@ -180,7 +182,7 @@ for (const name of names) {
     const shipped: unknown[][] = [];
     const origin = toyOrigin(upstream, forwarded);
     const originPort = await listen(origin);
-    const env: Record<string, string> = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_SALT: facts.salt ?? "fixture-salt", JOURNEYS_NAME: "fixture-sensor", JOURNEYS_API_URL: API, JOURNEYS_POLICY_URL: `https://policy.fixture.example/${name}`, JOURNEYS_TRUST_PROXY: "1" };
+    const env: Record<string, string> = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: "sjk_test_dddddddddddddddddddddddddddddddd", JOURNEYS_SALT: facts.salt ?? "fixture-salt", JOURNEYS_NAME: "fixture-sensor", JOURNEYS_API_URL: API, JOURNEYS_POLICY_URL: `https://policy.fixture.example/${name}`, JOURNEYS_TRUST_PROXY: "1" };
     if (facts.assertion) env.JOURNEYS_ASSERTION_KEY = JSON.stringify(facts.assertion.private_jwk);
     // The fixture's clock, as the harness runs it: a signature or an assertion is judged against the fixture's time, not the test's.
     let tick = 0;

@@ -211,12 +211,12 @@ The configuration the sensor fetches. Immutable integer versions per customer; p
 | `schema` | const "scope.policy/1" |
 | `version` | the customer's policy version; 0 is the embedded forward-only default |
 | `about` | string |
-| `origin` | the origin to forward to when the adapter has none configured (a Worker on workers.dev needs one; a route in the customer's zone does not) |
-| `report` | object |
+| `origin` | ignored by the sensor: where traffic goes comes only from its own configuration (JOURNEYS_ORIGIN) |
+| `report` | ignored by the sensor: records go to JOURNEYS_API_URL in its own configuration, with the install key as Authorization: Bearer |
 | `routes` | the regular-expression form: four expressions over the path plus the text faces; a policy with surfaces ignores every key but run_prefix |
 | `surfaces` | the surface map: the roles of the product's paths, derived from the standards (MCP is one JSON-RPC endpoint carrying MCP-Session-Id and MCP-Protocol-Version; OAuth 2.1 names its registration (RFC 7591), authorization, token and device-authorization (RFC 8628) endpoints in its metadata documents (RFC 8414, RFC 9728); an API call carries a bearer) plus a short custom list. Classification precedence, first match wins: passthrough, custom (in order), finder, mcp, oauth.register, oauth.authorize, oauth.token, oauth.approve, device.start, device.poll, device.approve, hooks.create, hooks.catch, credentials, trial, cli.init, cli.beacon, signup, download, api, docs.llms and docs.root (docs_root), docs.paths (docs), else other. |
 | `secrets` | object |
-| `headers` | object |
+| `headers` | the names of the headers the sensor reads; a name that is not a header name is ignored, and session, setup, agent, client and intent may not name one that carries a credential (a name with auth, cookie, token, secret, password, credential, key, jwt, assertion or oidc in it, the credential header, surfaces.api.credential_header) |
 | `forward` | object |
 | `record_bodies` | false is the lightest form: bodies are read where a rule needs them and never leave |
 | `observe` | reserved for the body allow list |

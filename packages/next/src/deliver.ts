@@ -1,12 +1,10 @@
 import type { SensorRecord } from "scope-journeys";
 
-import type { Credential } from "./oidc.js";
 
 /** Shipping from the Next form: the same contract as the Worker's (one retry, after Retry-After on a 429, then counted drops), with the install key or the OIDC token as the bearer. */
 export interface DeliveryOptions {
   apiUrl: string | null;
-  credential: Credential;
-  report: { url: string; key_header: string | null } | null;
+  credential: string | null;
   fetch: typeof fetch;
   log: (line: string) => void;
   retryDelayMs?: number;
@@ -16,11 +14,13 @@ export interface DeliveryOptions {
 
 const BATCH = 500;
 let dropped = 0;
+let warnedNoKey = false;
 
 export const droppedSoFar = (): number => dropped;
 
 export function resetDelivery(): void {
   dropped = 0;
+  warnedNoKey = false;
 }
 
 /** A 429's Retry-After (seconds, or an HTTP date) as a delay, capped so a quota never holds a function for long; the usual retry delay without one. */
@@ -40,14 +40,18 @@ async function gzip(text: string): Promise<ArrayBuffer> {
 
 export async function deliver(records: readonly SensorRecord[], options: DeliveryOptions): Promise<void> {
   if (records.length === 0) return;
-  const url = options.report?.url ?? (options.apiUrl ? `${options.apiUrl.replace(/\/$/, "")}/v1/requests` : null);
-  if (!url) {
+  const url = options.apiUrl ? `${options.apiUrl.replace(/\/$/, "")}/v1/requests` : null;
+  // No install key and no OIDC token, nothing leaves: the ingest refuses it, and an unconfigured sensor sends nothing.
+  if (!url || !options.credential) {
+    if (url && !warnedNoKey) {
+      warnedNoKey = true;
+      options.log("journeys: neither JOURNEYS_INSTALL_KEY nor a Vercel OIDC token is available; nothing ships and the records count as dropped");
+    }
     dropped += records.length;
     return;
   }
   const headers: Record<string, string> = { "content-type": "application/json", "content-encoding": "gzip" };
-  if (options.report?.key_header && options.credential?.scheme === "key") headers[options.report.key_header] = options.credential.value;
-  else if (options.credential) headers.authorization = `Bearer ${options.credential.value}`;
+  headers.authorization = `Bearer ${options.credential}`;
   for (let start = 0; start < records.length; start += BATCH) {
     const batch = records.slice(start, start + BATCH);
     const body = await gzip(JSON.stringify(batch));

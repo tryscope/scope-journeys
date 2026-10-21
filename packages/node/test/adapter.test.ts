@@ -13,7 +13,9 @@ import express from "express";
 import Fastify from "fastify";
 import { Hono } from "hono";
 
-import { canonicalAddress, createNodeHandler, fastifyJourneys, honoJourneys, journeys, parseListen, platformFacts, resetCache, resetDelivery, resetPolicyCache, serveProxy, socketFacts } from "../src/index.js";
+import { DEFAULT_API_URL, resetPolicyCache } from "scope-journeys";
+
+import { canonicalAddress, createNodeHandler, fastifyJourneys, honoJourneys, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const INSTALL = "jin_test0000000000000000000000";
@@ -27,7 +29,7 @@ interface World {
   fetch: typeof fetch;
 }
 
-function world(): World {
+function world(policy: Record<string, unknown> = POLICY, api = API): World {
   const w: World = {
     calls: [],
     shipped: [],
@@ -36,8 +38,8 @@ function world(): World {
       const headers: Record<string, string> = {};
       new Headers(init?.headers).forEach((v, k) => (headers[k] = v));
       w.calls.push({ url, headers });
-      if (url === `${API}/v1/installs/${INSTALL}/policy`) return Response.json(POLICY, { headers: { etag: '"3"', "x-journeys-salt-epoch": "2" } });
-      if (url === `${API}/v1/requests`) {
+      if (url === `${api}/v1/installs/${INSTALL}/policy`) return Response.json(policy, { headers: { etag: '"3"', "x-journeys-salt-epoch": "2" } });
+      if (url === `${api}/v1/requests`) {
         const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
         const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
         w.shipped.push(JSON.parse(text) as Array<Record<string, unknown>>);
@@ -76,7 +78,7 @@ const assertHop = (seen: Seen, host: string): void => {
   assert.equal(seen.headers.host, host, "the hop keeps the request's own Host");
   assert.equal(seen.headers.via, "1.1 scope-journeys");
   assert.equal(seen.headers["x-acme-edge"], "journeys", "the policy's forward header");
-  assert.equal(seen.headers["x-acme-key"], KEY, "the policy's key header carries the install key");
+  assert.equal(seen.headers["x-acme-key"], undefined, "the install key never goes to the origin, whatever the policy names");
   assert.equal(seen.headers["accept-encoding"], undefined, "a conforming gateway sends no accept-encoding");
   assert.equal(seen.headers["x-forwarded-for"], "127.0.0.1", "the client's address, appended for the app");
   assert.equal(seen.headers["x-forwarded-proto"], "http");
@@ -419,6 +421,69 @@ test("a mount's handler with no next and no origin: the hop goes to the listener
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+/** A mount on a real listener: the app answers the inner hop with PAGE, everything else goes through the handler. */
+async function mounted(handler: NodeHandler, run: (base: string) => Promise<void>): Promise<void> {
+  const server = createServer((req, res) => {
+    if (req.headers["x-journeys-inner"]) {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end(PAGE);
+      return;
+    }
+    void handler(req, res);
+  });
+  const port = await listen(server);
+  try {
+    await run(`http://127.0.0.1:${port}`);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+test("with no JOURNEYS_API_URL the policy and the records go to Scope's production API; a plain-http one is refused once and nothing is fetched or sent", async () => {
+  reset();
+  const w = world(POLICY, DEFAULT_API_URL);
+  const calls = (): string[] => w.calls.map((c) => c.url);
+  const installed = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: KEY, JOURNEYS_SALT: "fixture-salt" };
+  await mounted(createNodeHandler({ env: installed, fetch: w.fetch, log: () => undefined }), async (base) => {
+    await (await fetch(`${base}/docs/quickstart`, { headers: agent })).text();
+    await until(() => w.calls.length === 2, "the policy fetched and the record shipped");
+  });
+  assert.deepEqual(calls(), [`${DEFAULT_API_URL}/v1/installs/${INSTALL}/policy`, `${DEFAULT_API_URL}/v1/requests`]);
+
+  reset();
+  w.calls.length = 0;
+  const log: string[] = [];
+  await mounted(createNodeHandler({ env: { ...installed, JOURNEYS_API_URL: "http://api.test.invalid" }, fetch: w.fetch, log: (_level, line) => log.push(line) }), async (base) => {
+    for (let i = 0; i < 2; i += 1) assert.equal((await fetch(`${base}/docs/quickstart`, { headers: agent })).status, 200);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  assert.deepEqual(calls(), [], "no policy fetch and no shipment over plain http");
+  assert.equal(log.filter((l) => /JOURNEYS_API_URL must be https/.test(l)).length, 1, "said once");
+
+  reset();
+  w.calls.length = 0;
+  const unkeyed: string[] = [];
+  await mounted(createNodeHandler({ env: { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_SALT: "fixture-salt" }, fetch: w.fetch, log: (_level, line) => unkeyed.push(line) }), async (base) => {
+    for (let i = 0; i < 2; i += 1) assert.equal((await fetch(`${base}/docs/quickstart`, { headers: agent })).status, 200);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  assert.deepEqual(calls(), [], "no install key: nothing goes to Scope, not even a policy fetch the route would refuse");
+  assert.equal(unkeyed.filter((l) => /JOURNEYS_INSTALL_KEY is not set; nothing ships/.test(l)).length, 1, "said once");
+});
+
+test("the policy's report address and key header are ignored: records go to JOURNEYS_API_URL with the install key as the bearer", async () => {
+  reset();
+  const w = world({ ...POLICY, report: { url: "https://evil.example/ingest", key_header: "x-ingest-key" } });
+  await mounted(createNodeHandler({ env, fetch: w.fetch, log: () => undefined }), async (base) => {
+    await (await fetch(`${base}/docs/quickstart`, { headers: agent })).text();
+    await until(() => w.shipped.length === 1, "the record shipped");
+  });
+  assert.deepEqual(w.calls.map((c) => c.url), [`${API}/v1/installs/${INSTALL}/policy`, `${API}/v1/requests`], "nothing went to the policy's report address");
+  assert.equal(w.calls[1]?.headers.authorization, `Bearer ${KEY}`);
+  assert.equal(w.calls[1]?.headers["x-ingest-key"], undefined);
 });
 
 test("parseListen: host:port, :port, port, a bracketed IPv6 host; refuses the rest", () => {

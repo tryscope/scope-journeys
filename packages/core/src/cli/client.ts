@@ -163,6 +163,3 @@ export function createClient(options: ClientOptions): ApiClient {
     probe: (installId, nonce) => call<InstallProbeRead>("GET", `/v1/installs/${encodeURIComponent(installId)}/probes/${encodeURIComponent(nonce)}`),
   };
 }
-
-/** The production API host, the default of JOURNEYS_API_URL. */
-export const DEFAULT_API_URL = "https://api.tryscope.com";

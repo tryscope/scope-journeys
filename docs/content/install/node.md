@@ -80,7 +80,7 @@ needs `scope-journeys-node` installed beside the CLI (`npm install scope-journey
 | `JOURNEYS_INSTALL_KEY` | yes | the install key, shown once at `init`; rotatable and revocable in the console |
 | `JOURNEYS_SALT` | yes | 32 random bytes generated on your machine; every hash is salted with it and Scope never receives it |
 | `JOURNEYS_ASSERTION_KEY` | yes | the ES256 key that signs `x-scope-assertion` on the hop; [Verify](/verify/express) |
-| `JOURNEYS_API_URL` | no | Scope's API (the default is the production host) |
+| `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
 | `JOURNEYS_HOST` | no | optional: observe only this host; other hosts pass to the app untouched |
 | `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
 | `JOURNEYS_ORIGIN` | no | where the hop goes: the app's own listener by default on a mount; required on the proxy (`--origin`) |

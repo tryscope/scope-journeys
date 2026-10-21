@@ -2,12 +2,11 @@ import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import { createHash, randomBytes } from "node:crypto";
 
-import { VERSION, assertionFromEnv, classifyRoute, effectiveMode, isTextFace, observe, observeResponse, type CompiledPolicy, type Environment, type Io, type LogLevel, type Observation, type Responded, type ScopeDecision1, type SensorRecord, type State } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, loadPolicy, secureUrl, classifyRoute, effectiveMode, isTextFace, observe, observeResponse, type CompiledPolicy, type Environment, type Io, type LogLevel, type Observation, type Responded, type ScopeDecision1, type SensorRecord, type State } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { deliver, droppedSoFar } from "./deliver.js";
 import { platformFacts } from "./facts.js";
-import { loadPolicy } from "./policy-cache.js";
 
 // The wire messages (proto/envoy/..., trimmed from Envoy's api tree): the fields this processor reads and writes.
 export interface HeaderValue {
@@ -155,7 +154,7 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
   const track = options.track ?? (() => undefined);
   const name = options.name ?? env.JOURNEYS_NAME ?? "scope-journeys";
   const installId = options.installId ?? env.JOURNEYS_INSTALL_ID ?? null;
-  const apiUrl = options.apiUrl ?? env.JOURNEYS_API_URL ?? null;
+  const apiUrl = secureUrl(options.apiUrl ?? env.JOURNEYS_API_URL ?? DEFAULT_API_URL, "JOURNEYS_API_URL", (line) => log("warn", line));
   const key = env.JOURNEYS_INSTALL_KEY ?? null;
   const salt = env.JOURNEYS_SALT ?? null;
   const policyUrl = options.policyUrl ?? env.JOURNEYS_POLICY_URL ?? (apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}/policy` : null);
@@ -170,19 +169,19 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
       warnedNoInstall = true;
       warn("journeys: JOURNEYS_INSTALL_ID is not set; forwarding every request untouched under the default policy (run `npx scope-journeys init --envoy`)");
     }
-    const state = await loadPolicy({ url: policyUrl, key, fetch: fetchFn, now: now(), cache, log: warn });
+    const state = await loadPolicy({ url: policyUrl, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
     let policy = state.policy;
     if (!salt) {
       if (!warnedNoSalt) {
         warnedNoSalt = true;
         warn("journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init --envoy`)");
       }
-      policy = (await loadPolicy({ url: null, key: null, fetch: fetchFn, now: now(), log: () => undefined })).policy;
+      policy = (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
     }
     return { policy, environment: (state.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: state.saltEpoch ?? 1 };
   };
 
-  const io = (host: string, policy: CompiledPolicy): Io => ({
+  const io = (host: string): Io => ({
     now,
     random: (bytes) => new Uint8Array(randomBytes(bytes)),
     hash: async (value) => createHash("sha256").update(`${salt ?? ""}:${value}`).digest("hex").slice(0, 12),
@@ -193,14 +192,14 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
     },
     cache,
     ship: (records: readonly SensorRecord[]) => {
-      track(deliver(records, { apiUrl, key, report: policy.report, fetch: fetchFn, log: warn }).catch((error: unknown) => warn(`journeys: shipment failed (${error instanceof Error ? error.message : String(error)})`)));
+      track(deliver(records, { apiUrl, key, fetch: fetchFn, log: warn }).catch((error: unknown) => warn(`journeys: shipment failed (${error instanceof Error ? error.message : String(error)})`)));
     },
     log,
   });
 
   return {
     process(call) {
-      const exchange = new Exchange({ load, io, key, name, installId, issuer, env, log, write: (response) => call.write(response) });
+      const exchange = new Exchange({ load, io, name, installId, issuer, env, log, write: (response) => call.write(response) });
       call.on("data", (message: ProcessingRequest) => exchange.push(message));
       call.on("end", () => {
         void exchange.settled().then(() => call.end());
@@ -215,8 +214,7 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
 
 interface ExchangeDeps {
   load: () => Promise<Loaded>;
-  io: (host: string, policy: CompiledPolicy) => Io;
-  key: string | null;
+  io: (host: string) => Io;
   name: string;
   installId: string | null;
   issuer: string | null;
@@ -317,7 +315,7 @@ class Exchange {
     const loaded = this.loaded ?? (await this.deps.load());
     const url = this.url ?? new URL("http://localhost/");
     const policy = loaded.policy;
-    const io = this.deps.io(url.host, policy);
+    const io = this.deps.io(url.host);
     const identity = { install: this.deps.installId, name: this.deps.name, environment: loaded.environment, saltEpoch: loaded.saltEpoch, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(this.deps.env.JOURNEYS_ASSERTION_KEY, this.deps.issuer) };
     const facts = platformFacts(this.requestHeaders, identity);
     const request = new Request(url, { method: this.method, headers: this.requestHeaders, body: body && !bodyless(this.method) ? new Uint8Array(body) : null, redirect: "manual" });
@@ -332,7 +330,6 @@ class Exchange {
       return;
     }
     const outbound = new Headers(observed.request.headers);
-    if (policy.forward.key_header && this.deps.key) outbound.set(policy.forward.key_header, this.deps.key);
     const header_mutation = mutationBetween(this.requestHeaders, outbound);
     const common: CommonResponse = { status: CONTINUE, ...(header_mutation ? { header_mutation } : {}) };
     if (body && observed.request.body) {

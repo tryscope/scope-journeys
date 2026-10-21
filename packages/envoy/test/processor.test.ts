@@ -12,12 +12,13 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import * as grpc from "@grpc/grpc-js";
+import { DEFAULT_API_URL, resetPolicyCache } from "scope-journeys";
 
 import { applyMask, canonical, maskResponse, maskText } from "../../../scripts/canonical.mjs";
 import type { FixtureDirectory, FixtureFacts, FixtureRequest, FixtureUpstream } from "../../core/test/harness.js";
 import { validateRecord } from "../../core/src/validate.js";
 import { VERSION } from "../../core/src/version.js";
-import { BODY_MODE, ExternalProcessor, resetCache, resetDelivery, resetPolicyCache, serveExtProc, type HeaderMutation, type HeaderValue, type ProcessingRequest, type ProcessingResponse } from "../src/index.js";
+import { BODY_MODE, ExternalProcessor, resetCache, resetDelivery, serveExtProc, type HeaderMutation, type HeaderValue, type ProcessingRequest, type ProcessingResponse } from "../src/index.js";
 
 const ROOT = new URL("../../../", import.meta.url).pathname;
 const FIXTURES = join(ROOT, "fixtures", "synthetic");
@@ -176,7 +177,7 @@ for (const name of names) {
 
     const forwarded: Captured[] = [];
     const shipped: unknown[][] = [];
-    const env: Record<string, string> = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_SALT: facts.salt ?? "fixture-salt", JOURNEYS_NAME: "fixture-sensor", JOURNEYS_API_URL: API, JOURNEYS_POLICY_URL: `https://policy.fixture.example/${name}` };
+    const env: Record<string, string> = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: "sjk_test_dddddddddddddddddddddddddddddddd", JOURNEYS_SALT: facts.salt ?? "fixture-salt", JOURNEYS_NAME: "fixture-sensor", JOURNEYS_API_URL: API, JOURNEYS_POLICY_URL: `https://policy.fixture.example/${name}` };
     if (facts.assertion) env.JOURNEYS_ASSERTION_KEY = JSON.stringify(facts.assertion.private_jwk);
     let tick = 0;
     const base = Date.parse(facts.ts ?? "2026-10-10T12:00:00.000Z");
@@ -214,3 +215,35 @@ for (const name of names) {
     }
   });
 }
+
+test("with no JOURNEYS_API_URL the processor fetches its policy from and ships its records to Scope's production API, never puts the install key on the hop, and ships nothing without it", async () => {
+  const dir = join(FIXTURES, "01-html-page");
+  const request = JSON.parse(readFileSync(join(dir, "request.json"), "utf8")) as FixtureRequest;
+  const upstream = JSON.parse(readFileSync(join(dir, "upstream.json"), "utf8")) as FixtureUpstream;
+  const policy: unknown = JSON.parse(readFileSync(join(FIXTURES, "policy.json"), "utf8"));
+  const urls: string[] = [];
+  const fetcher = (async (input: RequestInfo | URL) => {
+    const url = String(input instanceof Request ? input.url : input);
+    urls.push(url);
+    return url.endsWith("/policy") ? Response.json(policy, { headers: { etag: '"3"' } }) : new Response(null, { status: 202 });
+  }) as typeof fetch;
+  for (const key of ["sjk_test_dddddddddddddddddddddddddddddddd", null]) {
+    resetPolicyCache();
+    resetDelivery();
+    resetCache();
+    urls.length = 0;
+    const forwarded: Captured[] = [];
+    const env: Record<string, string> = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_SALT: "fixture-salt", ...(key ? { JOURNEYS_INSTALL_KEY: key } : {}) };
+    const server = await serveExtProc({ listen: "127.0.0.1:0", env, fetch: fetcher, log: () => undefined, signals: false, drainMs: 2_000 });
+    const client = new ExternalProcessor(`127.0.0.1:${server.port}`, grpc.credentials.createInsecure());
+    try {
+      await drive(client, { request, upstream }, forwarded);
+      for (let i = 0; i < 30; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.deepEqual(urls, key ? [`${DEFAULT_API_URL}/v1/installs/${INSTALL}/policy`, `${DEFAULT_API_URL}/v1/requests`] : [], key ? "the policy and the record" : "nothing goes to Scope without the key");
+      assert.equal(forwarded[0]?.headers["x-acme-key"], undefined, "the install key never goes to the origin, whatever the policy names");
+    } finally {
+      client.close();
+      await server.close();
+    }
+  }
+});

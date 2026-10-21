@@ -13,17 +13,14 @@ export type ScopePolicy1 = {
   version: number;
   about?: string;
   /**
-   * the origin to forward to when the adapter has none configured (a Worker on workers.dev needs one; a route in the customer's zone does not)
+   * ignored by the sensor: where traffic goes comes only from its own configuration (JOURNEYS_ORIGIN)
    */
   origin?: string | null;
+  /**
+   * ignored by the sensor: records go to JOURNEYS_API_URL in its own configuration, with the install key as Authorization: Bearer
+   */
   report?: {
-    /**
-     * where records ship; the product's policy sets the API's requests endpoint
-     */
     url: string;
-    /**
-     * the header that carries the install key on shipments; the default is Authorization: Bearer
-     */
     key_header?: string;
     /**
      * reserved
@@ -206,6 +203,9 @@ export type ScopePolicy1 = {
       [k: string]: string;
     };
   };
+  /**
+   * the names of the headers the sensor reads; a name that is not a header name is ignored, and session, setup, agent, client and intent may not name one that carries a credential (a name with auth, cookie, token, secret, password, credential, key, jwt, assertion or oidc in it, the credential header, surfaces.api.credential_header)
+   */
   headers: {
     credential?: string;
     session?: string;
@@ -222,13 +222,13 @@ export type ScopePolicy1 = {
   };
   forward: {
     /**
-     * headers added on the hop to the origin, with {host} filled in
+     * the policy's own x- headers added on the hop to the origin, with {host} filled in; x-forwarded-*, x-real-ip, x-client-ip, x-host, x-original-host, x-original-url, x-rewrite-url, x-http-method, x-http-method-override, x-method-override, x-journeys-*, x-scope-*, x-envoy-*, a name that carries a credential, a value with a placeholder other than {host}, and any name not starting x- are ignored
      */
     headers?: {
       [k: string]: string;
     };
     /**
-     * a header carrying the install key to the origin (the lab's form; the product's assertion replaces it)
+     * ignored by the sensor: the install key never goes to the origin; the signed assertion proves the hop
      */
     key_header?: string | null;
   };
@@ -264,7 +264,7 @@ export type ScopePolicy1 = {
     on_error?: "open" | "closed";
     label?: string;
     /**
-     * inject: a rewrite per face (html, md, txt); notfound: a page body per face
+     * inject: a rewrite per face (html, md, txt); notfound: a page body per face, held to the same content as an inject replacement (an md page served as HTML when there is no html face is held to the html face's tags)
      */
     faces?: {};
     /**
@@ -284,7 +284,13 @@ export type ScopePolicy1 = {
       match: string;
       links: string[];
     }[];
+    /**
+     * finder: paths on the customer's site; anything else runs the rule dry
+     */
     default_links?: string[];
+    /**
+     * error: a path on the customer's site per status; anything else runs the rule dry
+     */
     links?: {
       [k: string]: string;
     };

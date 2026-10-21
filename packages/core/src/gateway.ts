@@ -10,8 +10,7 @@ const REBUILT_DROPS = ["content-length", "content-encoding", "transfer-encoding"
  * What leaves for the origin: the client's headers, the Via a gateway
  * must add (RFC 9110 section 7.6.3), no accept-encoding (the hop is uncompressed: bodies are read
  * and rewritten here, the platform compresses the answer to the client), the hop-by-hop headers
- * and the client's content-length removed, the policy's forward headers with {host} filled. The
- * policy's key header, when one is named, is the adapter's to set on the hop: the core holds no key.
+ * and the client's content-length removed, the policy's forward headers with {host} filled.
  */
 export function outboundHeaders(request: Request, policy: CompiledPolicy, name: string, host: string): Headers {
   const h = new Headers(request.headers);

@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ApiError, createClient, DEFAULT_API_URL, UnreachableError, type InstallCreateRequest, type InstallEnvironment } from "./client.js";
+import { DEFAULT_API_URL } from "../policy-loader.js";
+import { ApiError, createClient, UnreachableError, type InstallCreateRequest, type InstallEnvironment } from "./client.js";
 import { base64url, type InitDeps, type InitReport } from "./init-next.js";
 import { manualLines, mountSource, NODE_PACKAGE } from "./mount-file.js";
 import { detectNode, readLock, upsertEnvFile, LOCK_DIR, LOCK_FILE, type InitLock, type NodeProject } from "./project.js";

@@ -75,8 +75,6 @@ export interface CompiledSurfaces {
 export interface CompiledPolicy {
   document: ScopePolicy1;
   version: number;
-  origin: string | null;
-  report: { url: string; key_header: string | null } | null;
   form: "routes" | "surfaces";
   /** A path prefix with two capture groups, stripped before classification and restored as {prefix}. */
   runPrefix: RegExp | null;
@@ -86,7 +84,7 @@ export interface CompiledPolicy {
   secretFields: Set<string>;
   uriFields: Record<string, string>;
   headers: { credential: string; session: string; reference: string[]; install: string | null; setup: string | null; agent: string | null; client: string | null; intent: string | null; signature: string };
-  forward: { headers: Record<string, string>; key_header: string | null };
+  forward: { headers: Record<string, string> };
   recordBodies: boolean;
   /** The Web Bot Auth signers whose key directories the sensor fetches: exact https origins. */
   signers: string[];
@@ -104,11 +102,10 @@ export const defaultPolicy: ScopePolicy1 = Object.freeze({
   schema: "scope.policy/1",
   version: 0,
   about: "The embedded default: observe and forward only. The sensor runs this before its first policy fetch and whenever the fetch fails with nothing good cached.",
-  origin: null,
   surfaces: { passthrough: [] },
   secrets: { fields: [], shapes: [], uri_fields: {} },
   headers: { credential: "authorization", session: "mcp-session-id", reference: [], install: null, setup: null, agent: null, client: null, intent: null, signature: "signature-agent" },
-  forward: { headers: {}, key_header: null },
+  forward: { headers: {} },
   record_bodies: false,
   rules: [],
 }) as ScopePolicy1;
@@ -118,7 +115,7 @@ const optional = (pattern: unknown): RegExp | null => (typeof pattern === "strin
 const list = (patterns: unknown): RegExp[] => (Array.isArray(patterns) ? patterns.filter((p): p is string => typeof p === "string" && p.length > 0).map(anchored) : []);
 const loose = (pattern: unknown): RegExp | null => (typeof pattern === "string" && pattern.length > 0 ? new RegExp(pattern) : null);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -189,12 +186,139 @@ function compileSurfaces(raw: Record<string, unknown>): CompiledSurfaces {
   };
 }
 
-function compileRule(raw: unknown, index: number): CompiledRule {
+const compiles = (pattern: string): boolean => {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** A link that stays on the customer's site: `https://{host}`, optionally `{prefix}`, then a path, query or fragment; or a plain path. */
+const onCustomerSite = (url: string): boolean => {
+  if (/[\s\\&\u0000-\u001f\u007f]/.test(url)) return false;
+  if (url.startsWith("https://{host}")) return /^(\{prefix\})?([/?#]|$)/.test(url.slice("https://{host}".length));
+  return /^\/(?![/\\])/.test(url) && !url.includes("{prefix}");
+};
+
+/**
+ * Why text would send a reader off the customer's site, or null: a scheme followed by two slashes
+ * or backslashes anywhere but `https://{host}` (then the end, a path, query, fragment or a word
+ * break), a markdown link target off the site, or `{prefix}` anywhere but right after the host.
+ */
+function linkProblem(text: string): string | null {
+  for (const m of text.matchAll(/:[\\/][\\/]/g)) {
+    let at = m.index + 3;
+    if (m[0] !== "://" || text.slice(Math.max(0, m.index - 5), m.index).toLowerCase() !== "https" || /[a-z0-9+.-]/i.test(text[m.index - 6] ?? "") || !text.startsWith("{host}", at)) return "a link off https://{host}";
+    at += "{host}".length;
+    if (text.startsWith("{prefix}", at)) at += "{prefix}".length;
+    const next = text[at];
+    if (next !== undefined && !/[/?#\s"'`)\]<>,;!]/.test(next) && !(/[.:]/.test(next) && (text[at + 1] === undefined || /\s/.test(text[at + 1] ?? "")))) return "a link off https://{host}";
+  }
+  for (const m of text.matchAll(/\{prefix\}/g)) if (!text.startsWith("https://{host}", m.index - "https://{host}".length)) return "{prefix} outside https://{host}{prefix}";
+  for (const m of text.matchAll(/\]\(\s*([^)\s]*)/g)) if (!onCustomerSite(m[1] ?? "")) return "a link off the customer's site";
+  return null;
+}
+
+/**
+ * Why a stretch of HTML would be unsafe to serve, or null: every `<` opens a whole tag from a short
+ * list, closed in the same stretch, with no attribute but an `a`'s on-site href and a meta's utf-8
+ * charset; no `>` stands alone. One pass with indexOf, so a hostile document costs linear time.
+ */
+function markupProblem(html: string): string | null {
+  let at = 0;
+  for (;;) {
+    const open = html.indexOf("<", at);
+    const stray = html.indexOf(">", at);
+    if (stray !== -1 && (open === -1 || stray < open)) return "a stray >";
+    if (open === -1) return null;
+    const close = html.indexOf(">", open + 1);
+    const nested = html.indexOf("<", open + 1);
+    if (close === -1 || (nested !== -1 && nested < close)) return "an unclosed tag";
+    const inner = html.slice(open + 1, close).trim();
+    const closing = inner.startsWith("/");
+    const body = closing ? inner.slice(1).trimStart() : inner;
+    const name = (/^[!A-Za-z][A-Za-z0-9-]*/.exec(body)?.[0] ?? "").toLowerCase();
+    let rest = body.slice(name.length).replace(/\/$/, "").trim();
+    if (name === "!doctype" && !closing && rest.toLowerCase() === "html") rest = "";
+    else if (!["a", "blockquote", "body", "code", "h1", "head", "html", "li", "meta", "p", "pre", "title", "ul"].includes(name)) return `the tag <${name || inner}> is not allowed`;
+    else if (closing && rest) return `attributes on </${name}>`;
+    while (rest) {
+      const attr = /^([A-Za-z-]+)\s*=\s*"([^"]*)"\s*/.exec(rest);
+      if (!attr) return `an attribute on <${name}> could not be read`;
+      const attrName = (attr[1] ?? "").toLowerCase();
+      const value = attr[2] ?? "";
+      if (name === "a" && attrName === "href") {
+        if (!onCustomerSite(value)) return "a link off the customer's site";
+      } else if (!(name === "meta" && attrName === "charset" && value.toLowerCase() === "utf-8")) return `the attribute ${attrName} on <${name}> is not allowed`;
+      rest = rest.slice(attr[0].length);
+    }
+    at = close + 1;
+  }
+}
+
+/**
+ * Why a rule's content would be unsafe to serve, or null: a rewrite is a pattern and a replacement
+ * that refers only to $1 to $9, a 404 face is a page, every text keeps its links on the customer's
+ * site, HTML (an html face, or a 404's md page served as HTML when there is no html face) passes
+ * markupProblem, the error and finder links are paths, and a gate's text and tool hold no link off
+ * the site.
+ */
+/** Whether `fill` supplies every placeholder in `template` from `vars`. */
+const fillable = (template: string, vars: Parameters<typeof fill>[1]): boolean => {
+  try {
+    fill(template, vars);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+function contentProblem(raw: Record<string, unknown>, kind: RuleKind): string | null {
+  const faces = isRecord(raw.faces) ? raw.faces : {};
+  const texts: Array<{ text: string; html: boolean }> = [];
+  for (const [face, value] of Object.entries(faces)) {
+    if (kind === "inject") {
+      if (!isRecord(value) || typeof value.pattern !== "string" || typeof value.replacement !== "string") return `the ${face} face is not a pattern and a replacement`;
+      if (!fillable(value.pattern, { host: "x" })) return `the ${face} face's pattern holds a placeholder other than {host}`;
+      if (!compiles(fill(value.pattern, { host: "x" }))) return `the ${face} face's pattern does not compile`;
+      if (!fillable(value.replacement, { host: "x", token: "x", prefix: "x" })) return "a replacement holds a placeholder a page cannot fill";
+      if (/\$(?![1-9])/.test(value.replacement)) return "a replacement refers to something other than $1 to $9";
+      const refs = [...value.replacement.matchAll(/\$([1-9])/g)].map((m) => Number(m[1]));
+      if (refs.some((ref, i) => ref <= (refs[i - 1] ?? 0))) return "a replacement uses a group out of order or twice";
+      for (const literal of value.replacement.split(/\$[1-9]/)) texts.push({ text: literal, html: face === "html" });
+    }
+    if (kind === "notfound") {
+      if (typeof value !== "string") return `the ${face} face is not a page`;
+      texts.push({ text: value, html: face === "html" || (face === "md" && typeof faces.html !== "string") });
+    }
+  }
+  const strings = (value: unknown): string[] => (typeof value === "string" ? [value] : Array.isArray(value) ? value.flatMap(strings) : isRecord(value) ? Object.values(value).flatMap(strings) : []);
+  if (kind === "error") {
+    if (typeof raw.route === "string" && !compiles(raw.route)) return "the route does not compile";
+    texts.push({ text: typeof raw.suffix === "string" ? raw.suffix : "", html: false });
+  }
+  if (kind === "finder" && Array.isArray(raw.answers) && raw.answers.some((a) => !isRecord(a) || typeof a.match !== "string" || !compiles(a.match))) return "an answer's match is not a pattern that compiles";
+  if (kind === "gate") for (const text of strings([raw.tool, raw.instructions, raw.description_suffix, raw.acknowledgement])) texts.push({ text, html: false });
+  for (const { text, html } of texts) {
+    const problem = linkProblem(text) ?? (html ? markupProblem(text) : null);
+    if (problem) return problem;
+  }
+  const links = kind === "error" ? Object.values(isRecord(raw.links) ? raw.links : {}) : kind === "finder" ? [...(Array.isArray(raw.default_links) ? raw.default_links : []), ...(Array.isArray(raw.answers) ? raw.answers.flatMap((a) => (isRecord(a) && Array.isArray(a.links) ? a.links : [null])) : [])] : [];
+  for (const link of links) if (typeof link !== "string" || !link.startsWith("/") || !onCustomerSite(link)) return `the link ${JSON.stringify(link)} is not a path on the customer's site`;
+  return null;
+}
+
+function compileRule(raw: unknown, index: number, notices: string[]): CompiledRule {
   if (!isRecord(raw) || typeof raw.id !== "string" || typeof raw.kind !== "string") throw new PolicyError(`rules[${index}]: a rule needs an id and a kind`);
   const known = (RULE_KINDS as readonly string[]).includes(raw.kind);
   const kind: CompiledRule["kind"] = known ? (raw.kind as RuleKind) : "unknown";
-  // A kind this sensor does not implement runs dry whatever the document says, so a newer policy never changes the wire through an older sensor.
-  const mode: Mode = known && raw.mode === "live" ? "live" : "dry_run";
+  const problem = known ? contentProblem(raw, raw.kind as RuleKind) : null;
+  if (!known) notices.push(`rule ${raw.id}: kind ${raw.kind} is not implemented by this sensor; it runs dry`);
+  if (problem) notices.push(`rule ${raw.id}: ${problem}; it runs dry`);
+  // An unknown kind or unsafe content runs dry whatever the document says, so a newer policy never changes the wire through an older sensor.
+  const mode: Mode = known && !problem && raw.mode === "live" ? "live" : "dry_run";
   const environments = Array.isArray(raw.environments) ? raw.environments.filter((e): e is Environment => ENVIRONMENTS.includes(e as Environment)) : [...ENVIRONMENTS];
   const onError = raw.on_error === "closed" ? "closed" : "open";
   if (onError === "closed" && kind !== "gate") throw new PolicyError(`rules[${index}] ${raw.id}: on_error "closed" is honoured by a gate only`);
@@ -244,11 +368,29 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
   const secrets = isRecord(raw.secrets) ? raw.secrets : {};
   const headers = isRecord(raw.headers) ? raw.headers : {};
   const forward = isRecord(raw.forward) ? raw.forward : {};
-  const report = isRecord(raw.report) && typeof raw.report.url === "string" ? { url: raw.report.url, key_header: typeof raw.report.key_header === "string" ? raw.report.key_header : null } : null;
   const str = (v: unknown, fallback: string): string => (typeof v === "string" ? v : fallback);
   const nullable = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
-  const rules = Array.isArray(raw.rules) ? raw.rules.map(compileRule) : [];
-  for (const rule of rules) if (rule.kind === "unknown") notices.push(`rule ${rule.id}: kind ${rule.unknown_kind} is not implemented by this sensor; it runs dry`);
+  // Whoever serves the document never chooses where traffic, records or the install key go.
+  if (typeof raw.origin === "string") notices.push("origin ignored: the sensor forwards to the origin in its own configuration");
+  if (raw.report !== undefined && raw.report !== null) notices.push("report ignored: records go to the API url in the sensor's own configuration");
+  if (nullable(forward.key_header)) notices.push("forward.key_header ignored: the install key never goes to the origin");
+  // A name that is not a header name makes every read of it throw; one that says credential, or
+  // names the policy's own credential headers, would put a secret into the record raw.
+  const headerName = (field: string, name: string | null): string | null => {
+    if (name === null || /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) return name;
+    notices.push(`headers.${field} ignored: ${JSON.stringify(name)} is not a header name`);
+    return null;
+  };
+  const credential = headerName("credential", str(headers.credential, "authorization")) ?? "authorization";
+  const apiCredential = isRecord(surfacesRaw?.api) && typeof surfacesRaw.api.credential_header === "string" ? surfacesRaw.api.credential_header.toLowerCase() : null;
+  const carriesCredential = (name: string): boolean => /auth|cookie|token|secret|passw|credential|key|jwt|assertion|oidc/i.test(name) || name.toLowerCase() === credential.toLowerCase() || name.toLowerCase() === apiCredential;
+  const recorded = (field: string, name: string | null): string | null => {
+    const valid = headerName(field, name);
+    if (valid === null || !carriesCredential(valid)) return valid;
+    notices.push(`headers.${field} ignored: ${JSON.stringify(valid)} carries a credential`);
+    return null;
+  };
+  const rules = Array.isArray(raw.rules) ? raw.rules.map((rule, index) => compileRule(rule, index, notices)) : [];
   let signers = ["https://crawler.exa.ai", "https://chatgpt.com"];
   if (Array.isArray(raw.signers)) {
     signers = [];
@@ -268,9 +410,7 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
   return {
     document: raw as unknown as ScopePolicy1,
     version,
-    origin: typeof raw.origin === "string" ? raw.origin : null,
     assertion: { enabled: isRecord(raw.assertion) && raw.assertion.enabled === true, audience: isRecord(raw.assertion) && Array.isArray(raw.assertion.audience) ? raw.assertion.audience.filter((h): h is string => typeof h === "string") : null },
-    report,
     form,
     runPrefix,
     routes: form === "routes" && routesRaw
@@ -286,19 +426,32 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
     secretFields: new Set(Array.isArray(secrets.fields) ? secrets.fields.filter((f): f is string => typeof f === "string") : []),
     uriFields: isRecord(secrets.uri_fields) ? Object.fromEntries(Object.entries(secrets.uri_fields).filter((e): e is [string, string] => typeof e[1] === "string")) : {},
     headers: {
-      credential: str(headers.credential, "authorization"),
-      session: str(headers.session, "mcp-session-id"),
+      credential,
+      session: recorded("session", str(headers.session, "mcp-session-id")) ?? "mcp-session-id",
       reference: Array.isArray(headers.reference) ? headers.reference.filter((r): r is string => typeof r === "string") : [],
-      install: nullable(headers.install),
-      setup: nullable(headers.setup),
-      agent: nullable(headers.agent),
-      client: nullable(headers.client),
-      intent: nullable(headers.intent),
-      signature: str(headers.signature, "signature-agent"),
+      install: headerName("install", nullable(headers.install)),
+      setup: recorded("setup", nullable(headers.setup)),
+      agent: recorded("agent", nullable(headers.agent)),
+      client: recorded("client", nullable(headers.client)),
+      intent: recorded("intent", nullable(headers.intent)),
+      signature: headerName("signature", str(headers.signature, "signature-agent")) ?? "signature-agent",
     },
     forward: {
-      headers: isRecord(forward.headers) ? Object.fromEntries(Object.entries(forward.headers).filter((e): e is [string, string] => typeof e[1] === "string")) : {},
-      key_header: nullable(forward.key_header),
+      // Only the policy's own x- headers reach the hop, on one line: nothing that frames the request (a
+      // length or encoding would split it), names its host or client, speaks for the sensor, or carries a credential.
+      headers: Object.fromEntries(
+        Object.entries(isRecord(forward.headers) ? forward.headers : {}).filter((e): e is [string, string] => {
+          if (typeof e[1] !== "string") return false;
+          // {host} is the only placeholder outboundHeaders can fill; any other would throw on the hop.
+          if (!fillable(e[1], { host: "x" })) {
+            notices.push(`forward.headers ignored: ${JSON.stringify(e[0])} holds a value the sensor cannot fill on the hop`);
+            return false;
+          }
+          if (!/[\r\n\0]/.test(e[1]) && /^x-[a-z0-9-]+$/i.test(e[0]) && !/^x-(forwarded-|real-ip$|client-ip$|host$|original-host$|original-url$|rewrite-url$|http-method$|http-method-override$|method-override$|journeys-|scope-|envoy-)/i.test(e[0]) && !carriesCredential(e[0])) return true;
+          notices.push(`forward.headers ignored: ${JSON.stringify(e[0])} is not a header the policy may set on the hop`);
+          return false;
+        }),
+      ),
     },
     recordBodies: raw.record_bodies === true,
     signers,

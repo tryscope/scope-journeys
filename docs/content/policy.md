@@ -12,13 +12,13 @@ The policy is the document that tells the sensor what to observe and what each r
 |---|---|
 | `schema`, `version` | `scope.policy/1` and the document's version |
 | `about` | a free description |
-| `origin` | the origin to forward to when the sensor does not sit on the product host (the Worker off a route) |
-| `report` | where records ship (`url`, the header that carries the install key) |
+| `origin` | ignored: where your traffic goes comes only from the sensor's own configuration (`JOURNEYS_ORIGIN`), never from the policy |
+| `report` | ignored: records go to `JOURNEYS_API_URL` in the sensor's own configuration, with the install key as `Authorization: Bearer` |
 | `surfaces` | the surface map: the paths of each surface of your product (`docs`, `download`, `api`, `mcp`, `oauth`, `device`, `signup`, `hooks`, `credentials`, `trial`, `cli`, `clients`, `finder`, `passthrough`, `custom`), so each request is classified by what it is for |
 | `routes` | the older form of the surface map, still read; new documents use `surfaces` |
 | `secrets` | the value shapes hashed wherever they appear (a key prefix, a token pattern) |
-| `headers` | the names of the setup, agent, client and intent headers the sensor reads |
-| `forward` | headers added on the hop to the origin (with `{host}` filled in), the header that carries the install key to the origin |
+| `headers` | the names of the setup, agent, client and intent headers the sensor reads; a name that is not a header name, or one that carries a credential (`Authorization`, `Cookie`, a name with auth, token, secret, password, key, jwt, assertion or oidc in it, your credential headers), is ignored |
+| `forward` | the policy's own `x-` headers added on the hop to the origin (with `{host}` filled in); never one that frames the request, names its host or client (`x-forwarded-*`, `x-real-ip`), speaks for the sensor (`x-scope-*`, `x-journeys-*`) or carries a credential; the install key never goes to the origin |
 | `record_bodies` | `false` is the lightest form: bodies are read where a rule needs them and never leave |
 | `observe` | the routes whose request and response bodies are recorded, the fields allowed, the limit |
 | `rules` | the rule table, below |
@@ -39,6 +39,8 @@ The policy is the document that tells the sensor what to observe and what each r
 | `face` | serves the markdown face of a page to a reader who asked for it | the face that would have been served |
 
 Every rule has `id`, `kind`, `mode` (`dry_run` or `live`), `environments` (the environments it is live in) and, for `gate` only, `on_error` (`open` forwards the call untouched when the rule fails; `closed` refuses it). Anything else in a rule is the kind's own fields (the paths, the statuses, the links).
+
+**What a rule may put into a page.** An `inject` replacement and a `notfound` page hold plain text, the placeholders `{host}`, `{prefix}` and `{token}`, the groups `$1` to `$9`, and on the HTML face only `<!doctype html>` and whole tags from `a`, `blockquote`, `body`, `code`, `h1`, `head`, `html`, `li`, `meta`, `p`, `pre`, `title` and `ul`, with no attribute but an `a`'s `href` and a `meta`'s `charset` of `utf-8`. Every link (an address with a scheme, an `href`, a markdown link target), there and in a `gate`'s texts and an `error` suffix, points at `https://{host}` or is a path, and the `finder` and `error` links are paths. A rule that holds anything else, or a pattern that does not compile, runs dry, and `journeys policy validate` names it. A pattern holds no placeholder but `{host}`, and a replacement uses its groups in order, each once; where it lands inside a tag or an inline script or style of your page, it only extends a link to your own site with a link-safe code such as `?ref=`.
 
 ## Validate a document
 
