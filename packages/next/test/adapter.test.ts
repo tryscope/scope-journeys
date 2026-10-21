@@ -388,3 +388,18 @@ test("the policy answer's environment and salt epoch are kept from the last answ
   assert.equal(second.saltEpoch, 2, "the last epoch seen");
   assert.equal(second.environment, "preview");
 });
+
+test("shipping follows no redirect: a redirected batch is dropped and counted", async () => {
+  resetDelivery();
+  const redirects: Array<RequestRedirect | undefined> = [];
+  const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    redirects.push(init?.redirect);
+    return new Response(null, { status: 307, headers: { location: "https://other.example/v1/requests" } });
+  }) as typeof fetch;
+  const log: string[] = [];
+  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", credential: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
+  assert.deepEqual(redirects, ["manual"]);
+  assert.deepEqual(log, ["journeys: shipment refused with 307; dropping the batch"]);
+  assert.equal(droppedSoFar(), 1);
+  resetDelivery();
+});

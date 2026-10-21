@@ -173,3 +173,19 @@ test("the policy answer's environment and salt epoch: taken from the headers, ke
   expect(second.environment).toBe("preview");
   expect(second.saltEpoch).toBe(2);
 });
+
+test("shipping follows no redirect: a redirected batch is dropped and counted", async () => {
+  resetDelivery();
+  const redirects: Array<RequestRedirect | undefined> = [];
+  const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    redirects.push(init?.redirect);
+    return new Response(null, { status: 307, headers: { location: "https://other.example/v1/requests" } });
+  }) as typeof fetch;
+  const log: string[] = [];
+  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
+  expect(redirects).toEqual(["manual"]);
+  expect(log).toEqual(["journeys: shipment refused with 307; dropping the batch"]);
+  const { droppedSoFar } = await import("../src/deliver.js");
+  expect(droppedSoFar()).toBe(1);
+  resetDelivery();
+});

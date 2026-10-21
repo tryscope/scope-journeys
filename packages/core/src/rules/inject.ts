@@ -7,7 +7,8 @@ export interface Rewrite {
 
 /**
  * Where offsets of an HTML page fall, read as a browser reads them: inside a tag, comment or
- * declaration, or inside a script or style element. Where the reading is unsure, the offset is inside.
+ * declaration, or inside an element whose content is text only (script, style, title, textarea and the like).
+ * Where the reading is unsure, the offset is inside.
  */
 function placesOf(html: string): (offset: number) => { tag: boolean; raw: boolean } {
   const tags: Array<[number, number]> = [];
@@ -36,11 +37,11 @@ function placesOf(html: string): (offset: number) => { tag: boolean; raw: boolea
       if (end === -1) end = html.length;
     } else continue;
     tags.push([i, end]);
-    const element = /^<(script|style)(?=[\s/>]|$)/i.exec(html.slice(i, i + 8))?.[1]?.toLowerCase();
+    const element = /^<(script|style|title|textarea|xmp|iframe|noembed|noframes|noscript|plaintext)(?=[\s/>]|$)/i.exec(html.slice(i, i + 12))?.[1]?.toLowerCase();
     let after = end + 1;
     if (element) {
       // Without the u flag, i folds ASCII only, so `</SCRIPT` closes a script and no other letter does.
-      const closer = element === "script" ? /<\/script(?=[\s/>]|$)/gi : /<\/style(?=[\s/>]|$)/gi;
+      const closer = new RegExp(`</${element}(?=[\\s/>]|$)`, "gi");
       closer.lastIndex = after;
       const close = closer.exec(html)?.index ?? html.length;
       // Inside a script, `<!--` can keep the script open past its first end tag: the rest of the page counts as script.
@@ -72,6 +73,8 @@ export function rewritePage(body: string, rules: readonly CompiledRule[], vars: 
   // Built once and kept while no rule changes the body: the offsets hold until a replacement moves them.
   let places: ReturnType<typeof placesOf> | null = null;
   const linkEnd = new RegExp(`https://${escapeRe(vars.host)}(?:[/?][A-Za-z0-9._~%/?=&-]*)?$`);
+  // A link target that stays on this site: a root-relative path, or https://host then a path, query or fragment.
+  const onSite = new RegExp(`^(?:/(?![/\\\\])|https://${escapeRe(vars.host)}(?:[/?#]|$))`);
   for (const rule of rules) {
     if (rule.kind !== "inject" || !rule.faces) continue;
     const face = rule.faces[vars.face];
@@ -94,8 +97,8 @@ export function rewritePage(body: string, rules: readonly CompiledRule[], vars: 
       if (!indices) continue;
       const placeOf = vars.face === "html" ? (places ??= placesOf(body)) : null;
       // On the HTML face the page's own bytes keep their meaning: groups lie in the match in page order, text
-      // the replacement drops is plain text, and inside a tag, script or style rule text only extends a link
-      // to this site (a ?ref= code). Any other match keeps the page's text.
+      // the replacement drops is plain text, and inside a tag or text-only element rule text only extends a
+      // link to this site (a ?ref= code). Any other match keeps the page's text.
       const end = match.index + match[0].length;
       const drops: Array<[number, number]> = [];
       let cursor = match.index;
@@ -117,9 +120,26 @@ export function rewritePage(body: string, rules: readonly CompiledRule[], vars: 
           pieces.push(before);
         } else {
           const place = segment.text ? placeOf?.(cursor) : null;
-          if (place && (place.tag || place.raw) && !linkEnd.test(before + segment.text)) {
-            safe = false;
-            break;
+          if (place && (place.tag || place.raw)) {
+            // Rule text may only extend a link to this site that starts in the page's own bytes, and add
+            // no `&` that could name an entity inside an attribute.
+            const link = linkEnd.exec(before + segment.text);
+            if (!(link && link.index < before.length && !segment.text.includes("&"))) {
+              safe = false;
+              break;
+            }
+          }
+          // On a text face a link the rule completes or adds, by itself or onto the page's own `](`, `]:` or `//`, must stay on this site.
+          if (!placeOf && segment.text) {
+            const context = before + segment.text;
+            for (const m of context.matchAll(/\]\(\s*([^)\s]*)|\]:[ \t]*\n?[ \t]*<?([^\s>]*)|(?:https?:)?\/\/[^\s)\]]*/g)) {
+              const target = m[1] ?? m[2] ?? m[0];
+              if (m.index + m[0].length > before.length && !onSite.test(target)) {
+                safe = false;
+                break;
+              }
+            }
+            if (!safe) break;
           }
           before = "";
           pieces.push(segment.text);

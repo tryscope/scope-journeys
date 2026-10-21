@@ -7,6 +7,7 @@ import { test } from "node:test";
 
 import { compilePolicy } from "../src/policy.js";
 import { rewritePage } from "../src/rules/inject.js";
+import { makeIo, runFixture, type Fixture } from "./harness.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const rule = (id: string): Record<string, unknown> => (POLICY.rules as Array<Record<string, unknown>>).find((r) => r.id === id) ?? {};
@@ -80,12 +81,17 @@ test("page content: a script, an attribute, a tag off the list, a partial tag or
     ["a backslash path", html('$1<p><a href="/\\evil.example/x">Install</a></p>')],
     ["a tab in a path", html('$1<p><a href="/\t/evil.example">Install</a></p>')],
     ["an entity in a path", html('$1<p><a href="/&#47;evil.example">Install</a></p>')],
+    ["a named entity in a path", html('$1<p><a href="/&sol;evil.example">Install</a></p>')],
     ["{prefix} at the start of a path", html('$1<p><a href="/{prefix}evil.example">Install</a></p>')],
     ["a protocol-relative link", html('$1<p><a href="//evil.example/install">Install</a></p>')],
     ["a script url", html('$1<p><a href="javascript:steal()">Install</a></p>')],
     ["a charset other than utf-8", html('$1<meta charset="ISO-2022-JP">')],
     ["a markdown link to another site", md("$1\n\n[Install](https://evil.example/install)\n")],
     ["a markdown script link", md("$1\n\n[Install](javascript:alert(1))\n")],
+    ["a markdown reference link to another site", md("$1\n\n[Guide][g]\n\n[g]: //other.example/guide\n")],
+    ["a reference definition in a block quote", md("$1\n\n> [g]: //other.example/guide\n")],
+    ["a reference definition in a list item", md("$1\n\n- [g]: //other.example/guide\n")],
+    ["a reference definition in an ordered list", md("$1\n\n1. [g]: //other.example/guide\n")],
     ["a frame in the helpful 404", { ...notfound, faces: { ...(notfound.faces as object), html: '<!doctype html><html><body><iframe src="https://evil.example"></iframe></body></html>' } }],
     ["a 404 page served as HTML from its md face", { ...notfound, faces: { md: "<script>alert(1)</script>" } }],
     ["a 404 face that is not a page", { ...notfound, faces: { html: null, md: "<script>alert(1)</script>" } }],
@@ -162,6 +168,24 @@ test("where a rewrite lands: inside a tag or an inline script only a code that e
     "<h1>Install</h1><p>Open https://acme.example/t/$1/docs</p>",
     "a $ in a filled value is text, not a group",
   );
+  const linked = '<script>var u = "https://acme.example/docs"</script>';
+  assert.equal(rewrite("(var u = )", '$1x + "https://{host}/docs', linked), linked, "rule text that only ends in a link to this site does not go into a script");
+  for (const element of ["title", "textarea"]) {
+    const page = `<${element}>Docs</${element}>`;
+    assert.equal(rewrite("(Docs)", `$1</${element}><p>Note</p><${element}>`, page), page, `inside a ${element}, rule text only extends a link`);
+  }
+  for (const element of ["noscript", "iframe", "xmp", "plaintext"]) {
+    const page = element === "plaintext" ? "<plaintext>Docs" : `<${element}>Docs</${element}>`;
+    assert.equal(rewrite("(Docs)", "$1<p>Note</p>", page), page, `inside <${element}> rule text only extends a link`);
+  }
+  const href = '<a href="https://acme.example/docs">x</a>';
+  assert.equal(rewrite("(https://{host}/docs)", "$1&x=1", href), href, "an & the rule adds inside an attribute is refused");
+  const mdLink = (pattern: string, replacement: string, page: string): string =>
+    rewritePage(page, only({ id: "r", kind: "inject", faces: { md: { pattern, replacement } } }).rules, { ...vars, face: "md" }).body;
+  assert.equal(mdLink("(\\]\\()", "$1//other.example", "[Install](x)"), "[Install](x)", "rule text cannot finish a page link off this site");
+  assert.equal(mdLink("(\\[[^\\]]*\\])", "$1(//other.example)", "see [docs] now"), "see [docs] now", "rule text cannot add the ( and url to a page's [label]");
+  assert.equal(mdLink("(\\[[^\\]]*\\])", "$1: //other.example", "see [g] now"), "see [g] now", "rule text cannot add a reference definition off this site");
+  assert.equal(mdLink("(https://{host}/docs)", "$1?ref={token}", "[Install](https://acme.example/docs)"), "[Install](https://acme.example/docs?ref=ABCD2345)", "a ref code still extends a markdown link to this site");
   const kept = rewritePage(classed, only({ id: "r", kind: "inject", faces: { html: { pattern: '(class="note)', replacement: "$1-wide" } } }).rules, vars);
   assert.deepEqual(kept.applied, [], "a rule whose every match keeps the page's text is not applied");
   const opened = '<img src="/logo.svg">';
@@ -184,4 +208,42 @@ test("the content checks take linear time on a hostile document", () => {
   rewritePage(`<h1>Install</h1>${'<a href="https://acme.example/docs/x">x</a>'.repeat(5_000)}`, only({ id: "r", kind: "inject", faces: { html: { pattern: "(https://{host}/docs/x)", replacement: "$1?ref={token}" } } }).rules, { host: "acme.example", token: "ABCD2345", face: "html", prefix: "" });
   only({ ...carry, faces: { ...faces, md: { ...faces.md, replacement: "a".repeat(200_000) + "://" } } });
   assert.ok(performance.now() - started < 500, `took ${Math.round(performance.now() - started)} ms`);
+});
+
+test("prose that merely contains ]: is not read as an off-site reference definition", () => {
+  const notfound = rule("notfound");
+  const page = "# Not here\n\nStatus [404]: Not Found. See [guide](https://{host}/docs).\n";
+  const compiled = only({ ...notfound, faces: { md: page } });
+  assert.equal(compiled.rules[0]?.mode, "live");
+  assert.deepEqual(compiled.notices, []);
+});
+
+test("a link may carry several query parameters", () => {
+  const error = rule("error-link");
+  const compiled = only({ ...error, links: { ...(error.links as object), "401": "/docs/auth?tab=keys&lang=en" } });
+  assert.equal(compiled.rules[0]?.mode, "live");
+  assert.deepEqual(compiled.notices, []);
+});
+
+test("an error rule whose route does not compile runs dry and leaves the API's error as the origin sent it", async () => {
+  const read = (file: string): unknown => JSON.parse(readFileSync(new URL(`../../../fixtures/synthetic/16-api-401-error-link/${file}`, import.meta.url), "utf8"));
+  const fixture = { name: "16-api-401-error-link", request: read("request.json"), upstream: read("upstream.json"), facts: read("facts.json"), policy: POLICY } as Fixture;
+  const policy = only({ ...rule("error-link"), route: "^/api/(v1" });
+  assert.equal(policy.rules[0]?.mode, "dry_run");
+  const result = await runFixture(fixture, makeIo({ upstream: fixture.upstream, salt: "fixture-salt", now: Date.parse("2026-10-10T12:00:00.000Z") }), policy);
+  assert.equal(result.response.status, 401);
+  assert.equal(result.response.body, fixture.upstream.body);
+});
+
+test("a dry-run rule whose pattern does not compile carries no faces or answers, so no live rule is disabled at request time", () => {
+  const rules = compilePolicy({ ...POLICY, forward: { headers: {} }, rules: [
+    { id: "live", kind: "inject", mode: "live", faces: { html: { pattern: "(<h1>[^<]*</h1>)", replacement: "$1<p>Note</p>" } } },
+    { id: "broken", kind: "inject", mode: "live", faces: { html: { pattern: "(", replacement: "$1" } } },
+  ] }).rules;
+  assert.equal(rules.find((r) => r.id === "broken")?.faces, null);
+  const out = rewritePage("<h1>Install</h1>", rules, { host: "acme.example", token: "ABCD2345", face: "html", prefix: "" });
+  assert.equal(out.body, "<h1>Install</h1><p>Note</p>");
+  assert.deepEqual(out.applied.map((a) => a.label), ["live"]);
+  const finder = only({ ...rule("finder"), answers: [{ match: "hook(", links: ["/docs/hooks"] }] }).rules[0];
+  assert.deepEqual(finder?.answers, []);
 });

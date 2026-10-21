@@ -44,7 +44,7 @@ async function gzip(text: string): Promise<ArrayBuffer> {
 }
 
 async function post(url: string, headers: Record<string, string>, body: ArrayBuffer, fetchFn: typeof fetch): Promise<Response> {
-  return fetchFn(url, { method: "POST", headers, body, signal: AbortSignal.timeout(10_000) });
+  return fetchFn(url, { method: "POST", headers, body, redirect: "manual", signal: AbortSignal.timeout(10_000) });
 }
 
 export async function deliver(records: readonly SensorRecord[], options: DeliveryOptions): Promise<void> {

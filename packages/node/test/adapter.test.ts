@@ -15,7 +15,7 @@ import { Hono } from "hono";
 
 import { DEFAULT_API_URL, resetPolicyCache } from "scope-journeys";
 
-import { canonicalAddress, createNodeHandler, fastifyJourneys, honoJourneys, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler } from "../src/index.js";
+import { canonicalAddress, createNodeHandler, deliver, droppedSoFar, fastifyJourneys, honoJourneys, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const INSTALL = "jin_test0000000000000000000000";
@@ -493,4 +493,19 @@ test("parseListen: host:port, :port, port, a bracketed IPv6 host; refuses the re
   assert.deepEqual(parseListen("[::1]:9000"), { host: "::1", port: 9000 });
   assert.throws(() => parseListen("eighty"), /not host:port/);
   assert.throws(() => parseListen(":70000"), /out of range/);
+});
+
+test("shipping follows no redirect: a redirected batch is dropped and counted", async () => {
+  resetDelivery();
+  const redirects: Array<RequestRedirect | undefined> = [];
+  const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    redirects.push(init?.redirect);
+    return new Response(null, { status: 307, headers: { location: "https://other.example/v1/requests" } });
+  }) as typeof fetch;
+  const log: string[] = [];
+  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
+  assert.deepEqual(redirects, ["manual"]);
+  assert.deepEqual(log, ["journeys: shipment refused with 307; dropping the batch"]);
+  assert.equal(droppedSoFar(), 1);
+  resetDelivery();
 });

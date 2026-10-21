@@ -63,7 +63,7 @@ export async function deliver(records: readonly SensorRecord[], options: Deliver
     let ok = false;
     for (let attempt = 0; attempt < 2 && !ok; attempt += 1) {
       try {
-        const response = await options.fetch(url, { method: "POST", headers, body, signal: AbortSignal.timeout(10_000) });
+        const response = await options.fetch(url, { method: "POST", headers, body, redirect: "manual", signal: AbortSignal.timeout(10_000) });
         if (response.ok) {
           ok = true;
           dropped = 0;

@@ -197,7 +197,8 @@ const compiles = (pattern: string): boolean => {
 
 /** A link that stays on the customer's site: `https://{host}`, optionally `{prefix}`, then a path, query or fragment; or a plain path. */
 const onCustomerSite = (url: string): boolean => {
-  if (/[\s\\&\u0000-\u001f\u007f]/.test(url)) return false;
+  // A character reference could spell a slash or a scheme inside an attribute; a plain `&` between query parameters cannot.
+  if (/[\s\\\u0000-\u001f\u007f]/.test(url) || /&(#|[A-Za-z][A-Za-z0-9]*;)/.test(url)) return false;
   if (url.startsWith("https://{host}")) return /^(\{prefix\})?([/?#]|$)/.test(url.slice("https://{host}".length));
   return /^\/(?![/\\])/.test(url) && !url.includes("{prefix}");
 };
@@ -205,7 +206,7 @@ const onCustomerSite = (url: string): boolean => {
 /**
  * Why text would send a reader off the customer's site, or null: a scheme followed by two slashes
  * or backslashes anywhere but `https://{host}` (then the end, a path, query, fragment or a word
- * break), a markdown link target off the site, or `{prefix}` anywhere but right after the host.
+ * break), a markdown link target or reference definition off the site, or `{prefix}` anywhere but right after the host.
  */
 function linkProblem(text: string): string | null {
   for (const m of text.matchAll(/:[\\/][\\/]/g)) {
@@ -218,6 +219,7 @@ function linkProblem(text: string): string | null {
   }
   for (const m of text.matchAll(/\{prefix\}/g)) if (!text.startsWith("https://{host}", m.index - "https://{host}".length)) return "{prefix} outside https://{host}{prefix}";
   for (const m of text.matchAll(/\]\(\s*([^)\s]*)/g)) if (!onCustomerSite(m[1] ?? "")) return "a link off the customer's site";
+  for (const m of text.matchAll(/^(?:[ \t]{0,3}(?:>|[-*+][ \t]+|\d{1,9}[.)][ \t]+))*[ \t]*\[[^\]\n]+\]:[ \t]*\n?[ \t]*<?([^\s>]*)/gm)) if (!onCustomerSite(m[1] ?? "")) return "a link off the customer's site";
   return null;
 }
 
@@ -331,14 +333,15 @@ function compileRule(raw: unknown, index: number, notices: string[]): CompiledRu
     environments,
     on_error: onError,
     label: typeof raw.label === "string" ? raw.label : raw.id,
-    faces: isRecord(raw.faces) ? (raw.faces as Record<string, FaceRewrite | string>) : null,
-    route: typeof raw.route === "string" ? raw.route : null,
+    faces: isRecord(raw.faces) && !(kind === "inject" && problem) ? (raw.faces as Record<string, FaceRewrite | string>) : null,
+    // An error route is compiled on every error answer: one that does not compile is no route.
+    route: typeof raw.route === "string" && (kind !== "error" || compiles(raw.route)) ? raw.route : null,
     form: raw.form === "instructions" || raw.form === "descriptions" ? raw.form : "tool",
     tool: isRecord(raw.tool) && typeof raw.tool.name === "string" ? (raw.tool as CompiledRule["tool"]) : null,
     acknowledgement: typeof raw.acknowledgement === "string" ? raw.acknowledgement : "",
     instructions: typeof raw.instructions === "string" ? raw.instructions : null,
     description_suffix: typeof raw.description_suffix === "string" ? raw.description_suffix : null,
-    answers: Array.isArray(raw.answers) ? (raw.answers as CompiledRule["answers"]) : [],
+    answers: Array.isArray(raw.answers) && !(kind === "finder" && problem) ? (raw.answers as CompiledRule["answers"]) : [],
     default_links: Array.isArray(raw.default_links) ? (raw.default_links as string[]) : [],
     links: isRecord(raw.links) ? (raw.links as Record<string, string>) : {},
     suffix: typeof raw.suffix === "string" ? raw.suffix : "",

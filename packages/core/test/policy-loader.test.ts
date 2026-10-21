@@ -57,6 +57,27 @@ test("without a credential nothing is fetched: the policy route answers only an 
   assert.equal((await loadPolicy({ url: URL_A, credential: "k", fetch: answers.fetch, now: 1_000, cache: null, log: () => undefined })).policy.version, 3, "the key, once set, fetches at once");
 });
 
+test("the settings fetch follows no redirect: a redirect keeps the settings held", async () => {
+  resetPolicyCache();
+  const inits: Array<RequestInit | undefined> = [];
+  const redirecting = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    inits.push(init);
+    return new Response(null, { status: 307, headers: { location: "https://other.example/policy" } });
+  }) as typeof fetch;
+  const log: string[] = [];
+  const state = await loadPolicy({ url: URL_A, credential: "k", fetch: redirecting, now: 0, cache: null, log: (l) => log.push(l) });
+  assert.equal(state.policy.version, 0);
+  assert.deepEqual(inits.map((i) => i?.redirect), ["manual"]);
+  assert.deepEqual(log, ["journeys: policy fetch answered 307; keeping the embedded default"]);
+});
+
+test("an empty credential is no credential", async () => {
+  resetPolicyCache();
+  const answers = serving(POLICY);
+  assert.equal((await loadPolicy({ url: URL_A, credential: "", fetch: answers.fetch, now: 0, cache: null, log: () => undefined })).policy.version, 0);
+  assert.deepEqual(answers.calls, []);
+});
+
 test("the salt epoch is a positive whole number or the last one seen", async () => {
   resetPolicyCache();
   const answers = serving({ ...POLICY, epoch: "4" }, { ...POLICY, epoch: "-1" }, { ...POLICY, epoch: "1.5" }, { ...POLICY, epoch: "7" });

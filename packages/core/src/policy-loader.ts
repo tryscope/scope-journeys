@@ -83,7 +83,7 @@ export interface LoadOptions {
 // and production.
 export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
   // The policy route answers only an install or a session: without a credential there is nothing to fetch.
-  const url = options.url === null || options.credential === null ? null : secureUrl(options.url, "the policy url", options.log);
+  const url = options.url === null || !options.credential ? null : secureUrl(options.url, "the policy url", options.log);
   const key = url ?? "default";
   const current = states.get(key);
   if (current && options.now - current.at < TTL_MS) return current;
@@ -100,7 +100,8 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
       states.set(key, warm);
       return warm;
     }
-    const response = await options.fetch(url, { headers, signal: AbortSignal.timeout(2_000) });
+    // A redirect is not followed: its target was never checked like the configured url.
+    const response = await options.fetch(url, { headers, redirect: "manual", signal: AbortSignal.timeout(2_000) });
     if (response.status === 304 && current) {
       const kept = { ...current, at: options.now };
       states.set(key, kept);
