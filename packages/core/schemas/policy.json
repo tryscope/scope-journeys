@@ -195,6 +195,7 @@
       }
     },
     "assertion": { "type": "object", "properties": { "enabled": { "type": "boolean", "default": false }, "audience": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": false },
+    "signers": { "type": "array", "items": { "type": "string" }, "default": ["https://crawler.exa.ai", "https://chatgpt.com"], "description": "the Web Bot Auth signers whose key directories the sensor fetches, each an exact https origin such as https://chatgpt.com (an entry that is not one is ignored and named in the notices); a signature from any other signer is recorded as unlisted_signer and causes no outbound request" },
     "destinations": { "type": "array", "items": { "type": "object", "properties": { "kind": { "type": "string", "enum": ["scope", "otlp", "webhook"] }, "url": { "type": "string" }, "headers": { "type": "object" }, "events": { "type": "array" } } } },
     "retention_days": { "type": "integer", "default": 90, "minimum": 30, "maximum": 400 },
     "salt_epoch": { "type": "integer", "default": 1, "minimum": 1 }

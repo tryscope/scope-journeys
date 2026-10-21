@@ -7,7 +7,7 @@ export function resetCache(): void {
   memory.clear();
 }
 
-/** The Next form's cache (architecture §7.2): module memory per instance, which Fluid Compute keeps warm. */
+/** The Next form's cache: module memory per instance, which Fluid Compute keeps warm. */
 export function memoryCache(now: () => number): IoCache {
   return {
     async get(key) {

@@ -7,7 +7,7 @@ export function resetCache(): void {
   memory.clear();
 }
 
-/** The Node form's cache (architecture §7.2): process memory; one process, one copy of the policy and the signers' directories. */
+/** The Node form's cache: process memory; one process, one copy of the policy and the signers' directories. */
 export function memoryCache(now: () => number): IoCache {
   return {
     async get(key) {

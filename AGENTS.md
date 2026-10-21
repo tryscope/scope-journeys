@@ -24,11 +24,12 @@ From the root: `npm run build && npm run typecheck && npm run lint && npm test` 
 
 ## How to work
 
-- Think before coding: state your assumptions, name what is unclear and ask, and say so when a simpler approach exists.
-- Build the minimum that solves the problem: no speculative features, options or abstractions.
-- Change only what the task needs. Leave unrelated code, comments and formatting alone; remove only what your own change made unused.
-- Turn the task into a check you can run (a failing test, a command), then work until it passes.
+- Think before coding: state your assumptions, name what is unclear and ask, and say so when a simpler approach exists. When a request can be read more than one way, lay out the readings instead of picking one silently.
+- Build the minimum that solves the problem: no speculative features, options or abstractions, and no code for a case the types or an earlier check already rule out (untrusted input and I/O failures are never such a case).
+- Change only what the task needs. Leave unrelated code, comments and formatting alone; remove only what your own change made unused. Unrelated dead code you notice goes in your report, not out of the code.
+- Turn the task into a check you can run (a failing test, a command), then work until it passes. For a task of several steps, state the plan with the check for each step.
 - Search the code before saying that a function, file or option exists.
+- Before saying a task is done, report the files changed, the commands run, how the change was verified and what risk remains.
 
 ## This repository is public
 

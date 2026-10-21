@@ -2,11 +2,11 @@ import type { Io } from "./io.js";
 
 /**
  * Web Bot Auth (RFC 9421 HTTP message signatures with a `Signature-Agent`), verified in the sensor
- * against the host the agent spoke to (architecture §14.4, decision 12): the operator names itself
- * and signs the request with a key it publishes in its directory. Behind a sensor the authority is
- * the sensor's host, never the origin's, which is why the verifier lives here.
+ * against the host the agent spoke to: the operator names itself and signs the request with a key
+ * it publishes in its directory. Behind a sensor the authority is the sensor's host, never the
+ * origin's, which is why the verifier lives here.
  */
-export type SignatureReason = "verified" | "expired" | "not_yet_valid" | "unknown_key" | "directory_unreachable" | "bad_signature" | "unsupported_alg" | "authority_mismatch";
+export type SignatureReason = "verified" | "expired" | "not_yet_valid" | "unknown_key" | "directory_unreachable" | "bad_signature" | "unsupported_alg" | "authority_mismatch" | "unlisted_signer";
 
 export interface SignatureResult {
   agent: string;
@@ -32,14 +32,8 @@ const DIRECTORY_TTL_SECONDS = 3600;
 const NEGATIVE_TTL_SECONDS = 60;
 const CLOCK_SKEW_SECONDS = 60;
 
-/** The directory the agent names: its origin, or the directory URL itself when it says so. */
-export function directoryUrl(agent: string): string {
-  const origin = agent.replace(/^"|"$/g, "").replace(/\/$/, "");
-  return origin.endsWith("/http-message-signatures-directory") ? origin : `${origin}${DIRECTORY_PATH}`;
-}
-
-async function keysOf(agent: string, io: Pick<Io, "forward" | "cache">): Promise<Jwk[] | null> {
-  const url = directoryUrl(agent);
+async function keysOf(signer: string, io: Pick<Io, "forward" | "cache">): Promise<Jwk[] | null> {
+  const url = `${signer}${DIRECTORY_PATH}`;
   const key = `webbotauth:${url}`;
   const cached = await io.cache.get(key);
   if (cached !== null) return (JSON.parse(cached) as { keys: Jwk[] | null }).keys;
@@ -80,13 +74,13 @@ async function importKey(jwk: Jwk, alg: string | null): Promise<{ key: CryptoKey
 }
 
 /**
- * Verify the request's signature against `authority`, the host it arrived on. When the signature
- * does not hold there but holds for one of `candidates` (the host a proxy in front named), the
- * reason is `authority_mismatch`: a good signature for a host this sensor does not serve, which is
- * the Program 9 finding (102 of 102 false mismatches at the origin, 44 of 44 verified at the host
- * the agent spoke to).
+ * Verify the request's signature against `authority`, the host it arrived on. Only a signer in
+ * `signers` (exact https origins) is fetched: the header picks an entry and never becomes the URL.
+ * When the signature does not hold at `authority` but holds for one of `candidates` (the host a
+ * proxy in front named), the reason is `authority_mismatch`: a good signature for a host this
+ * sensor does not serve, since behind another host every signature fails.
  */
-export async function verifyWebBotAuth(headers: Headers, method: string, authority: string, io: Pick<Io, "forward" | "cache" | "now">, candidates: readonly string[] = []): Promise<SignatureResult> {
+export async function verifyWebBotAuth(headers: Headers, method: string, authority: string, signers: readonly string[], io: Pick<Io, "forward" | "cache" | "now">, candidates: readonly string[] = []): Promise<SignatureResult> {
   const agent = (headers.get("signature-agent") ?? "").replace(/^"|"$/g, "");
   const input = headers.get("signature-input") ?? "";
   const signature = headers.get("signature") ?? "";
@@ -95,6 +89,8 @@ export async function verifyWebBotAuth(headers: Headers, method: string, authori
   const listed = /^\(([^)]*)\)/.exec(params);
   const keyid = /keyid="([^"]+)"/.exec(params)?.[1] ?? null;
   if (!agent || !listed || !signature) return { agent, keyid, valid: false, reason: "bad_signature", authority };
+  const signer = signers.find((s) => agent === s || agent === `${s}/` || agent === `${s}${DIRECTORY_PATH}`);
+  if (!signer) return { agent, keyid, valid: false, reason: "unlisted_signer", authority };
   const components = [...(listed[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1] ?? "");
   const value = (component: string, host: string): string | null => (component === "@authority" ? host : component === "@method" ? method.toUpperCase() : headers.get(component));
   if (components.some((c) => value(c, authority) === null)) return { agent, keyid, valid: false, reason: "bad_signature", authority };
@@ -105,7 +101,7 @@ export async function verifyWebBotAuth(headers: Headers, method: string, authori
   const now = io.now() / 1000;
   if (created && now < created - CLOCK_SKEW_SECONDS) return { agent, keyid, valid: false, reason: "not_yet_valid", authority };
   if (expires && now > expires) return { agent, keyid, valid: false, reason: "expired", authority };
-  const keys = await keysOf(agent, io);
+  const keys = await keysOf(signer, io);
   if (keys === null) return { agent, keyid, valid: false, reason: "directory_unreachable", authority };
   const jwk = keys.find((k) => k.kid === keyid);
   if (!jwk) return { agent, keyid, valid: false, reason: "unknown_key", authority };

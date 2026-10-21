@@ -4,7 +4,7 @@
  */
 export { observe, finish, PROBE_PATH, PROBE_HEADER, type Observation, type State } from "./observe.js";
 export { observeResponse, type Responded } from "./respond.js";
-export { verifyWebBotAuth, directoryUrl, DIRECTORY_PATH, type SignatureReason, type SignatureResult } from "./webbotauth.js";
+export { verifyWebBotAuth, DIRECTORY_PATH, type SignatureReason, type SignatureResult } from "./webbotauth.js";
 export { agentName, assertionClaims, assertionFromEnv, importAssertionKey, resetAssertionKeys, signAssertion, ASSERTION_HEADER, AGENT_HEADER, ASSERTION_TYP, ASSERTION_TTL_SECONDS, type AgentName, type AssertionClaims } from "./assertion.js";
 export { compilePolicy, defaultPolicy, effectiveMode, fieldNames, fill, PolicyError, type BodyMatch, type CompiledPolicy, type CompiledRule, type CompiledSurfaces, type Face, type FieldNames, type Mode, type Route, type RuleKind } from "./policy.js";
 export { classifyRoute, classifyReader, isTextFace, requestedFace, servedFace, READER_TABLE, AGENT_READERS, type Reader, type RouteInfo, type FetchMetadata } from "./classify.js";

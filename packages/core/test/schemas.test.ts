@@ -10,11 +10,11 @@ import { test } from "node:test";
 
 import { DECLARATION_SCHEMA, POLICY_SCHEMA, RECORD_SCHEMA } from "../src/record.js";
 import { findSecretShapedValues, validatePolicy, validateRecord } from "../src/validate.js";
-import { defaultPolicy } from "../src/policy.js";
+import { compilePolicy, defaultPolicy } from "../src/policy.js";
 
 const CORE = new URL("../", import.meta.url).pathname;
 const ROOT = join(CORE, "..", "..");
-const schema = (name: string): { $id: string; properties: Record<string, { const?: string }> } => JSON.parse(readFileSync(join(CORE, "schemas", `${name}.json`), "utf8"));
+const schema = (name: string): { $id: string; properties: Record<string, { const?: string; default?: unknown }> } => JSON.parse(readFileSync(join(CORE, "schemas", `${name}.json`), "utf8"));
 
 /** `scope.<name>/<major>` from a schema's `$id` `https://journeys.tryscope.com/schemas/journeys/<major>/<name>`. */
 const schemaIdOf = (id: string): string => {
@@ -29,6 +29,10 @@ test("the record, declaration and policy schema ids equal their files' $id", () 
   assert.equal(schema("request").properties.schema?.const, RECORD_SCHEMA);
   assert.equal(schema("declaration").properties.schema?.const, DECLARATION_SCHEMA);
   assert.equal(schema("policy").properties.schema?.const, POLICY_SCHEMA);
+});
+
+test("the policy schema documents the signers the compiler applies when a policy names none", () => {
+  assert.deepEqual(schema("policy").properties.signers?.default, compilePolicy(defaultPolicy).signers);
 });
 
 // The generator writes into a scratch directory, never into src/generated: the other test files run

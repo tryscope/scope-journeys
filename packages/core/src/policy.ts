@@ -6,7 +6,7 @@ export type Route = ScopePolicy1["surfaces"] extends infer S ? S extends { custo
 export type RuleKind = "inject" | "gate" | "finder" | "notfound" | "error" | "face";
 export const RULE_KINDS: readonly RuleKind[] = ["inject", "gate", "finder", "notfound", "error", "face"];
 /** The sections of scope.policy/1 this sensor reads; any other is ignored and named in the notices (DEPRECATION.md). */
-export const POLICY_SECTIONS: readonly string[] = ["schema", "version", "about", "origin", "report", "routes", "surfaces", "secrets", "headers", "forward", "record_bodies", "observe", "rules", "assertion", "destinations", "retention_days", "salt_epoch"];
+export const POLICY_SECTIONS: readonly string[] = ["schema", "version", "about", "origin", "report", "routes", "surfaces", "secrets", "headers", "forward", "record_bodies", "observe", "rules", "assertion", "signers", "destinations", "retention_days", "salt_epoch"];
 export type Mode = "dry_run" | "live";
 
 export class PolicyError extends Error {
@@ -88,6 +88,8 @@ export interface CompiledPolicy {
   headers: { credential: string; session: string; reference: string[]; install: string | null; setup: string | null; agent: string | null; client: string | null; intent: string | null; signature: string };
   forward: { headers: Record<string, string>; key_header: string | null };
   recordBodies: boolean;
+  /** The Web Bot Auth signers whose key directories the sensor fetches: exact https origins. */
+  signers: string[];
   /** The signed assertion on the hop to the origin: off by default; `audience` null means every host this sensor fronts. */
   assertion: { enabled: boolean; audience: string[] | null };
   rules: CompiledRule[];
@@ -247,6 +249,22 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
   const nullable = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
   const rules = Array.isArray(raw.rules) ? raw.rules.map(compileRule) : [];
   for (const rule of rules) if (rule.kind === "unknown") notices.push(`rule ${rule.id}: kind ${rule.unknown_kind} is not implemented by this sensor; it runs dry`);
+  let signers = ["https://crawler.exa.ai", "https://chatgpt.com"];
+  if (Array.isArray(raw.signers)) {
+    signers = [];
+    for (const entry of raw.signers) {
+      let origin: string | null = null;
+      if (typeof entry === "string" && entry.startsWith("https://")) {
+        try {
+          origin = new URL(entry).origin;
+        } catch {
+          origin = null;
+        }
+      }
+      if (origin !== null && origin === entry) signers.push(origin);
+      else notices.push(`signers entry ignored: ${JSON.stringify(entry)} is not an exact https origin`);
+    }
+  } else if (raw.signers !== undefined) notices.push("signers ignored: not a list");
   return {
     document: raw as unknown as ScopePolicy1,
     version,
@@ -283,6 +301,7 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
       key_header: nullable(forward.key_header),
     },
     recordBodies: raw.record_bodies === true,
+    signers,
     rules,
     notices,
   };
