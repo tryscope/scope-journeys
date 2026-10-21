@@ -253,8 +253,16 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
   if (Array.isArray(raw.signers)) {
     signers = [];
     for (const entry of raw.signers) {
-      if (typeof entry === "string" && /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*(:\d{1,5})?$/.test(entry)) signers.push(entry);
-      else notices.push(`signers entry ignored: ${JSON.stringify(entry)} is not an https origin`);
+      let origin: string | null = null;
+      if (typeof entry === "string" && entry.startsWith("https://")) {
+        try {
+          origin = new URL(entry).origin;
+        } catch {
+          origin = null;
+        }
+      }
+      if (origin !== null && origin === entry) signers.push(origin);
+      else notices.push(`signers entry ignored: ${JSON.stringify(entry)} is not an exact https origin`);
     }
   } else if (raw.signers !== undefined) notices.push("signers ignored: not a list");
   return {

@@ -83,16 +83,18 @@ test("the policy's signers: absent means the built-in list, a list replaces it, 
   assert.deepEqual(compilePolicy(document({})).notices, []);
   assert.deepEqual(compilePolicy(document({ signers: ["https://signer.example"] })).signers, ["https://signer.example"]);
   assert.deepEqual(compilePolicy(document({ signers: [] })).signers, []);
-  const mixed = compilePolicy(document({ signers: ["https://ok.example", "http://plain.example", "https://slash.example/", "https://path.example/x", "https://Upper.example", "https://user@at.example", "https://ok.example#x", 7] }));
-  assert.deepEqual(mixed.signers, ["https://ok.example"]);
+  const mixed = compilePolicy(document({ signers: ["https://ok.example", "https://ok.example:8443", "https://[2001:db8::1]:8443", "http://plain.example", "https://slash.example/", "https://path.example/x", "https://Upper.example", "https://user@at.example", "https://ok.example#x", "https://ok.example:99999", "https://ok.example:443", 7] }));
+  assert.deepEqual(mixed.signers, ["https://ok.example", "https://ok.example:8443", "https://[2001:db8::1]:8443"]);
   assert.deepEqual(mixed.notices, [
-    'signers entry ignored: "http://plain.example" is not an https origin',
-    'signers entry ignored: "https://slash.example/" is not an https origin',
-    'signers entry ignored: "https://path.example/x" is not an https origin',
-    'signers entry ignored: "https://Upper.example" is not an https origin',
-    'signers entry ignored: "https://user@at.example" is not an https origin',
-    'signers entry ignored: "https://ok.example#x" is not an https origin',
-    "signers entry ignored: 7 is not an https origin",
+    'signers entry ignored: "http://plain.example" is not an exact https origin',
+    'signers entry ignored: "https://slash.example/" is not an exact https origin',
+    'signers entry ignored: "https://path.example/x" is not an exact https origin',
+    'signers entry ignored: "https://Upper.example" is not an exact https origin',
+    'signers entry ignored: "https://user@at.example" is not an exact https origin',
+    'signers entry ignored: "https://ok.example#x" is not an exact https origin',
+    'signers entry ignored: "https://ok.example:99999" is not an exact https origin',
+    'signers entry ignored: "https://ok.example:443" is not an exact https origin',
+    "signers entry ignored: 7 is not an exact https origin",
   ]);
   const notList = compilePolicy(document({ signers: "https://signer.example" }));
   assert.deepEqual(notList.signers, builtIn);
