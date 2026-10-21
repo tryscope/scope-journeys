@@ -1,7 +1,7 @@
 import { compilePolicy, defaultPolicy, type CompiledPolicy, type IoCache } from "scope-journeys";
 
 /**
- * The policy as the Worker runs it (architecture §7.2 step 1): fetched with If-None-Match, held
+ * The policy as the Worker runs it: fetched with If-None-Match, held
  * 60 seconds in the isolate, the document kept in the shared cache so a new isolate starts warm,
  * the last good document kept on any failure, the embedded forward-only default when nothing ever
  * loaded. A fetch never takes more than 2 seconds and never throws to the request path.
@@ -52,7 +52,7 @@ async function stored(cache: IoCache | null, url: string): Promise<StoredPolicy 
 }
 
 // A policy answer without the environment or epoch header (an old API) keeps the last value seen;
-// before any answer the adapter stamps epoch 1 and production (plan J3.9).
+// before any answer the adapter stamps epoch 1 and production.
 export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
   const { url, now } = options;
   if (state && now - state.at < TTL_MS) return state;

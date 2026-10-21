@@ -1,7 +1,8 @@
-// V2 on Node: every synthetic fixture through the core with the in-memory Io, the masked canonical
-// records and response compared with expected.json, the actual output written to
-// test/identity/out/node/<nn>.json for the identity test. FIXTURES_WRITE=1 (re)writes expected.json
-// after a reviewed change of the core; a generated expectation nobody read is not an expectation.
+// The fixture comparison on Node: every synthetic fixture through the core with the in-memory Io,
+// the masked canonical records and response compared with expected.json, the actual output written
+// to test/identity/out/node/<nn>.json for the identity test. FIXTURES_WRITE=1 (re)writes
+// expected.json after a reviewed change of the core; a generated expectation nobody read is not an
+// expectation.
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

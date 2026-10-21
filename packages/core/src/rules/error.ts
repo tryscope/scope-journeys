@@ -3,7 +3,7 @@ import { fill, type CompiledRule } from "../policy.js";
 /**
  * The error link: the product's own error message on a status the rule names gains "Guide: <link>"
  * with a reference minted here and recorded against this call's credential, so a read of that
- * guide joins this journey exactly (architecture §9, Program 8).
+ * guide joins this journey exactly.
  */
 export function errorLink(rule: CompiledRule, json: unknown, status: number, host: string, prefix: string, token: string): string | null {
   const link = rule.links[String(status)];

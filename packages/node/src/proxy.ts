@@ -39,7 +39,7 @@ export function parseListen(value: string): { host: string | undefined; port: nu
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * The standalone proxy (plan J5.1 step 4): one http.Server on the handler, plain HTTP (TLS is the
+ * The standalone proxy: one http.Server on the handler, plain HTTP (TLS is the
  * load balancer's job in front; a proxy that terminated TLS would hold a private key the sensor
  * never needs), forwarding to `--origin`. SIGTERM drains: no new connections, in-flight requests
  * complete, their shipments go out, then the process exits.

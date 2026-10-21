@@ -28,11 +28,11 @@ const installCommand = (pm: NodeProject["packageManager"], dependency: string): 
   return ["npm", ["install", dependency]];
 };
 
-/** The variables a deployment needs beside the ones `init` wrote, which only the person knows (plan J5.1 step 5). */
+/** The variables a deployment needs beside the ones `init` wrote, which only the person knows. */
 export const DEPLOYMENT_LINES = ["JOURNEYS_TRUST_PROXY=1   # when a load balancer or a CDN sits in front of the app, so the client's address is read from x-forwarded-for", "JOURNEYS_ORIGIN=http://127.0.0.1:<port>   # only when the app does not answer on the port the request arrived on"];
 
 /**
- * `journeys init --node` (plan J5.1 step 5): the framework from package.json, the mount written
+ * `journeys init --node`: the framework from package.json, the mount written
  * into the entry file (or the two lines printed), the dependency, one call to Scope for the
  * install, the salt and the variables in `.env.local`, the lines the deployment still needs.
  */

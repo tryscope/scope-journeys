@@ -1,4 +1,4 @@
-// J5.1 on Node: the socket's facts (the trusted forwarded address, the dual-stack prefix, the
+// The Node form: the socket's facts (the trusted forwarded address, the dual-stack prefix, the
 // family), the three mounts end to end (Express 5, Fastify 5, Hono 4 on @hono/node-server) with
 // the hop to the app's own listener marked and carrying exactly the gateway's headers, the pass
 // paths (the inner hop, an unobserved host, a failed hop), the standalone proxy's drain (a request

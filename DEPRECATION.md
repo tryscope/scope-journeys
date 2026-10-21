@@ -1,6 +1,6 @@
 # Deprecation
 
-How a breaking change reaches a sensor in the field (architecture section 10.5): it deprecates first and keeps the old path for two minor versions, so a customer who updates on their own cadence never meets a hard break without two releases of notice.
+How a breaking change reaches a sensor in the field: it deprecates first and keeps the old path for two minor versions, so a customer who updates on their own cadence never meets a hard break without two releases of notice.
 
 ## The policy
 

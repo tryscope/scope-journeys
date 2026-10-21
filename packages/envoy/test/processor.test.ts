@@ -1,11 +1,11 @@
-// J5.2 without Docker: every synthetic fixture through the processor over real gRPC, driven by a
-// stand-in for Envoy that speaks the ext_proc stream as Envoy does (request headers, the body when
-// BUFFERED was asked, the response headers, the body in the mode asked, each mutation applied to
-// what it holds). What the origin would receive and what the client would receive are compared
-// with expected.json under the identity mask, with the form's stated allowances: the facts the
-// stream cannot give, and a streamed body forwarded unamended (expected.envoy.json for the three
-// server-sent-event fixtures the gate would have amended). The compose test under test/envoy runs
-// the same fixtures through the real Envoy.
+// The Envoy processor without Docker: every synthetic fixture through the processor over real gRPC,
+// driven by a stand-in for Envoy that speaks the ext_proc stream as Envoy does (request headers,
+// the body when BUFFERED was asked, the response headers, the body in the mode asked, each mutation
+// applied to what it holds). What the origin would receive and what the client would receive are
+// compared with expected.json under the identity mask, with the form's stated allowances: the facts
+// the stream cannot give, and a streamed body forwarded unamended (expected.envoy.json for the
+// three server-sent-event fixtures the gate would have amended). The compose test under test/envoy
+// runs the same fixtures through the real Envoy.
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -197,7 +197,7 @@ for (const name of names) {
       };
       if (!existsSync(expectedPath)) {
         writeFileSync(expectedPath, `${JSON.stringify({ response: actual.response, forwarded: actual.forwarded, records: actual.records }, null, 2)}\n`);
-        assert.fail(`${name}: ${expectedPath.split("/").pop()} was absent and has been written; review it against the plan's J5.2 (the stream forwarded unamended, the decision skipped with streamed_body) and commit it`);
+        assert.fail(`${name}: ${expectedPath.split("/").pop()} was absent and has been written; review it (the stream forwarded unamended, the decision skipped with streamed_body) and commit it`);
       }
       const expected = JSON.parse(readFileSync(expectedPath, "utf8")) as { response: { status: number; headers: Record<string, string>; body: string }; forwarded: Captured[]; records: Array<Record<string, unknown>> };
       const wanted = {

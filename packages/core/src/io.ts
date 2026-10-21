@@ -5,7 +5,7 @@ export type SensorRecord = ScopeRequest1 | ScopeDeclaration1;
 export type LogLevel = "info" | "warn" | "error";
 
 /**
- * The one cache contract (architecture §7.2): the policy document and the signers' key directories
+ * The one cache contract: the policy document and the signers' key directories
  * live here. The Worker binds the Cache API with isolate memory in front; the Next form binds
  * module memory. A value is a string; an expired or absent key reads as null.
  */

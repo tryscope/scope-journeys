@@ -1,5 +1,6 @@
-// V2's last line: the Node run and the workerd run of every fixture, byte for byte, under the
-// volatile mask; and the latency assertion (p95 under 5 ms per interaction on both runtimes).
+// The last check of the fixture comparison: the Node run and the workerd run of every fixture, byte
+// for byte, under the volatile mask; and the latency assertion (p95 under 5 ms per interaction on
+// both runtimes).
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";

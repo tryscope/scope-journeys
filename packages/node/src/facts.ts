@@ -52,7 +52,7 @@ export function socketFacts(req: IncomingMessage, trustProxy: boolean): SocketFa
 }
 
 /**
- * The facts of the Node form (architecture §8, the Node row): the socket's, the platform's request
+ * The facts of the Node form: the socket's, the platform's request
  * id from `x-request-id` when a load balancer set one, and nulls for what only a CDN knows (the AS
  * number, the country, the colo, JA4, the TLS fingerprint). Joins lose nothing; the behaviour
  * columns lose the network kind.

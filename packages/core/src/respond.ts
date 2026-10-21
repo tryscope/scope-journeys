@@ -51,11 +51,11 @@ function deferredBody(status: number, headers: Headers, body: Promise<Uint8Array
 }
 
 /**
- * Step 9 of the request path (architecture §7.2): the status and the headers the stitcher needs,
- * then by kind: a server-sent event stream through the gate frame by frame; a page with a reference
- * minted for this serve and the inject rules per face; the helpful 404; an observed JSON answer
- * amended by the gate or the error rule; everything else passed through. The response's status and
- * headers are decided here and now; a body a rule may rewrite arrives when the rewrite is done.
+ * The response side: the status and the headers the stitcher needs, then by kind: a server-sent
+ * event stream through the gate frame by frame; a page with a reference minted for this serve and
+ * the inject rules per face; the helpful 404; an observed JSON answer amended by the gate or the
+ * error rule; everything else passed through. The response's status and headers are decided here
+ * and now; a body a rule may rewrite arrives when the rewrite is done.
  */
 export function observeResponse(upstream: Response, state: State): Responded {
   const { record, io } = state;

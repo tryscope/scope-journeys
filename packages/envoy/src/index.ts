@@ -1,5 +1,5 @@
 /**
- * Scope Journeys as an Envoy external processor (architecture §8, the ext_proc row): a gRPC
+ * Scope Journeys as an Envoy external processor: a gRPC
  * service implementing `envoy.service.ext_proc.v3.ExternalProcessor` whose stream receives the
  * request's headers and body and the response's headers and body, and answers each with a
  * mutation or an immediate response. The core is `scope-journeys`; this package binds it to

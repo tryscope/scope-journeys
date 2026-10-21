@@ -141,7 +141,7 @@ const stderr = (level: LogLevel, line: string): void => {
 };
 
 /**
- * The core as an external processor (plan J5.2): `observe` runs when the request's body message
+ * The core as an external processor: `observe` runs when the request's body message
  * arrives (or the headers message when the route needs no body), `observeResponse` when the
  * response's body message arrives; a forward outcome becomes a header (and body) mutation, an
  * answer outcome an immediate response. A server-sent event stream is forwarded as it arrives and
@@ -463,7 +463,7 @@ export interface RunningServer {
   closed: Promise<void>;
 }
 
-/** The gRPC server on `JOURNEYS_EXT_PROC_LISTEN` (plan J5.2 step 1): one `Process` stream per HTTP request. */
+/** The gRPC server on `JOURNEYS_EXT_PROC_LISTEN`: one `Process` stream per HTTP request. */
 export async function serveExtProc(options: ServerOptions = {}): Promise<RunningServer> {
   const pending = new Set<Promise<void>>();
   const log = options.log ?? stderr;

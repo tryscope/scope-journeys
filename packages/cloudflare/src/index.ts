@@ -10,7 +10,7 @@ export { platformFacts } from "./facts.js";
 export { deliver, resetDelivery } from "./deliver.js";
 import { deliver, droppedSoFar } from "./deliver.js";
 
-/** The Worker's bindings (Appendix G.1). The two secrets are `wrangler secret put`; the rest are `[vars]`. */
+/** The Worker's bindings. The two secrets are `wrangler secret put`; the rest are `[vars]`. */
 export interface Bindings {
   JOURNEYS_INSTALL_ID?: string;
   JOURNEYS_INSTALL_KEY?: string;
@@ -61,7 +61,7 @@ const hex = (bytes: ArrayBuffer): string => [...new Uint8Array(bytes)].map((b) =
 const warnedNoSalt = new Set<string>();
 
 /**
- * The Worker form of the sensor (architecture §8): `passThroughOnException` first, the policy from
+ * The Worker form of the sensor: `passThroughOnException` first, the policy from
  * the cache, the platform's facts from `request.cf`, the hop to the origin, shipping after the
  * response in `waitUntil`. Every failure is open: the request reaches the origin untouched.
  */
@@ -84,7 +84,7 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
       let policy: CompiledPolicy = loaded.policy;
       const salt = b.JOURNEYS_SALT;
       if (!salt) {
-        // The error is the onboarding (architecture §16.1): without a salt nothing can be hashed, so
+        // The error is the onboarding: without a salt nothing can be hashed, so
         // the Worker runs the forward-only default and says so once per isolate, never throws.
         if (!warnedNoSalt.has(name)) {
           warnedNoSalt.add(name);

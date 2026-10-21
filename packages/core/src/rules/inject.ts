@@ -5,7 +5,7 @@ export interface Rewrite {
   applied: Array<{ rule: CompiledRule; label: string }>;
 }
 
-/** A page rule: a pattern and a replacement per face, with {host}, {prefix} and {token} filled in (the carriers of architecture §9). */
+/** A page rule: a pattern and a replacement per face, with {host}, {prefix} and {token} filled in. */
 export function rewritePage(body: string, rules: readonly CompiledRule[], vars: { host: string; token: string; face: Face; prefix: string }): Rewrite {
   const applied: Rewrite["applied"] = [];
   for (const rule of rules) {

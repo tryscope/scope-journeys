@@ -37,7 +37,7 @@ export interface RotateReport {
 const OVERLAP_DAYS = 7;
 
 /**
- * `journeys rotate-assertion-key` (plan J3.4 step 6): a new ES256 pair, its public half registered
+ * `journeys rotate-assertion-key`: a new ES256 pair, its public half registered
  * through `POST /v1/installs/{id}` (Scope keeps the previous one seven days), its private half
  * written where `init` wrote the first one, the overlap deadline printed. Every six weeks.
  */

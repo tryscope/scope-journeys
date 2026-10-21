@@ -10,12 +10,12 @@ import { test } from "node:test";
 const BASE = (process.env.DOCS_URL ?? "http://127.0.0.1:3917").replace(/\/$/, "");
 const DOCS = new URL("../", import.meta.url).pathname;
 const PAGES = JSON.parse(readFileSync(join(DOCS, "lib", "pages.json"), "utf8"));
-// The pages the plan names (J2.7 step 1); the registry must carry each of them.
+// The pages the docs site must ship; the registry must carry each of them.
 const REQUIRED = ["", "install/next", "install/cloudflare", "install/node", "install/envoy", "install/connectors", "install/agent", "doctor", "claim", "data-handling", "telemetry", "policy", "cli", "api", "security", "changelog", "exports", "the-loop"];
 const mdPath = (p) => (p.slug === "" ? "/index.md" : `/${p.slug}.md`);
 const htmlPath = (p) => (p.slug === "" ? "/" : `/${p.slug}`);
 
-test("the registry carries every page the plan names", () => {
+test("the registry carries every page the docs site must ship", () => {
   for (const slug of REQUIRED) assert.ok(PAGES.some((p) => p.slug === slug), `page ${slug || "/"} missing from lib/pages.json`);
 });
 

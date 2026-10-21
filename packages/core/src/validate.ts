@@ -25,7 +25,7 @@ const LONG_RUN = /[A-Za-z0-9_-]{32,}/;
 /**
  * Every string in a document that looks like a secret: a known key prefix, a JWT, or a long
  * base64url run under a field whose name says key, secret, token or password. The policy is
- * public and may hold none (architecture §7.4); the CLI, the ingest and the privacy test all
+ * public and may hold none; the CLI, the ingest and the privacy test all
  * refuse on a finding.
  */
 export function findSecretShapedValues(document: unknown, path = ""): Finding[] {

@@ -1,6 +1,6 @@
-// V10, test two: the shape-hash leak test, Program 5's finding made permanent (redaction by field
-// name leaked 435 signed values; by value shape, 0). Twelve values of the toy product's signed shape
-// are planted in a path segment, query values, JSON body fields under names the field list does not
+// The shape-hash leak test: redaction by field name misses signed values under unexpected field
+// names; redaction by value shape catches them. Twelve values of the toy product's signed shape are
+// planted in a path segment, query values, JSON body fields under names the field list does not
 // know, a form body, a Location header and an error message body, and in a text and an HTML body;
 // no record may carry any of them raw, and each is hashed where its field is recorded.
 import assert from "node:assert/strict";

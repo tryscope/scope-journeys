@@ -1,4 +1,4 @@
-// J3.4: the assertion on the hop to the origin, run through the harness on fixture 30: the JWS
+// The assertion on the hop to the origin, run through the harness on fixture 30: the JWS
 // verifies against the fixture's public key, the claims are the expected ones, the agent header
 // rides beside it; the agent name by how it was named; no key means one errored decision.
 import assert from "node:assert/strict";

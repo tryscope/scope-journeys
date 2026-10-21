@@ -1,5 +1,5 @@
 /**
- * The proxy file `init` writes or wraps (plan J2.1 step 4). The wrap is conservative on purpose:
+ * The proxy file `init` writes or wraps. The wrap is conservative on purpose:
  * it handles the two default-export shapes a Next proxy file has (`export default function name`
  * and `export default <expression>` on one statement) and a `config.matcher` array literal, and
  * refuses everything else so the person edits by hand (exit 3) rather than trusting a rewrite of

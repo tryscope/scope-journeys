@@ -1,8 +1,8 @@
-// J5.1 step 4 through the built bin, as a customer runs it: `journeys proxy --origin --listen`
-// fronts a toy origin, the hop carries the gateway's headers, the record ships to the ingest named
-// by .env.local in the working directory, and a SIGTERM during a request lets the response complete
-// and the record ship before the process exits 0. Needs `npm run build` (the core's bin and the
-// Node adapter's dist); CI builds before it tests.
+// The standalone proxy through the built bin, as a customer runs it: `journeys proxy --origin
+// --listen` fronts a toy origin, the hop carries the gateway's headers, the record ships to the
+// ingest named by .env.local in the working directory, and a SIGTERM during a request lets the
+// response complete and the record ship before the process exits 0. Needs `npm run build` (the
+// core's bin and the Node adapter's dist); CI builds before it tests.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";

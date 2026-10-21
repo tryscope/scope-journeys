@@ -14,7 +14,7 @@ interface NodeAdapter {
 const isModuleNotFound = (error: unknown): boolean => error instanceof Error && ((error as { code?: unknown }).code === "ERR_MODULE_NOT_FOUND" || /Cannot find (?:module|package)/.test(error.message));
 
 /**
- * `journeys proxy --origin <url> --listen :8080 [--trust-proxy]` (plan J5.1 step 4): the standalone
+ * `journeys proxy --origin <url> --listen :8080 [--trust-proxy]`: the standalone
  * sensor for the customer who fronts an origin they do not run. Plain HTTP; TLS is the load
  * balancer's job. The install's variables come from the process environment and `.env.local` in
  * the working directory, as `init --node` wrote them. Runs until SIGTERM, which drains.

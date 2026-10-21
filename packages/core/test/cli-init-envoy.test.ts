@@ -1,4 +1,4 @@
-// J5.2: `journeys init --envoy`: the dry run applied to the sample envoy.yaml equals the
+// `journeys init --envoy`: the dry run applied to the sample envoy.yaml equals the
 // configuration the compose test runs (the live form), the observability-mode fragment every
 // install starts with, the Istio twin, a configuration whose shape is not understood refused with
 // the fragment printed, and the full command against a mocked API: the install (form envoy), the

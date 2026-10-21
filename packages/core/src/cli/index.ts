@@ -10,7 +10,7 @@ import { runProxy } from "./proxy.js";
 import { versionReport } from "./version.js";
 
 /**
- * The bin (architecture §6): the commands that need no control plane. Exit codes: 0 done; 1 a
+ * The bin: the commands that need no control plane. Exit codes: 0 done; 1 a
  * finding (an invalid policy, a probe that did not become a page); 2 usage; 5 the app or the API
  * unreachable. Every non-zero exit prints the one thing to do.
  */

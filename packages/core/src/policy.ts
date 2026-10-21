@@ -88,7 +88,7 @@ export interface CompiledPolicy {
   headers: { credential: string; session: string; reference: string[]; install: string | null; setup: string | null; agent: string | null; client: string | null; intent: string | null; signature: string };
   forward: { headers: Record<string, string>; key_header: string | null };
   recordBodies: boolean;
-  /** The signed assertion on the hop to the origin (plan J3.4): off by default; `audience` null means every host this sensor fronts. */
+  /** The signed assertion on the hop to the origin: off by default; `audience` null means every host this sensor fronts. */
   assertion: { enabled: boolean; audience: string[] | null };
   rules: CompiledRule[];
   /** What the compiler noticed and tolerated: an absent schema field, an ignored routes section, a section or a rule kind it does not know (DEPRECATION.md). */
@@ -223,7 +223,7 @@ function compileRule(raw: unknown, index: number): CompiledRule {
  * The policy document to the shape the core runs: regular expressions compiled once, the surface
  * map or the four route expressions, the rule table with its defaults. Pure: the adapter fetches
  * and caches the document; a malformed document throws a PolicyError the adapter catches, keeping
- * its last good policy or the embedded default (architecture §7.9).
+ * its last good policy or the embedded default.
  */
 export function compilePolicy(raw: unknown): CompiledPolicy {
   if (!isRecord(raw)) throw new PolicyError("a policy is a JSON object");

@@ -13,7 +13,7 @@ export interface Identity {
 }
 
 /**
- * The facts of the ext_proc form (plan J5.2 step 2): the client's address from
+ * The facts of the ext_proc form: the client's address from
  * `x-envoy-external-address` when the listener sets it, else the first `x-forwarded-for`; the
  * request id Envoy sets; nulls for what only a CDN knows and for the TLS and HTTP versions, which
  * the stream does not carry.

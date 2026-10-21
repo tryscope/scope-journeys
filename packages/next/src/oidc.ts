@@ -1,7 +1,7 @@
 export type Credential = { scheme: "oidc"; value: string } | { scheme: "key"; value: string } | null;
 
 /**
- * The Next form proves itself without a secret (architecture §14.2): when no install key is set
+ * The Next form proves itself without a secret: when no install key is set
  * and Vercel's OIDC token is on the request (or in the environment at build time), the token is the
  * bearer for the policy fetch and the delivery; the install's subject was bound at init. With
  * neither, the adapter runs the default policy and names `journeys init` once; it never throws.

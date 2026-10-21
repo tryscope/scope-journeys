@@ -1,4 +1,4 @@
-// J2.1: `journeys init` on five fixture projects, byte for byte, against a mocked API and a
+// `journeys init` on five fixture projects, byte for byte, against a mocked API and a
 // recording command runner; the exit codes; the JSON output against output.schema.json; the one
 // idempotent call; the OIDC form; the refusal to write a secret into a tracked file.
 import assert from "node:assert/strict";

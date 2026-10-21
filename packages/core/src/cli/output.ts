@@ -1,4 +1,4 @@
-/** JSON when stdout is not a TTY or `--json` was asked (architecture §16.1), a readable table otherwise. */
+/** JSON when stdout is not a TTY or `--json` was asked, a readable table otherwise. */
 export interface OutputOptions {
   json: boolean;
 }

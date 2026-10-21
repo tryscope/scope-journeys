@@ -33,7 +33,7 @@ export interface NodeIoOptions {
 }
 
 /**
- * The one io the three mounts and the proxy share (plan J5.1 step 1): the clock from Date,
+ * The one io the three mounts and the proxy share: the clock from Date,
  * entropy from node:crypto, sha256 with the install's salt, the hop over node:http with the
  * core's gateway headers, shipping after the response was written and never awaited in the
  * request path.

@@ -124,7 +124,7 @@ export async function doctorLocal(options: LocalDoctorOptions): Promise<LocalDoc
 }
 
 // ---------------------------------------------------------------------------------------------
-// `journeys doctor` proper (plan J2.3): one probe per host, the facts that arrived, the one step
+// `journeys doctor` proper: one probe per host, the facts that arrived, the one step
 // that fixes what is missing, the docs host named first.
 
 export interface DoctorOptions {
@@ -199,7 +199,7 @@ export function fixFor(fact: "docs_host" | "fronted" | "client.ja4" | "observer.
   }
 }
 
-// The order the fixes are printed in (plan J2.3 step 5): the docs host, the host itself, then the facts.
+// The order the fixes are printed in: the docs host, the host itself, then the facts.
 const RANK = ["docs_host", "fronted", "request", "client.ja4", "client.asn", "route", "observer.policy_version", "observer.version"];
 const rank = (fact: string): number => (RANK.includes(fact) ? RANK.indexOf(fact) : RANK.length);
 const OPTIONAL = new Set(["client.ja4", "client.asn"]);
@@ -305,7 +305,7 @@ export async function doctor(options: DoctorOptions, deps: DoctorDeps): Promise<
     report.missing.sort((a, b) => rank(a.fact) - rank(b.fact));
     reports.push(report);
   }
-  // The docs host is the first thing named (architecture 16.2): the host carrying that fix leads the list.
+  // The docs host is the first thing named: the host carrying that fix leads the list.
   reports.sort((a, b) => Number(b.missing.some((m) => m.fact === "docs_host")) - Number(a.missing.some((m) => m.fact === "docs_host")));
   const missing: Fix[] = sensor && older(sensor.version, VERSION) ? [{ fact: "observer.version", fix: fixFor("observer.version", form, hosts[0] ?? "") }] : [];
   const ok = reports.length > 0 && reports.every((r) => r.fronted && r.found && REQUIRED_FACTS.every((f) => r.facts[f] === true));

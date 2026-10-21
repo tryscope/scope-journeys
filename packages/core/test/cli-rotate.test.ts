@@ -1,4 +1,4 @@
-// J3.4 step 6: `journeys rotate-assertion-key` against a mocked API and a recording exec: the new
+// `journeys rotate-assertion-key` against a mocked API and a recording exec: the new
 // public key registered with its kid (version + 1, never the private part), the private key
 // written where init wrote the first, the overlap deadline, the refusals.
 import assert from "node:assert/strict";

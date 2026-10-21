@@ -1,4 +1,4 @@
-// The assertion fixture's key pair (J3.4): a P-256 pair derived from a fixed seed, so nothing
+// The assertion fixture's key pair: a P-256 pair derived from a fixed seed, so nothing
 // secret is committed and `facts.json` reproduces. `--write` regenerates the fixture's facts.json;
 // `test/node/assertion-fixture.test.ts` fails when it is stale.
 import { createECDH, createHash } from "node:crypto";

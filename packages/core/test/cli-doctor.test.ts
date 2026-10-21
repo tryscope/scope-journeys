@@ -1,4 +1,4 @@
-// J2.3: `journeys doctor` against a mocked sensor host and a mocked API: the probe URL and its
+// `journeys doctor` against a mocked sensor host and a mocked API: the probe URL and its
 // nonce round trip, the facts table, the ordering of the fixes (the docs host first), the exit codes.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";

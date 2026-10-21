@@ -1,4 +1,4 @@
-// J0.8: the three commands through the built bin, as a customer runs them. Needs `npm run build`
+// The three commands through the built bin, as a customer runs them. Needs `npm run build`
 // in packages/core first (CI builds before it tests).
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

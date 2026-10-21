@@ -21,7 +21,7 @@ const OBSERVED_ROLES: ReadonlySet<Route> = new Set<Route>(["api", "mcp", "oauth.
 const result = (route: Route, observed: boolean, hookId: string | null = null, known = true): RouteInfo => ({ route, observed, content: route === "docs" || route === "docs_root", known, hookId });
 
 /**
- * The surface role of a path (architecture §7.4, decision 13). Two forms: the regular-expression
+ * The surface role of a path. Two forms: the regular-expression
  * form the lab ran (four expressions, no roles beyond content and observed) and the surface map,
  * whose precedence is fixed, first match wins: passthrough, the customer's custom list in order,
  * finder, mcp, the OAuth endpoints, the device flow, hooks, credentials, trial, the CLI's init and
@@ -104,11 +104,11 @@ export const READER_TABLE: ReadonlyArray<{ family: Reader; agent: RegExp }> = Ob
 ]);
 
 /**
- * Who read the page (architecture §11.2, the lab's `readerOf`): Exa's signature, any other
- * signature, Claude Code's own fetcher, Claude's assistant fetcher, OpenAI's pool, Cursor's own
- * fetcher (a Chrome-on-Windows string without fetch metadata and a markdown-first Accept), the
- * customer's own CLI or SDK by the policy's `clients` patterns (vendor-client), a browser (fetch
- * metadata present), a shell or runtime client, else unknown.
+ * Who read the page: Exa's signature, any other signature, Claude Code's own fetcher, Claude's
+ * assistant fetcher, OpenAI's pool, Cursor's own fetcher (a Chrome-on-Windows string without fetch
+ * metadata and a markdown-first Accept), the customer's own CLI or SDK by the policy's `clients`
+ * patterns (vendor-client), a browser (fetch metadata present), a shell or runtime client, else
+ * unknown.
  */
 export function classifyReader(userAgent: string, accept: string | null, fetchMetadata: FetchMetadata, signatureAgent: string | null, platformBot: PlatformBot | null, clients: CompiledSurfaces["clients"] | null = null): Reader {
   const browserSignals = Boolean(fetchMetadata.sec_ch_ua || fetchMetadata.sec_fetch_dest === "document" || fetchMetadata.upgrade_insecure);

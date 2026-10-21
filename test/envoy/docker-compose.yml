@@ -1,4 +1,4 @@
-# The compose stack of `npm run test:envoy` (plan J5.2 step 6): the current stable Envoy, pinned by
+# The compose stack of `npm run test:envoy`: the current stable Envoy, pinned by
 # digest, running envoy.yaml beside this file. The toy origin (port 18789) and the processor (port
 # 18790) run in the test's own process on the host, reached from the container as
 # host.docker.internal; the listener is published on 10000.

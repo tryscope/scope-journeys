@@ -50,7 +50,7 @@ export function processDeps(): InitDeps {
 
 const list = (value: unknown): string[] | null => (typeof value === "string" && value.trim() ? value.split(",").map((s) => s.trim()).filter(Boolean) : null);
 
-/** `journeys init [--cloudflare|--node] ...` (plan J2.1, J2.2, J5.1). Returns the exit code. */
+/** `journeys init [--cloudflare|--node] ...`. Returns the exit code. */
 export async function runInit(argv: readonly string[], deps: InitDeps = processDeps(), json = false): Promise<number> {
   const { values } = parseArgs({
     args: [...argv],

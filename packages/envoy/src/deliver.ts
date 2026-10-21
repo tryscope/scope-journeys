@@ -1,7 +1,7 @@
 import type { SensorRecord } from "scope-journeys";
 
 /**
- * Shipping from the processor: the same contract as the Worker's (architecture §7.9): a gzip JSON
+ * Shipping from the processor: the same contract as the Worker's: a gzip JSON
  * array of up to 500 records to `POST ${JOURNEYS_API_URL}/v1/requests` after the response went
  * out, one retry on a network error, a 5xx or a 429 (after `Retry-After`, capped at 60 seconds),
  * then the batch is dropped and counted into the next record's `scope.observer.dropped`. The

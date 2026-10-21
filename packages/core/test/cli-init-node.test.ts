@@ -1,4 +1,4 @@
-// J5.1: `journeys init --node` on five fixture projects, byte for byte, against a mocked API and a
+// `journeys init --node` on five fixture projects, byte for byte, against a mocked API and a
 // recording command runner: the mount after the line that creates the app (ESM and CommonJS,
 // with and without semicolons), the entry found from main or a script, the two lines printed when
 // no entry is known (exit 3), the refusal on a project without a framework (exit 2), the JSON

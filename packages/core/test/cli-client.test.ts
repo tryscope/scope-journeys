@@ -1,4 +1,4 @@
-// J2.1: the CLI's API client is typed against the vendored Journeys subset of the contract's
+// The CLI's API client is typed against the vendored Journeys subset of the contract's
 // OpenAPI document: every operation it performs exists there, the document carries the contract
 // version the client pins, and an error envelope with Retry-After maps to an ApiError.
 import assert from "node:assert/strict";

@@ -48,7 +48,7 @@ async function stored(cache: IoCache | null | undefined, url: string): Promise<S
 }
 
 // A policy answer without the environment or epoch header (an old API) keeps the last value seen;
-// before any answer the adapter stamps epoch 1 and production (plan J3.9).
+// before any answer the adapter stamps epoch 1 and production.
 export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
   const key = options.url ?? "default";
   const current = states.get(key);

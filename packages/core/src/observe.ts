@@ -14,7 +14,7 @@ import { decide, errored, isLive, type Decision } from "./rules/runner.js";
 import { verifyWebBotAuth } from "./webbotauth.js";
 import { AGENT_HEADER, ASSERTION_HEADER, assertionClaims, signAssertion } from "./assertion.js";
 
-/** Everything step 9 (the response) needs from steps 2 to 8 (the request). */
+/** Everything the response side needs from the request side. */
 export interface State {
   io: Io;
   policy: CompiledPolicy;
@@ -49,7 +49,7 @@ export type Observation =
 const hashedOrNull = async (value: string | null, io: Io): Promise<string | null> => (value ? io.hash(value) : null);
 
 /**
- * The probe `journeys doctor` sends (plan J2.3): answered by the sensor itself with 204 and
+ * The probe `journeys doctor` sends: answered by the sensor itself with 204 and
  * `x-journeys-probe: received`, never forwarded, recorded as a passthrough request with the query
  * kept, under the forward-only default as under any other policy, so doctor works before any
  * policy is promoted.
@@ -61,7 +61,7 @@ const PROBE_ROUTE: RouteInfo = { route: "passthrough", observed: false, content:
 let warnedNoAssertionKey = false;
 
 /**
- * The signed assertion and the agent header on the hop to the origin (plan J3.4), when the policy
+ * The signed assertion and the agent header on the hop to the origin, when the policy
  * asks for them for this host. Without a key the headers are omitted and the decision log carries
  * one `errored` decision for the pseudo-rule `assertion`, once per isolate, so a misconfigured
  * install is visible in the Debugger and not silent.
@@ -137,7 +137,7 @@ export async function finish(state: State): Promise<SensorRecord[]> {
   record["scope.key.hook"] = keys.hook;
   if (!policy.recordBodies) {
     // The lightest form: bodies are read where a rule needs them and nothing of them leaves,
-    // the keys read out of them included (architecture §14.5).
+    // the keys read out of them included.
     record["scope.body.request"] = null;
     record["scope.body.response"] = null;
     if (state.route.route !== "oauth.authorize") record["scope.key.oauth_client"] = null;
@@ -222,9 +222,9 @@ function emptyRecord(state: Omit<State, "record">, io: Io, facts: Facts, policy:
 }
 
 /**
- * Steps 2 to 8 of the request path (architecture §7.2): routing, the record's facts, the body on
- * observed routes, the intent header, the finder, the gate, the outbound request. Never throws to
- * the adapter: a bug forwards the request untouched and the record carries the error's class.
+ * The request side: routing, the record's facts, the body on observed routes, the intent header,
+ * the finder, the gate, the outbound request. Never throws to the adapter: a bug forwards the
+ * request untouched and the record carries the error's class.
  */
 export async function observe(request: Request, policy: CompiledPolicy, facts: Facts, io: Io): Promise<Observation> {
   const startedAt = io.now();

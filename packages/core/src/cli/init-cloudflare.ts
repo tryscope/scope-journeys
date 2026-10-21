@@ -67,7 +67,7 @@ function blank(form: "cloudflare", environment: InstallEnvironment): CloudflareR
 }
 
 /**
- * `journeys init --cloudflare --host a --host b` (architecture §16.2 flow B; plan J2.2): the
+ * `journeys init --cloudflare --host a --host b`: the
  * Worker under the customer's own account on a route per host, the two secrets, the claim URL.
  */
 export async function initCloudflare(options: InitCloudflareOptions, deps: InitDeps): Promise<CloudflareReport> {

@@ -30,7 +30,7 @@ function maskDeep(value) {
 }
 
 /**
- * A record with its volatile fields masked: the listed paths (Appendix F.1) become "MASKED" when
+ * A record with its volatile fields masked: the listed paths become "MASKED" when
  * present and non-null, references inside strings become REF, uuids become UUID.
  */
 export function applyMask(record) {

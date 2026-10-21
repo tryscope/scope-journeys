@@ -1,4 +1,4 @@
-// J3.4 step 8: the verification samples on the docs host (`docs/content/verify/{next,express}.md`)
+// The verification samples on the docs host (`docs/content/verify/{next,express}.md`)
 // are run, as written, against the assertion the sensor produces on fixture 30: the first fenced
 // block of each page is extracted, imported, and handed the forwarded header with a fetch that
 // answers Scope's directory for the fixture's kid.

@@ -6,7 +6,7 @@ export const REFERENCE = /^[0-9A-HJKMNP-TV-Z]{8}$/;
 
 /**
  * Eight characters: three encode the minting minute (modulo 32^3), four are random, one is a
- * check character, so validity needs no state and a mutation is detectable (architecture §7.5).
+ * check character, so validity needs no state and a mutation is detectable.
  * Minted per serve of a page, per finder answer, per error link, per helpful 404.
  */
 export function mintReference(io: Io): string {

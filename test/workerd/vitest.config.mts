@@ -1,6 +1,6 @@
-// V2 on the Workers runtime: the same fixtures and harness, run inside workerd by Cloudflare's
-// vitest plugin, with nodejs_compat OFF so the core is proven on the plain runtime. The reporter
-// writes the per-fixture output the identity test diffs against the Node run.
+// The fixture comparison on the Workers runtime: the same fixtures and harness, run inside workerd
+// by Cloudflare's vitest plugin, with nodejs_compat OFF so the core is proven on the plain runtime.
+// The reporter writes the per-fixture output the identity test diffs against the Node run.
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 

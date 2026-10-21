@@ -70,7 +70,7 @@ async function shipper(event: NextFetchEvent | undefined): Promise<Shipper> {
 }
 
 /**
- * The in-app form of the sensor (architecture §8, §14.2): one condition in the proxy file. A
+ * The in-app form of the sensor: one condition in the proxy file. A
  * request carrying the inner-hop marker, or for a host the install does not observe, goes to the
  * customer's own logic untouched; every other request is observed, forwarded to the app's own
  * address with the marker, and recorded after the response went out. Without an install there is

@@ -1,5 +1,5 @@
 {
-  "about": "The volatile fields of a record (Appendix F.1): the only allowed differences between two runtimes, two runs or the lab and the packages. Paths are key lists (dotted names are single keys). References inside strings become REF and uuids become UUID wherever they appear.",
+  "about": "The volatile fields of a record: the only allowed differences between two runtimes, two runs or the lab and the packages. Paths are key lists (dotted names are single keys). References inside strings become REF and uuids become UUID wherever they appear.",
   "fields": [
     ["id"],
     ["ts"],

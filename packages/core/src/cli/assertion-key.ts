@@ -6,7 +6,7 @@ export interface AssertionKeyPair {
 }
 
 /**
- * The install's assertion key pair (plan J3.4): ES256 (P-256), generated on the customer's
+ * The install's assertion key pair: ES256 (P-256), generated on the customer's
  * machine. The private half goes to the customer's environment as JOURNEYS_ASSERTION_KEY and is
  * never sent to Scope; the public half registers through the API. The `kid`
  * (`<install_id>:<version>`) is stamped on both once the install id is known.
