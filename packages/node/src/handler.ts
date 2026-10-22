@@ -3,7 +3,7 @@ import type { TLSSocket } from "node:tls";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardedUrl, loadPolicy, observe, observeResponse, passHeaders, secureUrl, type Environment, type LogLevel } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardObserved, forwardedUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, type Environment, type LogLevel } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { droppedSoFar } from "./deliver.js";
@@ -58,7 +58,7 @@ export interface Sensor {
   forwardedHost: boolean;
   /** Whether the request is the sensor's to observe: not the inner pass, and on the observed host. */
   observes(inner: string | null, host: string | null): boolean;
-  /** The response to send. Throws when the sensor could not run, and the caller passes the request on untouched. */
+  /** The response to send. Throws when the sensor could not run or its hop never left, and the caller passes the request on untouched. */
   sense(exchange: Exchange): Promise<Response>;
   /** The hop with nothing of the sensor's on it (the marker aside, so a mount's app sees it once): the fail-open path. */
   untouched(exchange: Exchange): Promise<Response>;
@@ -85,7 +85,8 @@ export function createSensor(options: NodeOptions = {}): Sensor {
   const key = env.JOURNEYS_INSTALL_KEY ?? null;
   const salt = env.JOURNEYS_SALT ?? null;
   const origin = options.origin ?? env.JOURNEYS_ORIGIN ?? null;
-  if (form === "proxy" && !origin) throw new Error("journeys: the proxy needs an origin to forward to (--origin or JOURNEYS_ORIGIN)");
+  const hopOrigin = origin ? originUrl(origin) : null;
+  if (form === "proxy" && !hopOrigin) throw new Error("journeys: the proxy needs an http or https origin with no credentials to forward to (--origin or JOURNEYS_ORIGIN)");
   const policyUrl = options.policyUrl ?? env.JOURNEYS_POLICY_URL ?? (apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}/policy` : null);
   const issuer = apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}` : null;
   const cache = memoryCache(now);
@@ -93,7 +94,8 @@ export function createSensor(options: NodeOptions = {}): Sensor {
   let warnedNoSalt = false;
 
   const targetFor = (exchange: Exchange): URL => {
-    if (origin) return new URL(origin);
+    if (hopOrigin) return hopOrigin;
+    if (origin) throw new Error("journeys: the origin to forward to (JOURNEYS_ORIGIN or the origin option) is not an http or https URL with no credentials");
     if (form === "proxy" || exchange.localPort === null) throw new Error("journeys: no origin to forward to (set JOURNEYS_ORIGIN)");
     return new URL(`http://127.0.0.1:${exchange.localPort}`);
   };
@@ -129,8 +131,7 @@ export function createSensor(options: NodeOptions = {}): Sensor {
       const io = createNodeIo({ salt: salt ?? "", host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, now, afterResponse: exchange.afterResponse, track, log });
       const observed = await observe(request, policy, facts, io);
       if (observed.kind === "answer") return observed.response;
-      const upstream = await io.forward(observed.request);
-      return observeResponse(upstream, observed.state).response;
+      return (await forwardObserved(observed.request, observed.state)).response;
     },
     async untouched(exchange) {
       const { request, socket } = exchange;
@@ -214,7 +215,7 @@ export async function send(res: ServerResponse, response: Response): Promise<voi
  * The Node form of the sensor: the request as a Request, the facts from the socket, the policy from
  * the cache, the hop (to the app's own listener on a mount, to the origin on the proxy), the answer
  * written back, the shipment after the response. The inner pass and a host the install does not
- * observe go to `next` untouched; so does every failure of the sensor before a byte was written
+ * observe go to `next` untouched; so does every failure of the sensor before its hop left
  * (the hop itself, when there is no `next` to hand the request to).
  */
 export function createNodeHandler(options: NodeOptions = {}): NodeHandler {

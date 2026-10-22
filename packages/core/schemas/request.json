@@ -131,7 +131,7 @@
       "description": "present on a page read (a docs page, the root map, the helpful 404)"
     },
     "scope.reference_minted": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }], "description": "a reference minted into a non-page answer (an error link, a finder answer); a page's reference, the helpful 404's included, is scope.page.reference_minted" },
-    "scope.decision": { "type": "array", "items": { "$ref": "#/$defs/decision" }, "description": "what every rule that matched did, in rule order" },
+    "scope.decision": { "type": "array", "items": { "$ref": "#/$defs/decision" }, "description": "what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `assertion` (the assertion could not be signed) and `hop` (the hop failed after the request may have left: answered 502, or 504 on a timeout, and not sent again)" },
     "scope.gateway": { "type": ["object", "null"], "properties": { "declared": { "type": "integer" }, "forwarded": { "type": "integer" } }, "additionalProperties": false, "description": "on the MCP route: how many messages the gate answered and how many it forwarded" },
     "scope.observer.errors": { "type": "array", "items": { "type": "string" }, "description": "the sensor's own errors on this request, by class; the request was forwarded untouched" },
     "scope.observer.dropped": { "type": "integer", "description": "records the sensor failed to ship since its last successful shipment" }
