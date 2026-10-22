@@ -153,20 +153,21 @@ function respondByKind(upstream: Response, state: State, resType: string): Respo
     const work = (async (): Promise<string> => {
       await responseHeaders();
       const original = await upstream.text();
-      const live: string[] = [];
+      let live: string[] = [];
       let matched = false;
       let body = original;
       try {
-        const rewritten = rewritePage(original, policy.rules, { host: state.host, token, face, prefix: state.prefix });
+        const vars = { host: state.host, token, face, prefix: state.prefix };
+        const rewritten = rewritePage(original, policy.rules, vars);
         matched = rewritten.applied.length > 0;
-        for (const { rule, label } of rewritten.applied) {
-          const applies = isLive(rule, environment);
-          decide(state.decisions, rule, environment, applies ? "applied" : "would_apply", `page matched docs face ${face}`);
-          if (applies) live.push(label);
-        }
-        // A dry-run rule changes nothing on the wire: the page goes out as the live rules alone leave it.
-        if (live.length === rewritten.applied.length) body = rewritten.body;
-        else if (live.length) body = rewritePage(original, policy.rules.filter((r) => isLive(r, environment)), { host: state.host, token, face, prefix: state.prefix }).body;
+        // A dry-run rule changes nothing on the wire: the page goes out as the live rules alone leave it,
+        // and a live rule's decision is the one that pass made.
+        const wire = rewritten.applied.every((a) => isLive(a.rule, environment)) ? rewritten : rewritePage(original, policy.rules.filter((r) => isLive(r, environment)), vars);
+        for (const { rule } of rewritten.applied) if (!isLive(rule, environment)) decide(state.decisions, rule, environment, "would_apply", `page matched docs face ${face}`);
+        for (const { rule } of wire.applied) decide(state.decisions, rule, environment, "applied", `page matched docs face ${face}`);
+        for (const rule of [...rewritten.capped.filter((r) => !isLive(r, environment)), ...wire.capped.filter((r) => isLive(r, environment))]) decide(state.decisions, rule, environment, "errored", "the page would grow past twice its size and 64 KiB");
+        live = wire.applied.map((a) => a.label);
+        body = wire.body;
       } catch (error) {
         const first = policy.rules.find((r) => r.kind === "inject");
         if (first) errored(state.decisions, first, environment, error);

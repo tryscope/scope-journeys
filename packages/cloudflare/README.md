@@ -21,10 +21,10 @@ By hand: `src/worker.ts` is `export { default } from "scope-journeys-cloudflare/
 | `JOURNEYS_INSTALL_ID` | no | your install, `jin_...` |
 | `JOURNEYS_INSTALL_KEY` | yes | the install key, shown once at `init`; rotatable and revocable in the console |
 | `JOURNEYS_SALT` | yes | 32 random bytes you generate; every hash is salted with it and Scope never receives it |
-| `JOURNEYS_API_URL` | no | Scope's API (the default is the production host) |
+| `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
 | `JOURNEYS_ORIGIN` | no | the origin to forward to; needed only off a route in your own zone (a `workers.dev` host) |
 | `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
-| `JOURNEYS_POLICY_URL` | no | optional: a full url to fetch the policy from instead of the install's policy route |
+| `JOURNEYS_POLICY_URL` | no | optional: a full url to fetch the policy from instead of the install's policy route; https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
 
 ## What it does to your traffic
 

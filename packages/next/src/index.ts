@@ -1,14 +1,12 @@
-import { PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, forwardedUrl, observe, observeResponse, passHeaders, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, forwardedUrl, loadPolicy, observe, observeResponse, passHeaders, secureUrl, type Environment, type Io, type SensorRecord } from "scope-journeys";
 import type { NextFetchEvent, NextRequest } from "next/server.js";
 import { NextResponse } from "next/server.js";
 
 import { memoryCache } from "./cache.js";
 import { deliver, droppedSoFar } from "./deliver.js";
 import { platformFacts } from "./facts.js";
-import { credential as credentialOf, type Credential } from "./oidc.js";
-import { loadPolicy } from "./policy-cache.js";
+import { credential as credentialOf } from "./oidc.js";
 
-export { loadPolicy, resetPolicyCache } from "./policy-cache.js";
 export { memoryCache, resetCache } from "./cache.js";
 export { deliver, resetDelivery } from "./deliver.js";
 export { platformFacts } from "./facts.js";
@@ -107,8 +105,8 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
     }
     try {
       const installId = options.installId ?? env.JOURNEYS_INSTALL_ID ?? null;
-      const apiUrl = options.apiUrl ?? env.JOURNEYS_API_URL ?? null;
-      const cred: Credential = credentialOf(request, env);
+      const apiUrl = secureUrl(options.apiUrl ?? env.JOURNEYS_API_URL ?? DEFAULT_API_URL, "JOURNEYS_API_URL", (line) => log("warn", line));
+      const cred = credentialOf(request, env);
       const policyUrl = options.policyUrl ?? env.JOURNEYS_POLICY_URL ?? (apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}/policy` : null);
       if (!installId && !policyUrl) {
         if (!warnedNoInstall) {
@@ -121,7 +119,7 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
       const cache = memoryCache(now);
       const loaded = await loadPolicy({ url: policyUrl, credential: cred, fetch: fetchFn, now: now(), cache, log: (line) => log("warn", line) });
       const salt = env.JOURNEYS_SALT;
-      const policy = salt ? loaded.policy : (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), log: () => undefined })).policy;
+      const policy = salt ? loaded.policy : (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
       if (!salt && !warnedNoSalt) {
         warnedNoSalt = true;
         log("warn", "journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init`)");
@@ -148,12 +146,11 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
           // answer; asking for identity keeps the hop uncompressed on the wire as the gateway rule
           // says, so the app does not compress what the sensor decompresses at once.
           headers.set("accept-encoding", "identity");
-          if (policy.forward.key_header && cred?.scheme === "key") headers.set(policy.forward.key_header, cred.value);
           const target = `${base.replace(/\/$/, "")}${url.pathname}${url.search}`;
           return fetchFn(target, { method: outbound.method, headers, body: outbound.body, redirect: "manual", signal: AbortSignal.timeout(30_000), ...(outbound.body ? { duplex: "half" } : {}) } as RequestInit);
         },
         cache,
-        ship: (records: readonly SensorRecord[]) => ship(() => deliver(records, { apiUrl, credential: cred, report: policy.report, fetch: fetchFn, log: (line) => log("warn", line) })),
+        ship: (records: readonly SensorRecord[]) => ship(() => deliver(records, { apiUrl, credential: cred, fetch: fetchFn, log: (line) => log("warn", line) })),
         log,
       };
       // The request as the core observes it, on the URL the agent spoke to; the original keeps its

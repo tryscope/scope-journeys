@@ -28,7 +28,7 @@ Every install starts with every rule dry run, so the filter is written with `obs
 | `JOURNEYS_INSTALL_KEY` | yes | the install key |
 | `JOURNEYS_SALT` | yes | 32 random bytes you generate; every hash is salted with it and Scope never receives it |
 | `JOURNEYS_ASSERTION_KEY` | yes | the ES256 key that signs `x-scope-assertion` on the hop |
-| `JOURNEYS_API_URL` | no | Scope's API (the default is the production host) |
+| `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
 | `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
 | `JOURNEYS_EXT_PROC_LISTEN` | no | the gRPC listen address; `0.0.0.0:9000` by default |
 

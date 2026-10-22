@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { VERSION } from "../version.js";
-import { ApiError, createClient, DEFAULT_API_URL, UnreachableError, type InstallCreateRequest, type InstallEnvironment } from "./client.js";
+import { DEFAULT_API_URL } from "../policy-loader.js";
+import { ApiError, createClient, UnreachableError, type InstallCreateRequest, type InstallEnvironment } from "./client.js";
 import { addInstrumentationExport, createProxySource, instrumentationSource, wrapProxySource } from "./proxy-file.js";
 import { detectNext, readLock, upsertEnvFile, LOCK_DIR, LOCK_FILE, type InitLock, type NextProject } from "./project.js";
 import { oidcTokenFromEnvLocal, readProjectLink, vercelAuthenticated, vercelEnvAdd, vercelEnvLines, vercelProjectFacts, type Exec } from "./vercel.js";

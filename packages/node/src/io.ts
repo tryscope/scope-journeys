@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { CompiledPolicy, Io, IoCache, SensorRecord } from "scope-journeys";
+import type { Io, IoCache, SensorRecord } from "scope-journeys";
 
 import { deliver } from "./deliver.js";
 import { hop } from "./hop.js";
@@ -18,7 +18,6 @@ export interface NodeIoOptions {
   hopHeaders: Record<string, string>;
   /** Appended to the client's own x-forwarded-for on the hop, so the app sees who called. */
   forwardedFor: string | null;
-  policy: CompiledPolicy;
   key: string | null;
   apiUrl: string | null;
   cache: IoCache;
@@ -49,13 +48,12 @@ export function createNodeIo(options: NodeIoOptions): Io {
       const headers = new Headers(outbound.headers);
       for (const [name, value] of Object.entries(options.hopHeaders)) headers.set(name, value);
       if (options.forwardedFor) headers.append("x-forwarded-for", options.forwardedFor);
-      if (options.policy.forward.key_header && options.key) headers.set(options.policy.forward.key_header, options.key);
       return hop(new Request(outbound.url, { method: outbound.method, headers, body: outbound.body, redirect: "manual", ...(outbound.body ? { duplex: "half" } : {}) } as RequestInit), { target: options.target, host: options.hopHost, timeoutMs: options.hopTimeoutMs ?? 30_000 });
     },
     cache: options.cache,
     ship: (records: readonly SensorRecord[]) => {
       options.afterResponse(() => {
-        options.track(deliver(records, { apiUrl: options.apiUrl, key: options.key, report: options.policy.report, fetch: options.fetch, log: (line) => options.log("warn", line) }).catch((error: unknown) => options.log("warn", `journeys: shipment failed (${error instanceof Error ? error.message : String(error)})`)));
+        options.track(deliver(records, { apiUrl: options.apiUrl, key: options.key, fetch: options.fetch, log: (line) => options.log("warn", line) }).catch((error: unknown) => options.log("warn", `journeys: shipment failed (${error instanceof Error ? error.message : String(error)})`)));
       });
     },
     log: options.log,

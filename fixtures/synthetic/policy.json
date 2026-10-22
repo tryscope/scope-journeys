@@ -50,7 +50,7 @@
     "signature": "signature-agent"
   },
   "signers": ["https://signer.example"],
-  "forward": { "headers": { "x-acme-edge": "journeys" }, "key_header": "x-acme-key" },
+  "forward": { "headers": { "x-acme-edge": "journeys" } },
   "record_bodies": true,
   "rules": [
     {

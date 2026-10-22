@@ -156,8 +156,7 @@
   "forward": {
     "headers": {
       "x-acme-edge": "journeys"
-    },
-    "key_header": "x-acme-key"
+    }
   },
   "record_bodies": true,
   "rules": [

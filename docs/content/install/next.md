@@ -81,7 +81,7 @@ export { onRequestError } from "scope-journeys-next/instrumentation"
 | `JOURNEYS_INSTALL_ID` | no | your install, `jin_your_install_id` |
 | `JOURNEYS_INSTALL_KEY` | yes | the install key; not needed when the project's OIDC federation is on |
 | `JOURNEYS_SALT` | yes | 32 random bytes generated on your machine; every hash is salted with it and Scope never receives it |
-| `JOURNEYS_API_URL` | no | Scope's API (the default is the production host) |
+| `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
 | `JOURNEYS_HOST` | no | optional: observe only this host |
 | `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
 

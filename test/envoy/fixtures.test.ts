@@ -12,11 +12,13 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 
+import { resetPolicyCache } from "scope-journeys";
+
 import { applyMask, canonical, maskResponse, maskText } from "../../scripts/canonical.mjs";
 import type { FixtureDirectory, FixtureFacts, FixtureRequest, FixtureUpstream } from "../../packages/core/test/harness.js";
 import { validateRecord } from "../../packages/core/src/validate.js";
 import { VERSION } from "../../packages/core/src/version.js";
-import { resetCache, resetDelivery, resetPolicyCache, serveExtProc, type RunningServer } from "../../packages/envoy/src/index.js";
+import { resetCache, resetDelivery, serveExtProc, type RunningServer } from "../../packages/envoy/src/index.js";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
 const HERE = join(ROOT, "test", "envoy");
@@ -170,7 +172,7 @@ const withoutEnvoy = (headers: Record<string, string>): Record<string, string> =
 
 /** The processor for one fixture: its own environment (the salt, the assertion key), the world answered in process; Envoy reconnects on the first request, warmed by a probe whose record is discarded. */
 async function processorFor(name: string, policy: unknown, facts: FixtureFacts, directory: FixtureDirectory | undefined, shipped: unknown[][], forwarded: Captured[]): Promise<RunningServer> {
-  const env: Record<string, string> = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_SALT: facts.salt ?? "fixture-salt", JOURNEYS_NAME: "fixture-sensor", JOURNEYS_API_URL: API, JOURNEYS_POLICY_URL: `https://policy.fixture.example/${name}` };
+  const env: Record<string, string> = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: "sjk_test_dddddddddddddddddddddddddddddddd", JOURNEYS_SALT: facts.salt ?? "fixture-salt", JOURNEYS_NAME: "fixture-sensor", JOURNEYS_API_URL: API, JOURNEYS_POLICY_URL: `https://policy.fixture.example/${name}` };
   if (facts.assertion) env.JOURNEYS_ASSERTION_KEY = JSON.stringify(facts.assertion.private_jwk);
   let tick = 0;
   const base = Date.parse(facts.ts ?? "2026-10-10T12:00:00.000Z");

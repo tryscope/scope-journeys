@@ -2,7 +2,7 @@
 
 Generated from `schemas/request.json` and `schemas/declaration.json` by `scripts/telemetry-doc.mjs`; a field cannot ship without appearing here, and the privacy test fails when this file is stale.
 
-**What it records.** For each request: method, host, path and query string, status, timing, the client's user agent, Accept and fetch-metadata headers, the network facts your platform exposes (AS number, country, TLS version, JA4), a one-way hash of the client's address, a one-way hash of any credential (bearer token, device code, install id), the MCP session id, the reference code if one was carried, and what the observer did. It never records a raw address or a raw credential; the hash is salted per installation and rotated on your request. It never records a text or HTML body. It records request and response bodies only on the routes you list, only the fields you allow, only up to 64 KB, with your secret value shapes hashed wherever they appear; in its lightest form it records no bodies at all. It never records cookies, the `Authorization` value or `Set-Cookie`.
+**What it records.** For each request: method, host, path and query string, status, timing, the client's user agent, Accept and fetch-metadata headers, the network facts your platform exposes (AS number, country, TLS version, JA4), a one-way hash of the client's address, a one-way hash of any credential (bearer token, device code, install id), the MCP session id, the reference code if one was carried, and what the observer did. It never records a raw address or a raw credential; the hash is salted per installation and rotated on your request. It never records a text or HTML body. It records request and response bodies only when your policy turns `record_bodies` on, and then only on the routes you list and only up to 64 KB, with the fields you name as secrets and your secret value shapes hashed wherever they appear; every other field is recorded as sent, so name each secret field before you turn it on; in its lightest form it records no bodies at all, and that is the default. It never records cookies, the `Authorization` value or `Set-Cookie`.
 
 **What it holds.** No secret of yours: the observer's own credential is an installation key you can rotate or revoke at any time, or, on Vercel, your project's OIDC identity with no key at all. Its configuration is a public document with no secret in it. It stores nothing on your infrastructure.
 
@@ -211,14 +211,14 @@ The configuration the sensor fetches. Immutable integer versions per customer; p
 | `schema` | const "scope.policy/1" |
 | `version` | the customer's policy version; 0 is the embedded forward-only default |
 | `about` | string |
-| `origin` | the origin to forward to when the adapter has none configured (a Worker on workers.dev needs one; a route in the customer's zone does not) |
-| `report` | object |
+| `origin` | ignored by the sensor: where traffic goes comes only from its own configuration (JOURNEYS_ORIGIN) |
+| `report` | ignored by the sensor: records go to JOURNEYS_API_URL in its own configuration, with the install key as Authorization: Bearer |
 | `routes` | the regular-expression form: four expressions over the path plus the text faces; a policy with surfaces ignores every key but run_prefix |
 | `surfaces` | the surface map: the roles of the product's paths, derived from the standards (MCP is one JSON-RPC endpoint carrying MCP-Session-Id and MCP-Protocol-Version; OAuth 2.1 names its registration (RFC 7591), authorization, token and device-authorization (RFC 8628) endpoints in its metadata documents (RFC 8414, RFC 9728); an API call carries a bearer) plus a short custom list. Classification precedence, first match wins: passthrough, custom (in order), finder, mcp, oauth.register, oauth.authorize, oauth.token, oauth.approve, device.start, device.poll, device.approve, hooks.create, hooks.catch, credentials, trial, cli.init, cli.beacon, signup, download, api, docs.llms and docs.root (docs_root), docs.paths (docs), else other. |
 | `secrets` | object |
-| `headers` | object |
+| `headers` | the names of the headers the sensor reads; a name that is not a header name is ignored, and session, setup, agent, client and intent may not name one that carries a credential (a name with auth, cookie, token, secret, password, credential, key, jwt, assertion, oidc, signature, bypass, dpop, proof, hmac, csrf or xsrf in it, the credential header, surfaces.api.credential_header) |
 | `forward` | object |
-| `record_bodies` | false is the lightest form: bodies are read where a rule needs them and never leave |
+| `record_bodies` | false is the lightest form: bodies are read where a rule needs them and never leave; true records the bodies of the routes the surface map observes, every field but secrets.fields and secrets.shapes as sent |
 | `observe` | reserved for the body allow list |
 | `rules` | array of object |
 | `assertion` | object |

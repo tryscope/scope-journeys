@@ -1,4 +1,5 @@
-import { validateDeclaration as declarationFn, validatePolicy as policyFn, validateRequest as requestFn, type ValidateFunction } from "./generated/validators.js";
+import { validateDeclaration as declarationFn, validatePolicy as policyFn, validateRequest as requestFn, type ValidateFunction, type ValidationError } from "./generated/validators.js";
+import { RULE_KINDS } from "./policy.js";
 import { POLICY_SCHEMA } from "./record.js";
 
 export interface Finding {
@@ -12,10 +13,15 @@ export interface Validation {
   warnings: Finding[];
 }
 
+const findingOf = (e: ValidationError): Finding => ({ path: e.instancePath || "/", message: `${e.message ?? e.keyword}${e.params && "additionalProperty" in e.params ? ` (${String(e.params.additionalProperty)})` : ""}` });
+
 function run(fn: ValidateFunction, document: unknown): Finding[] {
   if (fn(document)) return [];
-  return (fn.errors ?? []).map((e) => ({ path: e.instancePath || "/", message: `${e.message ?? e.keyword}${e.params && "additionalProperty" in e.params ? ` (${String(e.params.additionalProperty)})` : ""}` }));
+  return (fn.errors ?? []).map(findingOf);
 }
+
+/** An absent `schema` is assumed, as the compiler assumes it. */
+const withSchema = (document: unknown): unknown => (document && typeof document === "object" && !Array.isArray(document) && !("schema" in document) ? { schema: POLICY_SCHEMA, ...(document as Record<string, unknown>) } : document);
 
 const SECRET_PREFIX = /^(sjk|sk|key|token|secret|bearer|rk|ghp|xoxb)[-_]/i;
 const JWT = /^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\./;
@@ -46,15 +52,35 @@ export function findSecretShapedValues(document: unknown, path = ""): Finding[] 
 
 /** The policy against schemas/policy.json plus the secret scanner; an absent `schema` is tolerated as a warning (the lab's documents). */
 export function validatePolicy(document: unknown): Validation {
-  const warnings: Finding[] = [];
-  let candidate = document;
-  if (document && typeof document === "object" && !Array.isArray(document) && !("schema" in document)) {
-    warnings.push({ path: "/schema", message: `absent, assumed ${POLICY_SCHEMA}` });
-    candidate = { schema: POLICY_SCHEMA, ...(document as Record<string, unknown>) };
-  }
+  const candidate = withSchema(document);
+  const warnings: Finding[] = candidate === document ? [] : [{ path: "/schema", message: `absent, assumed ${POLICY_SCHEMA}` }];
   const errors = run(policyFn, candidate);
   for (const finding of findSecretShapedValues(candidate)) errors.push(finding);
   return { ok: errors.length === 0, errors, warnings };
+}
+
+/**
+ * What refuses a fetched document at runtime: a value of the wrong type, other than null, in a
+ * section the sensor reads or a rule of a kind it implements. The compiler absorbs the rest
+ * (DEPRECATION.md: a newer schema's fields, kinds and values are ignored or run dry, a missing
+ * section or a null takes its default), and a secret-shaped value is the authoring tools' refusal.
+ */
+export function policyRefusals(document: unknown): Finding[] {
+  const candidate = withSchema(document);
+  if (policyFn(candidate)) return [];
+  const errors = policyFn.errors ?? [];
+  // A value that has one branch's type but failed that branch for another reason is a newer shape, not a wrong type.
+  const oneOfPaths = new Set(errors.filter((e) => e.keyword === "oneOf").map((e) => e.instancePath));
+  const reshaped = new Set(errors.filter((e) => e.keyword !== "type" && e.keyword !== "oneOf" && oneOfPaths.has(e.instancePath)).map((e) => e.instancePath));
+  const at = (path: string): unknown => path.split("/").slice(1).reduce<unknown>((value, key) => (value !== null && typeof value === "object" ? (value as Record<string, unknown>)[key.replace(/~1/g, "/").replace(/~0/g, "~")] : undefined), candidate);
+  return errors
+    .filter((e) => {
+      if (e.keyword !== "type" || reshaped.has(e.instancePath) || !/^\/(routes|surfaces|secrets|headers|forward\/headers|record_bodies|rules|assertion|signers)(\/|$)/.test(e.instancePath) || at(e.instancePath) === null) return false;
+      const rule = /^\/rules\/(\d+)\//.exec(e.instancePath);
+      const kind = rule ? at(`/rules/${rule[1]}/kind`) : null;
+      return !rule || (RULE_KINDS as readonly unknown[]).includes(kind);
+    })
+    .map(findingOf);
 }
 
 /** A record against schemas/request.json or schemas/declaration.json by its `schema` field. */

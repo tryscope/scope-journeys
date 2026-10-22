@@ -10,7 +10,9 @@ import { test } from "node:test";
 import { NextRequest } from "next/server.js";
 
 import { droppedSoFar } from "../src/deliver.js";
-import { INNER_HEADER, deliver, resetCache, resetDelivery, resetPolicyCache, withJourneys } from "../src/index.js";
+import { DEFAULT_API_URL, loadPolicy, resetPolicyCache } from "scope-journeys";
+
+import { INNER_HEADER, deliver, resetCache, resetDelivery, withJourneys } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const INSTALL = "jin_test0000000000000000000000";
@@ -29,7 +31,8 @@ async function gunzip(body: BodyInit | null | undefined): Promise<string> {
   return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
 }
 
-function world(options: { policyStatus?: number; ship?: Array<{ status: number; headers?: Record<string, string> }> } = {}): World {
+function world(options: { policyStatus?: number; ship?: Array<{ status: number; headers?: Record<string, string> }>; api?: string } = {}): World {
+  const api = options.api ?? API;
   const w: World = {
     calls: [],
     shipped: [],
@@ -40,12 +43,12 @@ function world(options: { policyStatus?: number; ship?: Array<{ status: number; 
       const headers: Record<string, string> = {};
       new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).forEach((v, k) => (headers[k] = v));
       const method = init?.method ?? "GET";
-      if (url === `${API}/v1/installs/${INSTALL}/policy`) {
+      if (url === `${api}/v1/installs/${INSTALL}/policy`) {
         w.calls.push({ url, method, headers, body: null });
         if (options.policyStatus && options.policyStatus !== 200) return new Response(null, { status: options.policyStatus });
         return Response.json(POLICY, { headers: { etag: '"3"', "x-journeys-environment": "preview", "x-journeys-salt-epoch": "2" } });
       }
-      if (url === `${API}/v1/requests`) {
+      if (url === `${api}/v1/requests`) {
         const text = await gunzip(init?.body);
         w.calls.push({ url, method, headers, body: text });
         w.shipped.push(JSON.parse(text) as unknown[]);
@@ -86,6 +89,7 @@ test("a page read: the policy from the install's route, the inner hop marked and
   assert.equal(hop.headers[INNER_HEADER], "1", "the forward sets the marker the check reads");
   assert.match(hop.headers.via ?? "", /scope-journeys/);
   assert.equal(hop.headers["accept-encoding"], "identity", "the hop asks for an uncompressed answer: fetch would add gzip, deflate to a request without one");
+  assert.equal(hop.headers["x-acme-key"], undefined, "the install key never goes to the origin, whatever the policy names");
   assert.equal(w.shipped.length, 1, "one shipment after the response");
   const [records] = w.shipped;
   const record = (records as Array<Record<string, unknown>>).find((r) => r.schema === "scope.request/1") as Record<string, unknown>;
@@ -106,6 +110,40 @@ test("a page read: the policy from the install's route, the inner hop marked and
   const shipment = w.calls.find((c) => c.url.endsWith("/v1/requests"));
   assert.equal(shipment?.headers["content-encoding"], "gzip");
   assert.equal(shipment?.headers.authorization, `Bearer ${env.JOURNEYS_INSTALL_KEY}`);
+});
+
+test("with no JOURNEYS_API_URL the policy and the records go to Scope's production API; a plain-http one is refused once and nothing is fetched or sent", async () => {
+  reset();
+  const production = world({ api: DEFAULT_API_URL });
+  const installed = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: env.JOURNEYS_INSTALL_KEY, JOURNEYS_SALT: env.JOURNEYS_SALT };
+  const handler = withJourneys({ env: installed, fetch: production.fetch });
+  await (await handler(request("https://acme.example/docs/quickstart"), production.event as never)).text();
+  await Promise.all(production.pending);
+  assert.deepEqual(production.calls.map((c) => c.url).filter((u) => u.startsWith(DEFAULT_API_URL)), [`${DEFAULT_API_URL}/v1/installs/${INSTALL}/policy`, `${DEFAULT_API_URL}/v1/requests`]);
+
+  reset();
+  const plain = world({ api: "http://api.test.invalid" });
+  const warnings: string[] = [];
+  const realWarn = console.warn;
+  console.warn = (line: string) => {
+    warnings.push(line);
+  };
+  try {
+    const refusing = withJourneys({ env: { ...installed, JOURNEYS_API_URL: "http://api.test.invalid" }, fetch: plain.fetch });
+    for (let i = 0; i < 2; i += 1) await (await refusing(request("https://acme.example/docs/quickstart"), plain.event as never)).text();
+  } finally {
+    console.warn = realWarn;
+  }
+  await Promise.all(plain.pending);
+  assert.deepEqual(plain.calls.map((c) => c.url).filter((u) => !u.startsWith("https://acme.example")), [], "no policy fetch and no shipment over plain http");
+  assert.equal(warnings.filter((l) => /JOURNEYS_API_URL must be https/.test(l)).length, 1, "said once");
+
+  reset();
+  const keyless = world({ api: DEFAULT_API_URL });
+  const unkeyed = withJourneys({ env: { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_SALT: env.JOURNEYS_SALT }, fetch: keyless.fetch });
+  await (await unkeyed(request("https://acme.example/docs/quickstart"), keyless.event as never)).text();
+  await Promise.all(keyless.pending);
+  assert.deepEqual(keyless.calls.map((c) => c.url).filter((u) => u.endsWith("/v1/requests")), [], "no install key and no OIDC token: nothing ships");
 });
 
 test("the inner hop and a host the install does not observe go to the app's own logic untouched, with no fetch", async () => {
@@ -180,6 +218,8 @@ test("the proxy's own URL names the listen address, not the host the client name
   };
   const server = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input instanceof Request ? input.url : input);
+    // Scope's API at its default address: no policy and no ingest here, so the embedded default runs.
+    if (url.startsWith(DEFAULT_API_URL)) return new Response(null, { status: 404 });
     const headers = new Headers(init?.headers);
     hops.push({ url, inner: headers.get(INNER_HEADER), via: headers.get("via") });
     depth += 1;
@@ -320,7 +360,7 @@ test("the shipper on a 429: one retry after Retry-After (capped), then the batch
   }) as typeof fetch;
   const records = Array.from({ length: 2 }, (_, i) => ({ schema: "scope.declaration/1", id: String(i) }) as never);
   const log: string[] = [];
-  await deliver(records, { apiUrl: API, credential: { scheme: "key", value: "k" }, report: null, fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1, maxRetryAfterMs: 5 });
+  await deliver(records, { apiUrl: API, credential: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1, maxRetryAfterMs: 5 });
   assert.deepEqual(log, ["journeys: shipment answered 429, retrying once in 5 ms", "journeys: shipment answered 429, dropping the batch"]);
   assert.equal(droppedSoFar(), 2);
   const w = world();
@@ -334,18 +374,32 @@ test("the shipper on a 429: one retry after Retry-After (capped), then the batch
 
 test("the policy answer's environment and salt epoch are kept from the last answer when a later one carries none", async () => {
   reset();
-  const { loadPolicy } = await import("../src/policy-cache.js");
   let call = 0;
   const fetcher = (async () => {
     call += 1;
     if (call === 1) return Response.json(POLICY, { headers: { etag: '"v3"', "x-journeys-environment": "preview", "x-journeys-salt-epoch": "2" } });
     return Response.json(POLICY, { headers: { etag: '"v4"' } });
   }) as typeof fetch;
-  const first = await loadPolicy({ url: `${API}/policy`, credential: { scheme: "key", value: "k" }, fetch: fetcher, now: 0, log: () => undefined });
+  const first = await loadPolicy({ url: `${API}/policy`, credential: "k", fetch: fetcher, now: 0, cache: null, log: () => undefined });
   assert.equal(first.saltEpoch, 2);
   assert.equal(first.environment, "preview");
-  const second = await loadPolicy({ url: `${API}/policy`, credential: { scheme: "key", value: "k" }, fetch: fetcher, now: 61_000, log: () => undefined });
+  const second = await loadPolicy({ url: `${API}/policy`, credential: "k", fetch: fetcher, now: 61_000, cache: null, log: () => undefined });
   assert.equal(second.etag, '"v4"');
   assert.equal(second.saltEpoch, 2, "the last epoch seen");
   assert.equal(second.environment, "preview");
+});
+
+test("shipping follows no redirect: a redirected batch is dropped and counted", async () => {
+  resetDelivery();
+  const redirects: Array<RequestRedirect | undefined> = [];
+  const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    redirects.push(init?.redirect);
+    return new Response(null, { status: 307, headers: { location: "https://other.example/v1/requests" } });
+  }) as typeof fetch;
+  const log: string[] = [];
+  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", credential: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
+  assert.deepEqual(redirects, ["manual"]);
+  assert.deepEqual(log, ["journeys: shipment refused with 307; dropping the batch"]);
+  assert.equal(droppedSoFar(), 1);
+  resetDelivery();
 });

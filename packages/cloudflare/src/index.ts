@@ -1,10 +1,8 @@
-import { VERSION, assertionFromEnv, observe, observeResponse, passHeaders, type CompiledPolicy, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, loadPolicy, observe, observeResponse, passHeaders, secureUrl, type CompiledPolicy, type Environment, type Io, type SensorRecord } from "scope-journeys";
 
 import { platformFacts, type RequestWithCf } from "./facts.js";
 import { workerCache } from "./cache.js";
-import { loadPolicy } from "./policy-cache.js";
 
-export { loadPolicy, resetPolicyCache } from "./policy-cache.js";
 export { workerCache, resetCache } from "./cache.js";
 export { platformFacts } from "./facts.js";
 export { deliver, resetDelivery } from "./deliver.js";
@@ -78,7 +76,8 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
         else if (level === "warn") console.warn(line);
         else console.log(line);
       };
-      const policyUrl = b.JOURNEYS_POLICY_URL ?? (b.JOURNEYS_API_URL && b.JOURNEYS_INSTALL_ID ? `${b.JOURNEYS_API_URL.replace(/\/$/, "")}/v1/installs/${b.JOURNEYS_INSTALL_ID}/policy` : null);
+      const apiUrl = secureUrl(b.JOURNEYS_API_URL ?? DEFAULT_API_URL, "JOURNEYS_API_URL", (line) => log("warn", line));
+      const policyUrl = b.JOURNEYS_POLICY_URL ?? (apiUrl && b.JOURNEYS_INSTALL_ID ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${b.JOURNEYS_INSTALL_ID}/policy` : null);
       const cache = workerCache(typeof caches !== "undefined" ? (caches as unknown as { default: Cache }).default : null, now);
       const loaded = await loadPolicy({ url: policyUrl, credential: b.JOURNEYS_INSTALL_KEY ?? null, fetch: fetchFn, now: now(), cache, log: (line) => log("warn", line) });
       let policy: CompiledPolicy = loaded.policy;
@@ -92,9 +91,9 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
         }
         policy = (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
       }
-      const origin = policy.origin ?? b.JOURNEYS_ORIGIN ?? null;
+      const origin = b.JOURNEYS_ORIGIN ?? null;
       const url = new URL(request.url);
-      const issuer = b.JOURNEYS_API_URL && b.JOURNEYS_INSTALL_ID ? `${b.JOURNEYS_API_URL.replace(/\/$/, "")}/v1/installs/${b.JOURNEYS_INSTALL_ID}` : null;
+      const issuer = apiUrl && b.JOURNEYS_INSTALL_ID ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${b.JOURNEYS_INSTALL_ID}` : null;
       const identity = { install: b.JOURNEYS_INSTALL_ID ?? null, name, environment: (loaded.environment ?? b.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(b.JOURNEYS_ASSERTION_KEY, issuer) };
       const facts = platformFacts(request as RequestWithCf, identity);
       const io: Io = {
@@ -105,13 +104,11 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
           // Another host (a signer's key directory): a plain fetch, two seconds, nothing of ours added.
           if (new URL(outbound.url).host !== url.host) return fetchFn(outbound.url, { method: outbound.method, headers: outbound.headers, redirect: "manual", signal: AbortSignal.timeout(2_000) });
           const target = origin ? new URL(`${origin.replace(/\/$/, "")}${url.pathname}${url.search}`) : new URL(outbound.url);
-          const headers = new Headers(outbound.headers);
-          if (policy.forward.key_header && b.JOURNEYS_INSTALL_KEY) headers.set(policy.forward.key_header, b.JOURNEYS_INSTALL_KEY);
-          return fetchFn(target, { method: outbound.method, headers, body: outbound.body, redirect: "manual", signal: AbortSignal.timeout(30_000), ...(outbound.body ? { duplex: "half" } : {}) } as RequestInit);
+          return fetchFn(target, { method: outbound.method, headers: outbound.headers, body: outbound.body, redirect: "manual", signal: AbortSignal.timeout(30_000), ...(outbound.body ? { duplex: "half" } : {}) } as RequestInit);
         },
         cache,
         ship: (records: readonly SensorRecord[]) => {
-          ctx.waitUntil(deliver(records, { apiUrl: b.JOURNEYS_API_URL ?? null, key: b.JOURNEYS_INSTALL_KEY ?? null, report: policy.report, fetch: fetchFn, log: (line) => log("warn", line) }));
+          ctx.waitUntil(deliver(records, { apiUrl, key: b.JOURNEYS_INSTALL_KEY ?? null, fetch: fetchFn, log: (line) => log("warn", line) }));
         },
         log,
       };

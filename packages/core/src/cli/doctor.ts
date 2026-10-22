@@ -6,9 +6,10 @@ import type { Io, SensorRecord } from "../io.js";
 import type { ScopeRequest1 } from "../generated/request.js";
 import { observe, PROBE_HEADER, PROBE_PATH } from "../observe.js";
 import { compilePolicy } from "../policy.js";
+import { DEFAULT_API_URL } from "../policy-loader.js";
 import { observeResponse } from "../respond.js";
 import { VERSION } from "../version.js";
-import { ApiError, createClient, DEFAULT_API_URL, UnreachableError, type Install, type InstallForm, type InstallProbeRead, type InstallState } from "./client.js";
+import { ApiError, createClient, UnreachableError, type Install, type InstallForm, type InstallProbeRead, type InstallState } from "./client.js";
 import { readEnvFile, readLock } from "./project.js";
 
 export interface LocalDoctorOptions {

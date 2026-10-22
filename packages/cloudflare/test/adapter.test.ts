@@ -3,7 +3,9 @@
 // body.
 import { expect, test, beforeEach } from "vitest";
 
-import { createHandler, deliver, loadPolicy, platformFacts, resetDelivery, resetPolicyCache } from "../src/index.js";
+import { DEFAULT_API_URL, loadPolicy, resetPolicyCache } from "scope-journeys";
+
+import { createHandler, deliver, platformFacts, resetDelivery } from "../src/index.js";
 import type { RequestWithCf } from "../src/facts.js";
 import policyDocument from "../../../fixtures/synthetic/policy.json" with { type: "json" };
 import fixtureRequest from "../../../fixtures/synthetic/22-intent-header/request.json" with { type: "json" };
@@ -71,7 +73,7 @@ test("delivery batches 500 per body, retries once on a 5xx and counts a dropped 
   }) as typeof fetch;
   const records = Array.from({ length: 501 }, (_, i) => ({ schema: "scope.declaration/1", id: String(i) }) as never);
   const log: string[] = [];
-  await deliver(records, { apiUrl: "https://api.invalid", key: "k", report: null, fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
+  await deliver(records, { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
   expect(bodies).toEqual([500, 500, 1, 1]);
   expect(log.filter((l) => /retrying once/.test(l)).length).toBe(2);
   expect(log.filter((l) => /dropping/.test(l)).length).toBe(1);
@@ -99,10 +101,35 @@ test("the hop to the origin carries Via and the policy's headers, no accept-enco
   const headers = (seen as unknown as Request).headers;
   expect(headers.get("via")).toBe("1.1 test-sensor");
   expect(headers.get("x-acme-edge")).toBe("journeys");
-  expect(headers.get("x-acme-key")).toBe("sjk_test_k");
+  expect(headers.get("x-acme-key"), "the install key never goes to the origin, whatever the policy names").toBeNull();
   expect(headers.get("accept-encoding")).toBeNull();
   expect(headers.get("content-length")).toBeNull();
   expect(response.headers.get("content-encoding")).toBeNull();
+});
+
+test("the policy never chooses where traffic or records go: the hop goes to JOURNEYS_ORIGIN and the records to Scope's production API by default, whatever the policy's origin and report say", async () => {
+  const urls: string[] = [];
+  const fetcher = (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    urls.push(url);
+    if (url.endsWith("/policy")) return Response.json({ ...policyDocument, origin: "https://evil.example", report: { url: "https://evil.example/ingest" } }, { headers: { etag: '"v3"' } });
+    if (url.startsWith("https://origin.invalid")) return new Response("<!doctype html><html><body><h1>Quickstart</h1></body></html>", { status: 200, headers: { "content-type": "text/html" } });
+    return new Response(null, { status: 202 });
+  }) as typeof fetch;
+  const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "https://origin.invalid" } });
+  const pending: Promise<unknown>[] = [];
+  const response = await handler.fetch(new Request("https://acme.example/docs/quickstart", { headers: { accept: "text/html", "user-agent": "Claude-User (claude-code/2.1.0)" } }), {}, { waitUntil: (p) => pending.push(p), passThroughOnException: () => undefined });
+  await response.text();
+  await Promise.all(pending);
+  expect(urls).toEqual([`${DEFAULT_API_URL}/v1/installs/jin_test000000000000000000/policy`, "https://origin.invalid/docs/quickstart", `${DEFAULT_API_URL}/v1/requests`]);
+
+  urls.length = 0;
+  resetPolicyCache();
+  const unconfigured = createHandler({ fetch: fetcher, env: { JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "https://origin.invalid" } });
+  const later: Promise<unknown>[] = [];
+  await (await unconfigured.fetch(new Request("https://acme.example/docs/quickstart?email=a%40b.example", { headers: { accept: "text/html" } }), {}, { waitUntil: (p) => later.push(p), passThroughOnException: () => undefined })).text();
+  await Promise.all(later);
+  expect(urls, "no install, no key: the request reaches the origin and nothing reaches Scope").toEqual(["https://origin.invalid/docs/quickstart?email=a%40b.example"]);
 });
 
 test("delivery on a 429: one retry after Retry-After (capped), then the batch is dropped and counted; a 429 then a 200 ships and clears the count", async () => {
@@ -114,14 +141,14 @@ test("delivery on a 429: one retry after Retry-After (capped), then the batch is
   const records = Array.from({ length: 3 }, (_, i) => ({ schema: "scope.declaration/1", id: String(i) }) as never);
   const log: string[] = [];
   const started = Date.now();
-  await deliver(records, { apiUrl: "https://api.invalid", key: "k", report: null, fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1, maxRetryAfterMs: 5 });
+  await deliver(records, { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1, maxRetryAfterMs: 5 });
   expect(Date.now() - started).toBeLessThan(1000);
   expect(log).toEqual(["journeys: shipment answered 429, retrying once in 5 ms", "journeys: shipment answered 429, dropping the batch"]);
   expect(answers.length).toBe(0);
   const { droppedSoFar } = await import("../src/deliver.js");
   expect(droppedSoFar()).toBe(3);
   answers.push({ status: 429, headers: { "retry-after": new Date(Date.now() + 1000).toUTCString() } }, { status: 200 });
-  await deliver(records, { apiUrl: "https://api.invalid", key: "k", report: null, fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1, maxRetryAfterMs: 5 });
+  await deliver(records, { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1, maxRetryAfterMs: 5 });
   expect(log.at(-1)).toBe("journeys: shipment answered 429, retrying once in 5 ms");
   expect(droppedSoFar()).toBe(0);
 });
@@ -145,4 +172,20 @@ test("the policy answer's environment and salt epoch: taken from the headers, ke
   expect(second.etag).toBe('"v4"');
   expect(second.environment).toBe("preview");
   expect(second.saltEpoch).toBe(2);
+});
+
+test("shipping follows no redirect: a redirected batch is dropped and counted", async () => {
+  resetDelivery();
+  const redirects: Array<RequestRedirect | undefined> = [];
+  const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    redirects.push(init?.redirect);
+    return new Response(null, { status: 307, headers: { location: "https://other.example/v1/requests" } });
+  }) as typeof fetch;
+  const log: string[] = [];
+  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
+  expect(redirects).toEqual(["manual"]);
+  expect(log).toEqual(["journeys: shipment refused with 307; dropping the batch"]);
+  const { droppedSoFar } = await import("../src/deliver.js");
+  expect(droppedSoFar()).toBe(1);
+  resetDelivery();
 });

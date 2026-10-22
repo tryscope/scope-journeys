@@ -5,13 +5,10 @@ import type { SensorRecord } from "scope-journeys";
  * JSON array of up to 500, after the response went out; one retry on a network error, a 5xx or a
  * 429 (after `Retry-After`, capped at 60 seconds, else 500 ms), then the batch is dropped and counted
  * into the next record's `scope.observer.dropped`. Nothing waits for a shipment.
- * The policy's `report.url` and `report.key_header`, when present, override the destination (the
- * lab's form of shipping).
  */
 export interface DeliveryOptions {
   apiUrl: string | null;
   key: string | null;
-  report: { url: string; key_header: string | null } | null;
   fetch: typeof fetch;
   log: (line: string) => void;
   retryDelayMs?: number;
@@ -21,12 +18,14 @@ export interface DeliveryOptions {
 
 const BATCH = 500;
 let dropped = 0;
+let warnedNoKey = false;
 
 export const droppedSoFar = (): number => dropped;
 
 /** For the tests: forget the drop counter. */
 export function resetDelivery(): void {
   dropped = 0;
+  warnedNoKey = false;
 }
 
 /** A 429's Retry-After (seconds, or an HTTP date) as a delay, capped so a quota never holds a function for long; the usual retry delay without one. */
@@ -45,19 +44,23 @@ async function gzip(text: string): Promise<ArrayBuffer> {
 }
 
 async function post(url: string, headers: Record<string, string>, body: ArrayBuffer, fetchFn: typeof fetch): Promise<Response> {
-  return fetchFn(url, { method: "POST", headers, body, signal: AbortSignal.timeout(10_000) });
+  return fetchFn(url, { method: "POST", headers, body, redirect: "manual", signal: AbortSignal.timeout(10_000) });
 }
 
 export async function deliver(records: readonly SensorRecord[], options: DeliveryOptions): Promise<void> {
   if (records.length === 0) return;
-  const url = options.report?.url ?? (options.apiUrl ? `${options.apiUrl.replace(/\/$/, "")}/v1/requests` : null);
-  if (!url) {
+  const url = options.apiUrl ? `${options.apiUrl.replace(/\/$/, "")}/v1/requests` : null;
+  // No install key, nothing leaves: the ingest refuses it, and an unconfigured sensor sends nothing.
+  if (!url || !options.key) {
+    if (url && !warnedNoKey) {
+      warnedNoKey = true;
+      options.log("journeys: JOURNEYS_INSTALL_KEY is not set; nothing ships and the records count as dropped");
+    }
     dropped += records.length;
     return;
   }
   const headers: Record<string, string> = { "content-type": "application/json", "content-encoding": "gzip" };
-  if (options.report?.key_header && options.key) headers[options.report.key_header] = options.key;
-  else if (options.key) headers.authorization = `Bearer ${options.key}`;
+  headers.authorization = `Bearer ${options.key}`;
   for (let start = 0; start < records.length; start += BATCH) {
     const batch = records.slice(start, start + BATCH);
     const body = await gzip(JSON.stringify(batch));

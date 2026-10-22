@@ -3,14 +3,13 @@ import type { TLSSocket } from "node:tls";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { VERSION, assertionFromEnv, forwardedUrl, observe, observeResponse, passHeaders, type Environment, type LogLevel } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardedUrl, loadPolicy, observe, observeResponse, passHeaders, secureUrl, type Environment, type LogLevel } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { droppedSoFar } from "./deliver.js";
 import { canonicalAddress, forwardedAddress, platformFacts, socketFacts, type SocketFacts } from "./facts.js";
 import { HOP_BY_HOP, headersOf, hop } from "./hop.js";
 import { createNodeIo } from "./io.js";
-import { loadPolicy } from "./policy-cache.js";
 
 /** The header a mount adds on the hop to its own listener; a request carrying it is the inner pass and is never observed twice. */
 export const INNER_HEADER = "x-journeys-inner";
@@ -82,7 +81,7 @@ export function createSensor(options: NodeOptions = {}): Sensor {
   const observeHost = options.host ?? env.JOURNEYS_HOST ?? null;
   const name = options.name ?? env.JOURNEYS_NAME ?? "scope-journeys";
   const installId = options.installId ?? env.JOURNEYS_INSTALL_ID ?? null;
-  const apiUrl = options.apiUrl ?? env.JOURNEYS_API_URL ?? null;
+  const apiUrl = secureUrl(options.apiUrl ?? env.JOURNEYS_API_URL ?? DEFAULT_API_URL, "JOURNEYS_API_URL", (line) => log("warn", line));
   const key = env.JOURNEYS_INSTALL_KEY ?? null;
   const salt = env.JOURNEYS_SALT ?? null;
   const origin = options.origin ?? env.JOURNEYS_ORIGIN ?? null;
@@ -114,20 +113,20 @@ export function createSensor(options: NodeOptions = {}): Sensor {
         warnedNoInstall = true;
         warn("journeys: JOURNEYS_INSTALL_ID is not set; forwarding every request untouched under the default policy (run `npx scope-journeys init --node`)");
       }
-      const loaded = await loadPolicy({ url: policyUrl, key, fetch: fetchFn, now: now(), cache, log: warn });
+      const loaded = await loadPolicy({ url: policyUrl, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
       let policy = loaded.policy;
       if (!salt) {
         if (!warnedNoSalt) {
           warnedNoSalt = true;
           warn("journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init --node`)");
         }
-        policy = (await loadPolicy({ url: null, key: null, fetch: fetchFn, now: now(), log: () => undefined })).policy;
+        policy = (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
       }
       const target = targetFor(exchange);
       const identity = { install: installId, name, environment: (loaded.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(env.JOURNEYS_ASSERTION_KEY, issuer) };
       const facts = platformFacts(socket, request.headers.get("x-request-id"), identity);
       // A mount's hop carries the Host as received (the forwarded host is the record's, not the app's view); the proxy's carries the origin's.
-      const io = createNodeIo({ salt: salt ?? "", host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, policy, key, apiUrl, cache, fetch: fetchFn, now, afterResponse: exchange.afterResponse, track, log });
+      const io = createNodeIo({ salt: salt ?? "", host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, now, afterResponse: exchange.afterResponse, track, log });
       const observed = await observe(request, policy, facts, io);
       if (observed.kind === "answer") return observed.response;
       const upstream = await io.forward(observed.request);

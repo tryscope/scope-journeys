@@ -12,14 +12,14 @@ The policy is the document that tells the sensor what to observe and what each r
 |---|---|
 | `schema`, `version` | `scope.policy/1` and the document's version |
 | `about` | a free description |
-| `origin` | the origin to forward to when the sensor does not sit on the product host (the Worker off a route) |
-| `report` | where records ship (`url`, the header that carries the install key) |
+| `origin` | ignored: where your traffic goes comes only from the sensor's own configuration (`JOURNEYS_ORIGIN`), never from the policy |
+| `report` | ignored: records go to `JOURNEYS_API_URL` in the sensor's own configuration, with the install key as `Authorization: Bearer` |
 | `surfaces` | the surface map: the paths of each surface of your product (`docs`, `download`, `api`, `mcp`, `oauth`, `device`, `signup`, `hooks`, `credentials`, `trial`, `cli`, `clients`, `finder`, `passthrough`, `custom`), so each request is classified by what it is for |
 | `routes` | the older form of the surface map, still read; new documents use `surfaces` |
 | `secrets` | the value shapes hashed wherever they appear (a key prefix, a token pattern) |
-| `headers` | the names of the setup, agent, client and intent headers the sensor reads |
-| `forward` | headers added on the hop to the origin (with `{host}` filled in), the header that carries the install key to the origin |
-| `record_bodies` | `false` is the lightest form: bodies are read where a rule needs them and never leave |
+| `headers` | the names of the setup, agent, client and intent headers the sensor reads; a name that is not a header name, or one that carries a credential (`Authorization`, `Cookie`, a name with auth, token, secret, password, key, jwt, assertion, oidc, signature, bypass, dpop, proof, hmac, csrf or xsrf in it, your credential headers), is ignored |
+| `forward` | the policy's own `x-` headers added on the hop to the origin (with `{host}` filled in); never one that frames the request, names its host or client (`x-forwarded-*`, `x-real-ip`), steers your framework (`x-middleware-*`, `x-vercel-*`, `x-nextjs-*`), speaks for the sensor (`x-scope-*`, `x-journeys-*`) or carries a credential, and each value is one line of latin-1 text; the install key never goes to the origin |
+| `record_bodies` | `false`, the default, is the lightest form: bodies are read where a rule needs them and never leave; `true` records the bodies of the routes you list, every field but your secret fields and shapes as sent |
 | `observe` | the routes whose request and response bodies are recorded, the fields allowed, the limit |
 | `rules` | the rule table, below |
 | `assertion` | whether the sensor signs an assertion of what it saw on each forwarded request, for your app to verify |
@@ -39,6 +39,8 @@ The policy is the document that tells the sensor what to observe and what each r
 | `face` | serves the markdown face of a page to a reader who asked for it | the face that would have been served |
 
 Every rule has `id`, `kind`, `mode` (`dry_run` or `live`), `environments` (the environments it is live in) and, for `gate` only, `on_error` (`open` forwards the call untouched when the rule fails; `closed` refuses it). Anything else in a rule is the kind's own fields (the paths, the statuses, the links).
+
+**What a rule may put into a page.** An `inject` replacement and a `notfound` page hold plain text, the placeholders `{host}`, `{prefix}` and `{token}`, the groups `$1` to `$9`, and on the HTML face only `<!doctype html>` and whole tags from `a`, `blockquote`, `body`, `code`, `h1`, `head`, `html`, `li`, `meta`, `p`, `pre`, `title` and `ul`, with no attribute but an `a`'s `href` and a `meta`'s `charset` of `utf-8`; a `>` outside a tag is written `&gt;`. On the markdown and text faces, and in a `gate`'s texts and an `error` suffix, which a reader may render as markdown or HTML, the text holds no tag with an attribute or a quote, no end tag, comment or autolink, no tag that runs, loads or hides what follows (`script`, `style`, `iframe` and the like), no character reference such as `&#47;` and no control character such as a tab; a placeholder such as `<one sentence: what the person asked you to do>` is fine. The only address a rule's own text names is `https://{host}`, followed by a path, a query, a fragment or the end of the word: no other address with a scheme or starting `//`, no `www.` or mail address, and outside HTML no other `scheme:` either. An HTML `href` points at `https://{host}` or is a path, with no character reference (an `&` between query parameters stays a plain `&`), and the `finder` and `error` links are paths. A rule that holds anything else, or a pattern that does not compile or repeats a group that itself holds a repeat (such as `(a+)+`, or `(/[a-z-]+)*` in a path, where `(/[a-z/-]+)?` does the same job), runs dry, and `journeys policy validate` names it; such a pattern in the surface map or the secret shapes refuses the whole document, and the sensor keeps its last good policy. A pattern holds no placeholder but `{host}`, and a replacement uses its groups in order, each once; a match whose groups lie outside it, or out of the page's order, keeps the page's text. A rule that would make a page more than twice its size plus 64 KiB is left out of that page, and the record shows an `errored` decision for it. Where it lands inside a tag, an inline script or style, a title or a text area of your page, or where its text meets your page's text inside a word on the markdown or text face (a letter outside ASCII, as in Japanese text, counts as part of a word), it only continues a link to your own site past the host, with a link-safe code such as `?ref=`.
 
 ## Validate a document
 
