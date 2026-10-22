@@ -6,7 +6,7 @@ Generated from `schemas/request.json` and `schemas/declaration.json` by `scripts
 
 **What it holds.** No secret of yours: the observer's own credential is an installation key you can rotate or revoke at any time, or, on Vercel, your project's OIDC identity with no key at all. Its configuration is a public document with no secret in it. It stores nothing on your infrastructure.
 
-**How it fails.** Open, always: if the observer cannot reach Scope, cannot load its configuration, or encounters an error, your request is forwarded unchanged and your origin's answer is returned as it was. It never retries a report more than once and never delays a response to report.
+**How it fails.** Open: if the observer cannot reach Scope, cannot load its configuration, or encounters an error, your request is forwarded unchanged and your origin's answer is returned as it was. Once a request may have reached your origin it is not sent again: when its forward fails after the request left (the connection drops, or no answer within 30 seconds), the client gets a 502, or a 504 on the timeout. The one exception is HTTP's own: on the Node form, a GET, HEAD, OPTIONS, PUT or DELETE whose kept-alive connection was reset before any answer goes once more on a fresh connection. It never retries a report more than once and never delays a response to report.
 
 **Where the data goes and for how long.** To Scope's ingest over HTTPS, batched after the response, signed; stored in your tenant for 90 days by default, with the raw batches kept append-only as the audit trail; exportable to your own OpenTelemetry collector as log records and traces; deletable with your tenant.
 
@@ -166,7 +166,7 @@ Present: on page reads and wherever a rule matched.
 | `scope.page.injected` | array of string | the labels of the inject rules that changed the page |
 | `scope.page.bytes` | integer |  |
 | `scope.reference_minted` | reference \| null | a reference minted into a non-page answer (an error link, a finder answer); a page's reference, the helpful 404's included, is scope.page.reference_minted |
-| `scope.decision` | array of decision | what every rule that matched did, in rule order |
+| `scope.decision` | array of decision | what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `assertion` (the assertion could not be signed) and `hop` (the hop failed after the request may have left: answered 502, or 504 on a timeout, and not sent again) |
 | `scope.gateway` | object \| null | on the MCP route: how many messages the gate answered and how many it forwarded |
 | `scope.gateway.declared` | integer |  |
 | `scope.gateway.forwarded` | integer |  |

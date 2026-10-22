@@ -1,8 +1,9 @@
 // The Node form: the socket's facts (the trusted forwarded address, the dual-stack prefix, the
 // family), the three mounts end to end (Express 5, Fastify 5, Hono 4 on @hono/node-server) with
 // the hop to the app's own listener marked and carrying exactly the gateway's headers, the pass
-// paths (the inner hop, an unobserved host, a failed hop), the standalone proxy's drain (a request
-// in flight when close is called completes and its record ships), and the listen address parser.
+// paths (the inner hop, an unobserved host, a hop that cannot connect), a hop that fails after the request left
+// (never sent again), the standalone proxy's drain (a request in flight when close is called
+// completes and its record ships), and the listen address parser.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
@@ -17,7 +18,7 @@ import { DEFAULT_API_URL, resetPolicyCache, trustPolicyKeyForTests } from "scope
 
 import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
 
-import { canonicalAddress, createNodeHandler, deliver, droppedSoFar, fastifyJourneys, honoJourneys, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler, type RunningProxy } from "../src/index.js";
+import { canonicalAddress, createNodeHandler, deliver, droppedSoFar, fastifyJourneys, honoJourneys, hop, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler, type RunningProxy } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const INSTALL = "jin_test0000000000000000000000";
@@ -184,7 +185,7 @@ test("behind a trusted proxy the record names the forwarded host and scheme, JOU
   }
 });
 
-test("Express 5: app.use(journeys()) first; a page read goes through the hop to the app's own listener once, marked, with the gateway's headers; the record ships after the response; the inner pass, an unobserved host and a failed hop reach the app untouched", async () => {
+test("Express 5: app.use(journeys()) first; a page read goes through the hop to the app's own listener once, marked, with the gateway's headers; the record ships after the response; the inner pass, an unobserved host and a hop that cannot connect reach the app untouched", async () => {
   reset();
   const w = world();
   const seen: Seen[] = [];
@@ -402,6 +403,225 @@ test("the standalone proxy: the origin's Host on the hop, no marker; close() dra
     } finally {
       await proxy2.close();
     }
+  }
+});
+
+test("a hop that fails after the request left is never sent again: the proxy and an Express mount answer 502 and the origin acts once; the record ships with the status and the hop's step, a passthrough path records nothing; the hop's own timeout is a TimeoutError", async () => {
+  reset();
+  const w = world();
+  const logs: string[] = [];
+  let received = 0;
+  // The origin reads the whole request, acts on it, then drops the connection before answering.
+  const origin = createServer((req) => {
+    received += 1;
+    req.resume().on("end", () => req.socket.destroy());
+  });
+  const originPort = await listen(origin);
+  const proxy = await serveProxy({ origin: `http://127.0.0.1:${originPort}`, listen: "127.0.0.1:0", env, fetch: w.fetch, drainMs: 500, signals: false, log: (_level, line) => logs.push(line) });
+  try {
+    const checkout = await fetch(`${proxy.url}/api/v1/actions/checkout`, { method: "POST", headers: { ...agent, "content-type": "application/json" }, body: JSON.stringify({ amount: 100 }) });
+    assert.equal(checkout.status, 502);
+    await checkout.text();
+    assert.equal(received, 1, "the origin received the POST once");
+    await until(() => w.shipped.length === 1, "the record shipped");
+    const record = (w.shipped[0] ?? []).find((r) => r.schema === "scope.request/1");
+    assert.equal(record?.["scope.route"], "api");
+    assert.equal(record?.["http.response.status_code"], 502);
+    assert.deepEqual((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "hop"), [{ rule: "hop", kind: "observe", mode: "live", outcome: "errored", reason: "Error: answered 502, not sent again" }]);
+    assert.deepEqual(record?.["scope.observer.errors"], [], "the sensor itself did not fail");
+    assert.ok(logs.some((l) => /may have reached the origin; answered 502, not sent again/.test(l)), logs.join("\n"));
+
+    const asset = await fetch(`${proxy.url}/assets/app.js`, { headers: agent });
+    assert.equal(asset.status, 502);
+    await asset.text();
+    assert.equal(received, 2, "the passthrough request reached the origin once");
+    const page = await fetch(`${proxy.url}/docs/quickstart`, { headers: agent });
+    assert.equal(page.status, 502);
+    await page.text();
+    await until(() => w.shipped.length === 2, "the page's record shipped");
+    assert.deepEqual(w.shipped.flat().map((r) => r["url.path"]), ["/api/v1/actions/checkout", "/docs/quickstart"], "the passthrough path recorded nothing");
+  } finally {
+    await proxy.close();
+    origin.closeAllConnections();
+    await new Promise((resolve) => origin.close(resolve));
+  }
+
+  reset();
+  const mountWorld = world();
+  let charged = 0;
+  const app = express();
+  app.use(journeys({ env, fetch: mountWorld.fetch, log: () => undefined }));
+  app.post("/api/v1/actions/checkout", (req, res) => {
+    charged += 1;
+    // The inner hop: the app acts, then the connection drops before its answer leaves.
+    if (req.headers["x-journeys-inner"]) req.resume().on("end", () => req.socket.destroy());
+    else res.json({ status: "success" });
+  });
+  const server = createServer(app);
+  const port = await listen(server);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/actions/checkout`, { method: "POST", headers: { ...agent, "content-type": "application/json" }, body: JSON.stringify({ amount: 100 }) });
+    assert.equal(response.status, 502);
+    await response.text();
+    assert.equal(charged, 1, "the route ran once, through the hop; next() was not called after it");
+    await until(() => mountWorld.shipped.length === 1, "the mount's record shipped");
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+
+  const silent = createServer(() => undefined);
+  const silentPort = await listen(silent);
+  try {
+    await assert.rejects(hop(new Request(`http://127.0.0.1:${silentPort}/docs`), { target: new URL(`http://127.0.0.1:${silentPort}`), host: "acme.example", timeoutMs: 100 }), (error: unknown) => error instanceof Error && error.name === "TimeoutError");
+  } finally {
+    silent.closeAllConnections();
+    await new Promise((resolve) => silent.close(resolve));
+  }
+});
+
+test("an origin that is not an http or https URL is refused where it is read: a mount passes every request to the app untouched and says why, the proxy refuses to start", async () => {
+  reset();
+  const w = world();
+  const logs: string[] = [];
+  const app = express();
+  app.use(journeys({ env: { ...env, JOURNEYS_ORIGIN: "localhost:3000" }, fetch: w.fetch, log: (_level, line) => logs.push(line) }));
+  app.get("/docs/quickstart", (_req, res) => {
+    res.type("html").send(PAGE);
+  });
+  const server = createServer(app);
+  const port = await listen(server);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/docs/quickstart`, { headers: agent });
+    assert.equal(response.status, 200, "the app answers; the sensor never forwards to a value that is not a URL it can reach");
+    assert.match(await response.text(), /Quickstart/);
+    assert.ok(logs.some((l) => /JOURNEYS_ORIGIN or the origin option\) is not an http or https URL/.test(l)), logs.join("\n"));
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+  await assert.rejects(serveProxy({ origin: "docs.example.com", listen: "127.0.0.1:0", env, fetch: w.fetch, signals: false, log: () => undefined }), /needs an http or https origin/);
+
+  reset();
+  const unset = world();
+  const seen: string[] = [];
+  const app2 = express();
+  app2.use(journeys({ env: { ...env, JOURNEYS_ORIGIN: "" }, fetch: unset.fetch, log: () => undefined }));
+  app2.get("/docs/quickstart", (req, res) => {
+    seen.push(headersOf(req)["x-journeys-inner"] ?? "-");
+    res.type("html").send(PAGE);
+  });
+  const server2 = createServer(app2);
+  const port2 = await listen(server2);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port2}/docs/quickstart`, { headers: agent });
+    assert.equal(response.status, 200);
+    await response.text();
+    assert.deepEqual(seen, ["1"], "an empty JOURNEYS_ORIGIN is unset: the hop goes to the app's own listener");
+    await until(() => unset.shipped.length === 1, "observed and shipped");
+  } finally {
+    server2.closeAllConnections();
+    await new Promise((resolve) => server2.close(resolve));
+  }
+});
+
+test("a reused connection the origin reset before any answer: an idempotent request goes once more on a fresh connection, a POST is never sent again; a reset after the answer started sends nothing more; a retry that times out reports its timeout, a refused one the first reset", async () => {
+  const handled: string[] = [];
+  const served = new WeakMap<object, number>();
+  // A second request on a kept-alive connection is cut as it arrives, the way an origin closes a connection it held idle.
+  const origin = createServer((req, res) => {
+    const count = (served.get(req.socket) ?? 0) + 1;
+    served.set(req.socket, count);
+    if (count > 1) {
+      req.socket.destroy();
+      return;
+    }
+    handled.push(`${req.method} ${req.url}`);
+    res.end("ok");
+  });
+  const port = await listen(origin);
+  const base = `http://127.0.0.1:${port}`;
+  const send = (method: string, path: string): Promise<Response> => hop(new Request(`${base}${path}`, { method, ...(method === "POST" ? { body: "{}" } : {}) }), { target: new URL(base), host: "acme.example", timeoutMs: 2_000 });
+  try {
+    assert.equal(await (await send("GET", "/docs/one")).text(), "ok");
+    assert.equal(await (await send("GET", "/docs/two")).text(), "ok", "the reset GET went again on a fresh connection");
+    assert.equal(await (await send("GET", "/docs/three")).text(), "ok");
+    await assert.rejects(send("POST", "/api/v1/actions/checkout"), (error: unknown) => error instanceof Error && "code" in error && error.code === "ECONNRESET");
+    assert.deepEqual(handled, ["GET /docs/one", "GET /docs/two", "GET /docs/three"], "the POST reached no handler and was not sent again");
+  } finally {
+    origin.closeAllConnections();
+    await new Promise((resolve) => origin.close(resolve));
+  }
+
+  // The answer has started when the reused connection is reset: nothing is sent again.
+  const seen: string[] = [];
+  const counts = new WeakMap<object, number>();
+  const midway = createServer((req, res) => {
+    const count = (counts.get(req.socket) ?? 0) + 1;
+    counts.set(req.socket, count);
+    seen.push(`${req.url} #${count}`);
+    if (count === 1) {
+      res.end("ok");
+      return;
+    }
+    res.writeHead(200, { "content-length": "1000" });
+    res.write("partial");
+    setTimeout(() => req.socket.resetAndDestroy(), 20);
+  });
+  const midwayPort = await listen(midway);
+  const midwayBase = `http://127.0.0.1:${midwayPort}`;
+  const get = (path: string): Promise<Response> => hop(new Request(`${midwayBase}${path}`), { target: new URL(midwayBase), host: "acme.example", timeoutMs: 2_000 });
+  try {
+    assert.equal(await (await get("/one")).text(), "ok");
+    const cut = await get("/two");
+    assert.equal(cut.status, 200);
+    await assert.rejects(cut.text());
+    assert.equal(await (await get("/three")).text(), "ok");
+    assert.deepEqual(seen, ["/one #1", "/two #2", "/three #1"], "the cut GET was not sent a second time");
+  } finally {
+    midway.closeAllConnections();
+    await new Promise((resolve) => midway.close(resolve));
+  }
+
+  // The retry goes out and is never answered: its own timeout is the one reported.
+  let total = 0;
+  const stalls = createServer((req, res) => {
+    total += 1;
+    if (total === 1) res.end("ok");
+    else if (total === 2) req.socket.destroy();
+  });
+  const stallsPort = await listen(stalls);
+  const stallsBase = `http://127.0.0.1:${stallsPort}`;
+  const stalled = (): Promise<Response> => hop(new Request(`${stallsBase}/docs/one`), { target: new URL(stallsBase), host: "acme.example", timeoutMs: 200 });
+  try {
+    assert.equal(await (await stalled()).text(), "ok");
+    await assert.rejects(stalled(), (error: unknown) => error instanceof Error && error.name === "TimeoutError");
+    assert.equal(total, 3, "the reset request and its one retry");
+  } finally {
+    stalls.closeAllConnections();
+    await new Promise((resolve) => stalls.close(resolve));
+  }
+
+  // The retry finds the origin gone: the first failure, a reset that may have reached it, is the one reported.
+  let calls = 0;
+  const leaving = createServer((req, res) => {
+    calls += 1;
+    if (calls === 1) {
+      res.end("ok");
+      return;
+    }
+    leaving.close();
+    req.socket.destroy();
+  });
+  const leavingPort = await listen(leaving);
+  const leavingBase = `http://127.0.0.1:${leavingPort}`;
+  const put = (path: string): Promise<Response> => hop(new Request(`${leavingBase}${path}`, { method: "PUT", body: "{}" }), { target: new URL(leavingBase), host: "acme.example", timeoutMs: 2_000 });
+  try {
+    assert.equal(await (await put("/api/v1/items/1")).text(), "ok");
+    await assert.rejects(put("/api/v1/items/1"), (error: unknown) => error instanceof Error && "code" in error && error.code === "ECONNRESET");
+  } finally {
+    leaving.closeAllConnections();
+    if (leaving.listening) leaving.close();
   }
 });
 

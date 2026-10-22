@@ -83,7 +83,7 @@ needs `scope-journeys-node` installed beside the CLI (`npm install scope-journey
 | `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
 | `JOURNEYS_HOST` | no | optional: observe only this host; other hosts pass to the app untouched |
 | `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
-| `JOURNEYS_ORIGIN` | no | where the hop goes: the app's own listener by default on a mount; required on the proxy (`--origin`) |
+| `JOURNEYS_ORIGIN` | no | where the hop goes, an http or https URL with no credentials in it: the app's own listener by default on a mount; required on the proxy (`--origin`), which refuses any other value at start |
 | `JOURNEYS_TRUST_PROXY` | no | `1` reads the client's address from the first `x-forwarded-for` and the scheme from `x-forwarded-proto`; on a mount also the host from `x-forwarded-host` (the record's `server.address`, the `{host}` the rules fill, what `JOURNEYS_HOST` is matched against; the hop still carries the `Host` as received), while the standalone proxy names the host it serves, the `Host` it receives. Unset, the socket's own address and scheme and the `Host` header, also when the request line names a full URL. Set it only behind a proxy you control, or any client can name its own address and host |
 | `JOURNEYS_LISTEN` | no | the proxy's listen address (`host:port`, `:port` or `port`; `:8080` by default) |
 
@@ -101,13 +101,13 @@ On every request it forwards it adds a `Via` header naming itself, removes the h
 
 | failure | behaviour |
 |---|---|
-| the sensor throws, or the hop fails before a byte was written | a mount hands the request to your routes untouched (`next`); the proxy forwards untouched, or answers 502 when the origin is unreachable; the log line names the cause |
+| the sensor throws, or the hop cannot connect (the origin refuses it, or its host does not resolve) | a mount hands the request to your routes untouched (`next`); the proxy forwards untouched, or answers 502 when the origin is unreachable; the log line names the cause |
+| the hop fails after the request left: the connection drops, or the origin stays silent for 30 seconds | the request is not sent again: the client gets a 502, or a 504 when the origin stayed silent; the record carries the status and the error's class. A GET, HEAD, OPTIONS, PUT or DELETE whose kept-alive connection was reset before any answer goes once more on a fresh connection |
 | a `Host` header that is not a host name | the request is not observed: a mount hands it to your routes untouched, the proxy forwards it untouched |
 | a `TRACE` request, which the fetch API cannot carry | a mount hands it to your routes untouched; the proxy answers 501 |
 | no install id or no salt | one log line naming `journeys init --node`; every request passes through under the forward-only default |
 | the policy fetch fails | the last good policy, or the embedded forward-only default |
 | Scope's ingest is down, or answers 429 | one retry (after `Retry-After`, capped at 60 seconds, on a 429), then the record is dropped and counted; nothing waits in the request path |
-| the origin stays silent | the hop is given up after 30 seconds; the client gets a 502 |
 
 ## Remove it
 
