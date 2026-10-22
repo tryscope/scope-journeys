@@ -35,27 +35,36 @@ export function headersOf(message: IncomingMessage): Headers {
  */
 export async function hop(outbound: Request, options: HopOptions): Promise<Response> {
   const body = outbound.body ? Buffer.from(await outbound.arrayBuffer()) : null;
-  return new Promise((resolve, reject) => {
-    const url = new URL(outbound.url);
-    const target = new URL(`${options.target.origin}${options.target.pathname.replace(/\/$/, "")}${url.pathname}${url.search}`);
-    const headers: Record<string, string> = {};
-    outbound.headers.forEach((value, name) => {
-      headers[name] = value;
-    });
-    headers.host = options.host;
-    const secure = target.protocol === "https:";
-    const request = (secure ? httpsRequest : httpRequest)(target, { method: outbound.method, headers, agent: secure ? agents.https : agents.http, timeout: options.timeoutMs }, (answer) => {
-      const status = answer.statusCode ?? 502;
-      // A status without a body, and a HEAD's answer: Response refuses a body there and Node delivers none.
-      if (status === 204 || status === 304 || outbound.method === "HEAD") {
-        answer.resume();
-        resolve(new Response(null, { status, headers: headersOf(answer) }));
-        return;
-      }
-      resolve(new Response(Readable.toWeb(answer) as ReadableStream<Uint8Array>, { status, headers: headersOf(answer) }));
-    });
-    request.once("timeout", () => request.destroy(new Error(`the origin did not answer within ${options.timeoutMs} ms`)));
-    request.once("error", reject);
-    request.end(body);
+  const url = new URL(outbound.url);
+  const target = new URL(`${options.target.origin}${options.target.pathname.replace(/\/$/, "")}${url.pathname}${url.search}`);
+  const headers: Record<string, string> = {};
+  outbound.headers.forEach((value, name) => {
+    headers[name] = value;
   });
+  headers.host = options.host;
+  const secure = target.protocol === "https:";
+  const send = (pooled: boolean): Promise<Response> =>
+    new Promise((resolve, reject) => {
+      let answered = false;
+      const request = (secure ? httpsRequest : httpRequest)(target, { method: outbound.method, headers, agent: pooled ? (secure ? agents.https : agents.http) : false, timeout: options.timeoutMs }, (answer) => {
+        answered = true;
+        const status = answer.statusCode ?? 502;
+        // A status without a body, and a HEAD's answer: Response refuses a body there and Node delivers none.
+        if (status === 204 || status === 304 || outbound.method === "HEAD") {
+          answer.resume();
+          resolve(new Response(null, { status, headers: headersOf(answer) }));
+          return;
+        }
+        resolve(new Response(Readable.toWeb(answer) as ReadableStream<Uint8Array>, { status, headers: headersOf(answer) }));
+      });
+      request.once("timeout", () => request.destroy(new DOMException(`the origin did not answer within ${options.timeoutMs} ms`, "TimeoutError")));
+      request.once("error", (error: Error) => {
+        // An idle kept-alive connection the origin closed: only an idempotent request goes again, once, on a fresh connection
+        // (RFC 9110 section 9.2.2); the first error is reported, since it says whether the request may have reached the origin.
+        if (!answered && request.reusedSocket && "code" in error && error.code === "ECONNRESET" && ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"].includes(outbound.method)) send(false).then(resolve, () => reject(error));
+        else reject(error);
+      });
+      request.end(body);
+    });
+  return send(true);
 }

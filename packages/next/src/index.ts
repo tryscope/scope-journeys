@@ -1,4 +1,4 @@
-import { DEFAULT_API_URL, PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, forwardedUrl, loadPolicy, observe, observeResponse, passHeaders, secureUrl, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, forwardObserved, forwardedUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, type Environment, type Io, type SensorRecord } from "scope-journeys";
 import type { NextFetchEvent, NextRequest } from "next/server.js";
 import { NextResponse } from "next/server.js";
 
@@ -131,6 +131,8 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
       // fetches), and the request URL's origin is the deployment's host on Vercel. Under `next
       // start` that URL carries the forwarded scheme on the listen host, so it is not the listener.
       const base = options.origin ?? env.JOURNEYS_ORIGIN ?? env.__NEXT_PRIVATE_ORIGIN ?? listen.origin;
+      const target = originUrl(`${base.replace(/\/$/, "")}${url.pathname}${url.search}`);
+      if (!target) throw new Error("journeys: the origin to forward to (JOURNEYS_ORIGIN, the origin option or the listen address) is not an http or https URL with no credentials");
       const ship = await shipper(event);
       const io: Io = {
         now,
@@ -146,7 +148,6 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
           // answer; asking for identity keeps the hop uncompressed on the wire as the gateway rule
           // says, so the app does not compress what the sensor decompresses at once.
           headers.set("accept-encoding", "identity");
-          const target = `${base.replace(/\/$/, "")}${url.pathname}${url.search}`;
           return fetchFn(target, { method: outbound.method, headers, body: outbound.body, redirect: "manual", signal: AbortSignal.timeout(30_000), ...(outbound.body ? { duplex: "half" } : {}) } as RequestInit);
         },
         cache,
@@ -158,14 +159,13 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
       const observing = url.href === listen.href ? request : new Request(url, { method: request.method, headers: request.headers, body: request.body ? request.clone().body : null, ...(request.body ? { duplex: "half" } : {}) } as RequestInit);
       const observed = await observe(observing, policy, facts, io);
       if (observed.kind === "answer") return observed.response;
-      const upstream = await io.forward(observed.request);
-      const responded = observeResponse(upstream, observed.state);
+      const responded = await forwardObserved(observed.request, observed.state);
       ship(async () => {
         await responded.records;
       });
       return responded.response;
     } catch (error) {
-      log("error", `journeys: the sensor failed, passing the request to the app untouched: ${error instanceof Error ? error.message : String(error)}`);
+      log("error", `journeys: the sensor failed, passing the request to the app untouched: ${error instanceof Error ? error.message : String(error)}${error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : ""}`);
       return passTo(request, event);
     }
   };

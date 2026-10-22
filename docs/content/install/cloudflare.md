@@ -74,7 +74,7 @@ By hand, the same: `src/worker.ts` as above, `wrangler.toml` following `template
 | `JOURNEYS_INSTALL_KEY` | yes | the install key, shown once at `init`; rotatable and revocable in the console |
 | `JOURNEYS_SALT` | yes | 32 random bytes generated on your machine; every hash is salted with it and Scope never receives it |
 | `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
-| `JOURNEYS_ORIGIN` | no | the origin to forward to; needed only off a route in your own zone |
+| `JOURNEYS_ORIGIN` | no | the origin to forward to, an http or https URL with no credentials in it; needed only off a route in your own zone |
 | `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
 | `JOURNEYS_POLICY_URL` | no | optional: a full url to fetch the policy from instead of the install's policy route; https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
 
@@ -96,6 +96,7 @@ On every request it forwards to your origin it adds a `Via` header naming itself
 |---|---|
 | the sensor throws | `passThroughOnException`: the request reaches your origin untouched; the record carries the error's class |
 | the origin is down | the error is forwarded as received; the record carries the status |
+| the hop to your origin fails: the connection drops, or no answer within 30 seconds | the request is never sent again: the client gets a 502, or a 504 on the timeout; the record carries the status and the error's class |
 | Scope's ingest is down | the record is dropped after one retry and counted; nothing waits |
 | the policy fetch fails | the last good policy, or the embedded forward-only default |
 | `JOURNEYS_SALT` is not set | the forward-only default policy, one log line, never an exception |

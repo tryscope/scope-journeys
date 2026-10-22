@@ -1,6 +1,6 @@
 // The Cloudflare form under the workerd pool: the platform facts from a synthetic request.cf, the
 // policy cache's states, delivery's batching and retry, the inner hop's headers on a request with a
-// body.
+// body, and a hop that fails after the request left (never sent again).
 import { beforeAll, beforeEach, expect, test } from "vitest";
 
 import { DEFAULT_API_URL, loadPolicy, resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
@@ -112,6 +112,60 @@ test("the hop to the origin carries Via and the policy's headers, no accept-enco
   expect(headers.get("accept-encoding")).toBeNull();
   expect(headers.get("content-length")).toBeNull();
   expect(response.headers.get("content-encoding")).toBeNull();
+});
+
+test("a hop that fails after the request left is never sent again: 504 on the hop's timeout, 502 on any other failure, one fetch to the origin, the record shipped with the status and the hop's step", async () => {
+  const cases: Array<[unknown, number, string]> = [
+    [new DOMException("The operation was aborted due to timeout", "TimeoutError"), 504, "TimeoutError: answered 504, not sent again"],
+    [new Error("Network connection lost."), 502, "Error: answered 502, not sent again"],
+  ];
+  for (const [failure, status, reason] of cases) {
+    let hops = 0;
+    const shipped: Array<Record<string, unknown>> = [];
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/policy")) return signedPolicy(policyDocument, { install: "jin_test000000000000000000", issuedAt: Math.floor(Date.now() / 1000), etag: '"v3"' });
+      if (url.startsWith("https://origin.invalid")) {
+        hops += 1;
+        throw failure;
+      }
+      const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
+      shipped.push(...(JSON.parse(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text()) as Array<Record<string, unknown>>));
+      return new Response(null, { status: 202 });
+    }) as typeof fetch;
+    const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "https://origin.invalid", JOURNEYS_API_URL: "https://api.invalid" } });
+    const pending: Promise<unknown>[] = [];
+    const checkout = new Request("https://acme.example/api/v1/actions/checkout", { method: "POST", headers: { "content-type": "application/json", "user-agent": "Claude-User (claude-code/2.1.0)" }, body: JSON.stringify({ amount: 100 }) });
+    const response = await handler.fetch(checkout, {}, { waitUntil: (p) => pending.push(p), passThroughOnException: () => undefined });
+    expect(response.status).toBe(status);
+    await response.text();
+    await Promise.all(pending);
+    expect(hops, "the origin is asked once").toBe(1);
+    const record = shipped.find((r) => r.schema === "scope.request/1");
+    expect(record?.["http.response.status_code"]).toBe(status);
+    expect((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "hop")).toEqual([{ rule: "hop", kind: "observe", mode: "live", outcome: "errored", reason }]);
+    expect(record?.["scope.observer.errors"]).toEqual([]);
+  }
+});
+
+test("an origin that is not an http or https URL is refused before the hop: the request is left to passThroughOnException, never answered 502", async () => {
+  let hops = 0;
+  const fetcher = (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (url.endsWith("/policy")) return signedPolicy(policyDocument, { install: "jin_test000000000000000000", issuedAt: Math.floor(Date.now() / 1000), etag: '"v3"' });
+    if (!url.startsWith("https://api.invalid")) hops += 1;
+    return new Response(null, { status: 202 });
+  }) as typeof fetch;
+  const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "origin.example.com", JOURNEYS_API_URL: "https://api.invalid" } });
+  await expect(handler.fetch(new Request("https://acme.example/docs/quickstart", { headers: { accept: "text/html" } }), {}, { waitUntil: () => undefined, passThroughOnException: () => undefined })).rejects.toThrow(/JOURNEYS_ORIGIN is not an http or https URL/);
+  expect(hops).toBe(0);
+  // An empty value is unset: the hop goes to the request's own URL.
+  const unset = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "", JOURNEYS_API_URL: "https://api.invalid" } });
+  const pending: Promise<unknown>[] = [];
+  const response = await unset.fetch(new Request("https://acme.example/docs/quickstart", { headers: { accept: "text/html" } }), {}, { waitUntil: (p) => pending.push(p), passThroughOnException: () => undefined });
+  await response.text();
+  await Promise.all(pending);
+  expect(hops).toBe(1);
 });
 
 test("the policy never chooses where traffic or records go: the hop goes to JOURNEYS_ORIGIN and the records to Scope's production API by default, whatever the policy's origin and report say", async () => {

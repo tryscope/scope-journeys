@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
+import { originUrl } from "../gateway.js";
 import { emit } from "./output.js";
 import { readEnvFile } from "./project.js";
 
@@ -23,7 +24,7 @@ export async function runProxy(argv: readonly string[], json = false): Promise<n
   const { values } = parseArgs({ args: [...argv], options: { origin: { type: "string" }, listen: { type: "string" }, "trust-proxy": { type: "boolean" }, name: { type: "string" }, "api-url": { type: "string" }, json: { type: "boolean" } }, strict: false });
   const env: Record<string, string | undefined> = { ...readEnvFile(join(process.cwd(), ".env.local")), ...process.env };
   const origin = typeof values.origin === "string" ? values.origin : env.JOURNEYS_ORIGIN;
-  if (!origin || !/^https?:\/\//.test(origin)) {
+  if (!origin || !originUrl(origin)) {
     process.stderr.write("journeys proxy --origin https://origin.example [--listen :8080] [--trust-proxy]\n");
     return 2;
   }

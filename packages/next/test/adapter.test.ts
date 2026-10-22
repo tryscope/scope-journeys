@@ -2,7 +2,8 @@
 // the install's route with its environment header, the facts from Vercel's headers, the inner hop
 // to the app's own host marked as such, the records shipped after the response with the install
 // key or the OIDC token as the bearer, the pass-throughs (the inner hop, a host not observed, no
-// install id), and the shipper's 429 (one retry after Retry-After, capped, then a counted drop).
+// install id), a hop that fails after the request left (never sent again), and the shipper's 429
+// (one retry after Retry-After, capped, then a counted drop).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -169,6 +170,73 @@ test("the inner hop and a host the install does not observe go to the app's own 
   assert.deepEqual(seen, ["acme.example 1", "other.example -"]);
   assert.equal(w.calls.length, 0, "an unobserved host fetches nothing either");
   assert.equal(w.shipped.length, 0, "nothing observed, nothing shipped");
+});
+
+test("a hop that fails after the request left is never sent again: 502 when the connection dropped, 504 on the hop's timeout, the app's logic not run a second time, the record shipped with the status; a hop refused before it left still goes to the app's logic", async () => {
+  // The errors as Node's fetch raises them: a dropped connection and a refused one carry their code on the cause.
+  const cases: Array<[string, unknown, number, number, string | null]> = [
+    ["dropped", new TypeError("fetch failed", { cause: Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" }) }), 502, 0, "TypeError: answered 502, not sent again"],
+    ["timed out", new DOMException("The operation was aborted due to timeout", "TimeoutError"), 504, 0, "TimeoutError: answered 504, not sent again"],
+    ["refused", new TypeError("fetch failed", { cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:3000"), { code: "ECONNREFUSED" }) }), 200, 1, null],
+  ];
+  for (const [what, failure, status, appRuns, reason] of cases) {
+    reset();
+    const w = world();
+    let hops = 0;
+    let runs = 0;
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input instanceof Request ? input.url : input).startsWith("https://acme.example/")) {
+        hops += 1;
+        throw failure;
+      }
+      return w.fetch(input, init);
+    }) as typeof fetch;
+    const next = (): Response => {
+      runs += 1;
+      return Response.json({ status: "success" });
+    };
+    const handler = withJourneys({ env, fetch: fetchFn, now: () => NOW, next });
+    const checkout = new NextRequest("https://acme.example/api/v1/actions/checkout", { method: "POST", headers: { "content-type": "application/json", "user-agent": "Claude-User (claude-code/2.1.0; +https://www.anthropic.com/claude-code)" }, body: JSON.stringify({ amount: 100 }) });
+    const response = await handler(checkout, w.event as never);
+    assert.equal(response.status, status, what);
+    await response.text();
+    await Promise.all(w.pending);
+    assert.equal(hops, 1, `${what}: one hop`);
+    assert.equal(runs, appRuns, `${what}: the app's logic runs only when the hop never left`);
+    const record = w.shipped.flat().find((r) => (r as { schema?: string }).schema === "scope.request/1") as Record<string, unknown> | undefined;
+    if (reason) {
+      assert.equal(record?.["http.response.status_code"], status, `${what}: the record carries the status`);
+      assert.deepEqual((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "hop"), [{ rule: "hop", kind: "observe", mode: "live", outcome: "errored", reason }], `${what}: and the hop's step`);
+    } else assert.equal(record, undefined, `${what}: nothing observed when the app answered`);
+  }
+});
+
+test("an origin that is not an http or https URL is refused before the hop: the request goes to the app's logic untouched", async () => {
+  reset();
+  const w = world();
+  let runs = 0;
+  const next = (): Response => {
+    runs += 1;
+    return new Response("mine");
+  };
+  const handler = withJourneys({ env: { ...env, JOURNEYS_ORIGIN: "localhost:3000" }, fetch: w.fetch, now: () => NOW, next });
+  const response = await handler(request("https://acme.example/docs/quickstart"), w.event as never);
+  assert.equal(await response.text(), "mine");
+  assert.equal(runs, 1);
+  assert.equal(w.calls.filter((c) => !c.url.startsWith(API)).length, 0, "no hop was attempted");
+  // fetch refuses a URL with credentials before it sends anything: refused here too, so it is never logged as a hop that left.
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (line: string) => logged.push(line);
+  try {
+    const withCredentials = withJourneys({ env: { ...env, JOURNEYS_ORIGIN: "http://user:s3cret@127.0.0.1:3000" }, fetch: w.fetch, now: () => NOW, next });
+    assert.equal(await (await withCredentials(request("https://acme.example/docs/quickstart"), w.event as never)).text(), "mine");
+  } finally {
+    console.error = original;
+  }
+  assert.equal(runs, 2);
+  assert.equal(w.calls.filter((c) => !c.url.startsWith(API)).length, 0, "no hop was attempted");
+  assert.ok(logged.every((l) => !l.includes("s3cret")), logged.join("\n"));
 });
 
 test("no install id and no policy URL: the probe is answered by the adapter itself, every other request goes to the app's own logic with no inner hop and no fetch, one warning", async () => {

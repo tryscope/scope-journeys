@@ -6,6 +6,8 @@ The core of Scope Journeys: pure functions over `Request`, `Response` and a poli
 
 - `observe(request, policy, facts, io)`: the request path (routing, the record's facts, the body on observed routes, the intent header, the finder, the gate, the outbound request). Answers `{ kind: "forward", request, state }` or `{ kind: "answer", response, state, records }`.
 - `observeResponse(upstream, state)`: the response path (server-sent events frame by frame, pages with their references and rules, the helpful 404, observed JSON answers, the pass-through built last). Returns `{ response, records }`; the core ships the records itself through `io.ship` when the response is complete.
+- `forwardObserved(request, state)`: the hop through `io.forward`, then `observeResponse`. A hop that fails before the request left is thrown back, for the adapter to pass the request on untouched; one that may have reached the origin is answered 502, or 504 on a timeout, recorded as the observer's `hop` step, and never sent again. Returns `{ response, records }`.
+- `originUrl(value)`: the origin a hop may go to, an http or https URL with no credentials in it, or null.
 - `compilePolicy(document)` and `defaultPolicy`: the policy compiled once (regexes, the surface map, the rule table) and the embedded forward-only default (version 0).
 - `classifyRoute`, `classifyReader`: the surface map's classifier and the reader families.
 - `mintReference`, `isReference`, `findReference`: the eight-character references.
