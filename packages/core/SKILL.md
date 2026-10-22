@@ -47,7 +47,7 @@ Commit the files `init` wrote (`proxy.ts`, `instrumentation.ts`, the dependency,
 npx scope-journeys doctor --url <the preview url>
 ```
 
-or, with every host of the install, `npx scope-journeys doctor`. Exit 0 means every host is fronted and reporting. Exit 1 prints the one fix to apply (a documentation host not fronted is named first; a proxy file whose matcher skips the host; a missing Worker route; a sensor that cannot reach Scope); apply it, redeploy, run `doctor` again.
+or, with every host of the install, `npx scope-journeys doctor`. Exit 0 means every host is fronted and reporting. Exit 1 prints the one fix to apply (a documentation host not fronted is named first; a proxy file whose matcher skips the host; a missing Worker route; a sensor without `JOURNEYS_SALT`, which records nothing; a sensor that cannot reach Scope); apply it, redeploy, run `doctor` again.
 
 ## 4. Hand over
 

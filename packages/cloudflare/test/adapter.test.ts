@@ -132,6 +132,27 @@ test("the policy never chooses where traffic or records go: the hop goes to JOUR
   expect(urls, "no install, no key: the request reaches the origin and nothing reaches Scope").toEqual(["https://origin.invalid/docs/quickstart?email=a%40b.example"]);
 });
 
+test("without JOURNEYS_SALT nothing is fetched or recorded: the request reaches the origin untouched, the probe answers no-salt", async () => {
+  const urls: string[] = [];
+  const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    urls.push(url);
+    if (url.startsWith("https://origin.invalid")) return new Response("<!doctype html><html><body><h1>Quickstart</h1></body></html>", { status: 200, headers: { "content-type": "text/html", "x-seen-via": new Headers(init?.headers).get("via") ?? "-" } });
+    return new Response(null, { status: 202 });
+  }) as typeof fetch;
+  const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_ORIGIN: "https://origin.invalid" } });
+  const pending: Promise<unknown>[] = [];
+  const ctx = { waitUntil: (p: Promise<unknown>) => pending.push(p), passThroughOnException: () => undefined };
+  const page = await handler.fetch(new Request("https://acme.example/docs/quickstart?code=abc", { headers: { accept: "text/html" } }), {}, ctx);
+  expect(await page.text()).toBe("<!doctype html><html><body><h1>Quickstart</h1></body></html>");
+  expect(page.headers.get("x-seen-via"), "not observed: no hop of the sensor's own").toBe("-");
+  const probe = await handler.fetch(new Request("https://acme.example/.well-known/journeys-probe?journeys_probe=c21va2U"), {}, ctx);
+  expect(probe.status).toBe(204);
+  expect(probe.headers.get("x-journeys-probe")).toBe("no-salt");
+  await Promise.all(pending);
+  expect(urls, "no settings fetch and no shipment").toEqual(["https://origin.invalid/docs/quickstart?code=abc"]);
+});
+
 test("delivery on a 429: one retry after Retry-After (capped), then the batch is dropped and counted; a 429 then a 200 ships and clears the count", async () => {
   const answers: Array<{ status: number; headers?: Record<string, string> }> = [{ status: 429, headers: { "retry-after": "120" } }, { status: 429 }];
   const fetcher = (async () => {

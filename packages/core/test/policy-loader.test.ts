@@ -165,3 +165,25 @@ test("an answer the loader does not use has its body released, so the connection
   await loadPolicy({ url: URL_A, credential: "k", fetch: stuck, now: 0, cache: null, log: (line) => void lines.push(line) });
   assert.deepEqual(lines, ["journeys: policy fetch answered 503; keeping the embedded default"], "a body that cannot be released does not hide the answer's status");
 });
+
+test("the embedded default carries the reason it runs, so its records can name it; held or fetched settings carry none", async () => {
+  const quiet = { cache: null, log: () => undefined };
+  const answering = (status: number): typeof fetch => (async () => new Response("down", { status })) as typeof fetch;
+  resetPolicyCache();
+  assert.equal((await loadPolicy({ url: null, credential: "k", fetch: serving().fetch, now: 0, ...quiet })).policy.fallback, "no settings address");
+  resetPolicyCache();
+  assert.equal((await loadPolicy({ url: URL_A, credential: null, fetch: serving().fetch, now: 0, ...quiet })).policy.fallback, "no install key");
+  resetPolicyCache();
+  assert.equal((await loadPolicy({ url: "http://api.example/v1/installs/jin_a/policy", credential: "k", fetch: serving().fetch, now: 0, ...quiet })).policy.fallback, "settings address refused");
+  resetPolicyCache();
+  assert.equal((await loadPolicy({ url: URL_A, credential: "k", fetch: serving().fetch, now: 0, ...quiet })).policy.fallback, "fetch failed (Error)");
+  resetPolicyCache();
+  assert.equal((await loadPolicy({ url: URL_A, credential: "k", fetch: answering(503), now: 0, ...quiet })).policy.fallback, "answered 503");
+  assert.equal((await loadPolicy({ url: URL_A, credential: "k", fetch: serving({ schema: "scope.policy/2" }).fetch, now: 61_000, ...quiet })).policy.fallback, "settings refused", "a later failure names its own reason");
+  resetPolicyCache();
+  const fetched = await loadPolicy({ url: URL_A, credential: "k", fetch: serving(POLICY).fetch, now: 0, ...quiet });
+  assert.equal(fetched.policy.fallback, undefined);
+  const held = await loadPolicy({ url: URL_A, credential: "k", fetch: answering(503), now: 61_000, ...quiet });
+  assert.equal(held.policy.version, 3, "a failure keeps the last good settings");
+  assert.equal(held.policy.fallback, undefined, "and they are not the default");
+});

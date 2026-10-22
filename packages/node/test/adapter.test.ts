@@ -486,6 +486,24 @@ test("the policy's report address and key header are ignored: records go to JOUR
   assert.equal(w.calls[1]?.headers["x-ingest-key"], undefined);
 });
 
+test("without JOURNEYS_SALT nothing is fetched or recorded: the request reaches the app untouched, the probe answers no-salt, one warning", async () => {
+  reset();
+  const w = world();
+  const log: string[] = [];
+  const { JOURNEYS_SALT: _salt, ...unsalted } = env;
+  await mounted(createNodeHandler({ env: unsalted, fetch: w.fetch, log: (_level, line) => log.push(line) }), async (base) => {
+    const page = await fetch(`${base}/docs/quickstart`, { headers: agent });
+    assert.equal(await page.text(), PAGE, "the app's page as it answered");
+    assert.equal(page.headers.get("via"), null, "not observed: no hop of the sensor's own");
+    const probe = await fetch(`${base}/.well-known/journeys-probe?journeys_probe=bm9uY2Ux`);
+    assert.equal(probe.status, 204);
+    assert.equal(probe.headers.get("x-journeys-probe"), "no-salt");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  assert.deepEqual(w.calls, [], "no settings fetch and no shipment");
+  assert.equal(log.filter((l) => /JOURNEYS_SALT is not set/.test(l)).length, 1, log.join("\n"));
+});
+
 test("parseListen: host:port, :port, port, a bracketed IPv6 host; refuses the rest", () => {
   assert.deepEqual(parseListen("127.0.0.1:8787"), { host: "127.0.0.1", port: 8787 });
   assert.deepEqual(parseListen(":8080"), { host: undefined, port: 8080 });

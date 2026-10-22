@@ -75,9 +75,7 @@
       "scope.mcp.tools": [],
       "scope.mcp.client": null,
       "scope.oauth": null,
-      "scope.body.request": {
-        "task": "connect the MCP server to cursor"
-      },
+      "scope.body.request": null,
       "scope.body.response": null,
       "scope.body.truncated": false,
       "scope.response.headers": null,

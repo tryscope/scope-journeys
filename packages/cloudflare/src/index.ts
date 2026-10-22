@@ -1,4 +1,4 @@
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, loadPolicy, observe, observeResponse, passHeaders, secureUrl, type CompiledPolicy, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, loadPolicy, observe, observeResponse, passHeaders, probeAnswer, secureUrl, type Environment, type Io, type SensorRecord } from "scope-journeys";
 
 import { platformFacts, type RequestWithCf } from "./facts.js";
 import { workerCache } from "./cache.js";
@@ -76,35 +76,39 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
         else if (level === "warn") console.warn(line);
         else console.log(line);
       };
+      const origin = b.JOURNEYS_ORIGIN ?? null;
+      const url = new URL(request.url);
+      const target = origin ? new URL(`${origin.replace(/\/$/, "")}${url.pathname}${url.search}`) : null;
+      const untouched = async (): Promise<Response> => {
+        const upstream = await fetchFn(target ?? request.url, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit);
+        return new Response(upstream.body, { status: upstream.status, headers: passHeaders(upstream.headers) });
+      };
+      const salt = b.JOURNEYS_SALT;
+      if (!salt) {
+        // The error is the onboarding: without a salt nothing can be hashed, so the Worker records
+        // nothing, forwards untouched, answers the probe with why, and says so once per isolate.
+        if (!warnedNoSalt.has(name)) {
+          warnedNoSalt.add(name);
+          log("warn", "journeys: JOURNEYS_SALT is not set; recording nothing and forwarding every request untouched (set the secret and redeploy, or run journeys init)");
+        }
+        return probeAnswer(request.method, url.pathname, "no-salt") ?? untouched();
+      }
       const apiUrl = secureUrl(b.JOURNEYS_API_URL ?? DEFAULT_API_URL, "JOURNEYS_API_URL", (line) => log("warn", line));
       const policyUrl = b.JOURNEYS_POLICY_URL ?? (apiUrl && b.JOURNEYS_INSTALL_ID ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${b.JOURNEYS_INSTALL_ID}/policy` : null);
       const cache = workerCache(typeof caches !== "undefined" ? (caches as unknown as { default: Cache }).default : null, now);
       const loaded = await loadPolicy({ url: policyUrl, credential: b.JOURNEYS_INSTALL_KEY ?? null, fetch: fetchFn, now: now(), cache, log: (line) => log("warn", line) });
-      let policy: CompiledPolicy = loaded.policy;
-      const salt = b.JOURNEYS_SALT;
-      if (!salt) {
-        // The error is the onboarding: without a salt nothing can be hashed, so
-        // the Worker runs the forward-only default and says so once per isolate, never throws.
-        if (!warnedNoSalt.has(name)) {
-          warnedNoSalt.add(name);
-          log("warn", "journeys: JOURNEYS_SALT is not set; running the forward-only default policy (set the secret and redeploy, or run journeys init)");
-        }
-        policy = (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
-      }
-      const origin = b.JOURNEYS_ORIGIN ?? null;
-      const url = new URL(request.url);
+      const { policy } = loaded;
       const issuer = apiUrl && b.JOURNEYS_INSTALL_ID ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${b.JOURNEYS_INSTALL_ID}` : null;
       const identity = { install: b.JOURNEYS_INSTALL_ID ?? null, name, environment: (loaded.environment ?? b.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(b.JOURNEYS_ASSERTION_KEY, issuer) };
       const facts = platformFacts(request as RequestWithCf, identity);
       const io: Io = {
         now,
         random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
-        hash: async (value) => hex(await crypto.subtle.digest("SHA-256", encoder.encode(`${salt ?? ""}:${value}`))).slice(0, 12),
+        hash: async (value) => hex(await crypto.subtle.digest("SHA-256", encoder.encode(`${salt}:${value}`))).slice(0, 12),
         forward: async (outbound) => {
           // Another host (a signer's key directory): a plain fetch, two seconds, nothing of ours added.
           if (new URL(outbound.url).host !== url.host) return fetchFn(outbound.url, { method: outbound.method, headers: outbound.headers, redirect: "manual", signal: AbortSignal.timeout(2_000) });
-          const target = origin ? new URL(`${origin.replace(/\/$/, "")}${url.pathname}${url.search}`) : new URL(outbound.url);
-          return fetchFn(target, { method: outbound.method, headers: outbound.headers, body: outbound.body, redirect: "manual", signal: AbortSignal.timeout(30_000), ...(outbound.body ? { duplex: "half" } : {}) } as RequestInit);
+          return fetchFn(target ?? new URL(outbound.url), { method: outbound.method, headers: outbound.headers, body: outbound.body, redirect: "manual", signal: AbortSignal.timeout(30_000), ...(outbound.body ? { duplex: "half" } : {}) } as RequestInit);
         },
         cache,
         ship: (records: readonly SensorRecord[]) => {
@@ -124,9 +128,7 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
         return responded.response;
       } catch (error) {
         log("error", `journeys: the sensor failed, forwarding untouched: ${error instanceof Error ? error.message : String(error)}`);
-        const target = origin ? new URL(`${origin.replace(/\/$/, "")}${url.pathname}${url.search}`) : request.url;
-        const upstream = await fetchFn(target, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit);
-        return new Response(upstream.body, { status: upstream.status, headers: passHeaders(upstream.headers) });
+        return untouched();
       }
     },
   };

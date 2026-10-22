@@ -14,6 +14,8 @@ const INSTALL_ID = "jin_test0000000000000000000000";
 
 interface World {
   fronted: Record<string, boolean>;
+  /** Hosts whose sensor has no salt: it answers the probe `no-salt` and records nothing. */
+  unsalted?: Record<string, boolean>;
   arrives: Record<string, number>;
   facts: Record<string, Record<string, boolean>>;
   apiMissing: Array<{ fact: string; fix: string }>;
@@ -31,7 +33,7 @@ function deps(world: World): DoctorDeps {
       const url = new URL(String(input));
       if (url.pathname === PROBE_PATH) {
         world.probes.push(`${url.host}${url.search}`);
-        if (world.fronted[url.host]) return new Response(null, { status: 204, headers: { [PROBE_HEADER]: "received" } });
+        if (world.fronted[url.host]) return new Response(null, { status: 204, headers: { [PROBE_HEADER]: world.unsalted?.[url.host] ? "no-salt" : "received" } });
         return new Response("<h1>Not found</h1>", { status: 404 });
       }
       if (world.apiDown) throw new TypeError("fetch failed");
@@ -120,6 +122,27 @@ test("--url probes one host; a probe that never arrives names the request fix; t
   assert.equal(down.exit_code, 5);
   assert.match(down.next_step, /^the install could not be read \(https:\/\/api\.mock is unreachable \(fetch failed\)\): check the credential/);
   assert.equal(down.sensor, null);
+});
+
+test("a sensor without a salt answers the probe no-salt: fronted, never polled for, the salt fix named, exit 1", async () => {
+  const world: World = { fronted: { "acme.example": true }, unsalted: { "acme.example": true }, arrives: { "acme.example": 1 }, facts: { "acme.example": good }, apiMissing: [], install: { form: "next", hosts: ["acme.example"] }, probes: [], polls: 0 };
+  const report = await doctor({ cwd: mkdtempSync(join(tmpdir(), "journeys-doctor-")), url: null, install: INSTALL_ID, token: null, apiUrl: null, timeoutSeconds: 60 }, deps(world));
+  assert.equal(report.exit_code, 1);
+  assert.deepEqual(report.hosts.map((h) => [h.fronted, h.found]), [[true, false]]);
+  assert.deepEqual(report.hosts[0]?.missing, [{ fact: "salt", fix: fixFor("salt", "next", "acme.example") }]);
+  assert.match(fixFor("salt", "next", "acme.example"), /JOURNEYS_SALT/);
+  assert.equal(world.polls, 0, "a sensor that records nothing is not waited for");
+  assert.equal(report.next_step, `acme.example: ${fixFor("salt", "next", "acme.example")}`);
+});
+
+test("a docs host without a salt is named for its salt, not as unfronted, and is not shown as a probe not found", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "journeys-doctor-"));
+  mkdirSync(join(cwd, ".journeys"));
+  writeFileSync(join(cwd, ".journeys", "init.lock"), JSON.stringify({ idempotency_key: "k", created_at: "", form: "next", install_id: INSTALL_ID, docs_host: "docs.acme.example", proxy_file: "proxy.ts", proxy_created: true, proxy_previous: null, instrumentation_created: true, instrumentation_added_export: false, dependency: null }));
+  const world: World = { fronted: { "docs.acme.example": true }, unsalted: { "docs.acme.example": true }, arrives: {}, facts: {}, apiMissing: [], install: { form: "next", hosts: ["docs.acme.example"] }, probes: [], polls: 0 };
+  const report = await doctor({ cwd, url: null, install: INSTALL_ID, token: null, apiUrl: null, timeoutSeconds: 60 }, deps(world));
+  assert.deepEqual(report.hosts[0]?.missing.map((m) => m.fact), ["salt"]);
+  assert.ok(renderDoctorReport(report).includes("host        docs.acme.example: fronted, records nothing (no salt)"), renderDoctorReport(report).join("\n"));
 });
 
 test("an older sensor than the CLI is an install-level fix that does not fail the doctor", async () => {

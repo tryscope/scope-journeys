@@ -80,7 +80,7 @@
       "scope.key.device_code": null,
       "scope.key.user_code": null,
       "scope.key.oauth_client": null,
-      "mcp.session.id": "sess-fixture-04",
+      "mcp.session.id": "d7cb7389a352",
       "scope.key.hook": null,
       "scope.key.reference": "5Z4KJ7N9",
       "scope.key.setup_header": null,
@@ -95,45 +95,15 @@
       "scope.mcp.client": null,
       "scope.oauth": null,
       "scope.body.request": {
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/list"
+        "id": 2
       },
       "scope.body.response": {
-        "jsonrpc": "2.0",
-        "id": 2,
-        "result": {
-          "tools": [
-            {
-              "name": "list_hooks",
-              "description": "List the hooks in the workspace.",
-              "inputSchema": {
-                "type": "object",
-                "properties": {}
-              }
-            },
-            {
-              "name": "create_hook",
-              "description": "Create a catch hook.",
-              "inputSchema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "name"
-                ]
-              }
-            }
-          ]
-        }
+        "id": 2
       },
       "scope.body.truncated": false,
       "scope.response.headers": {
         "content-type": "application/json",
-        "mcp-session-id": "sess-fixture-04",
+        "mcp-session-id": "d7cb7389a352",
         "www-authenticate": null,
         "location": null,
         "cache-control": null,

@@ -3,7 +3,7 @@ import type { TLSSocket } from "node:tls";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardedUrl, loadPolicy, observe, observeResponse, passHeaders, secureUrl, type Environment, type LogLevel } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardedUrl, loadPolicy, observe, observeResponse, passHeaders, probeAnswer, secureUrl, type Environment, type LogLevel } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { droppedSoFar } from "./deliver.js";
@@ -113,20 +113,21 @@ export function createSensor(options: NodeOptions = {}): Sensor {
         warnedNoInstall = true;
         warn("journeys: JOURNEYS_INSTALL_ID is not set; forwarding every request untouched under the default policy (run `npx scope-journeys init --node`)");
       }
-      const loaded = await loadPolicy({ url: policyUrl, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
-      let policy = loaded.policy;
       if (!salt) {
+        // Without a salt nothing can be hashed, so nothing is recorded: the request goes on untouched, the probe says why.
         if (!warnedNoSalt) {
           warnedNoSalt = true;
-          warn("journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init --node`)");
+          warn("journeys: JOURNEYS_SALT is not set; recording nothing and forwarding every request untouched (run `npx scope-journeys init --node`)");
         }
-        policy = (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
+        return probeAnswer(request.method, url.pathname, "no-salt") ?? this.untouched(exchange);
       }
+      const loaded = await loadPolicy({ url: policyUrl, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
+      const { policy } = loaded;
       const target = targetFor(exchange);
       const identity = { install: installId, name, environment: (loaded.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(env.JOURNEYS_ASSERTION_KEY, issuer) };
       const facts = platformFacts(socket, request.headers.get("x-request-id"), identity);
       // A mount's hop carries the Host as received (the forwarded host is the record's, not the app's view); the proxy's carries the origin's.
-      const io = createNodeIo({ salt: salt ?? "", host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, now, afterResponse: exchange.afterResponse, track, log });
+      const io = createNodeIo({ salt, host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, now, afterResponse: exchange.afterResponse, track, log });
       const observed = await observe(request, policy, facts, io);
       if (observed.kind === "answer") return observed.response;
       const upstream = await io.forward(observed.request);

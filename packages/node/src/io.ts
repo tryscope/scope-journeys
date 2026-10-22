@@ -6,7 +6,7 @@ import { deliver } from "./deliver.js";
 import { hop } from "./hop.js";
 
 export interface NodeIoOptions {
-  /** The salt every hash carries (`JOURNEYS_SALT`); an empty string runs the forward-only default elsewhere, the hash is still well defined. */
+  /** The salt every hash carries (`JOURNEYS_SALT`); a sensor without one records nothing and builds no io. */
   salt: string;
   /** The host the request came for: a request for another host is a signer's key directory, fetched plainly. */
   host: string;

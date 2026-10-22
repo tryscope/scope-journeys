@@ -1,8 +1,9 @@
 // The shape-hash leak test: redaction by field name misses signed values under unexpected field
 // names; redaction by value shape catches them. Twelve values of the toy product's signed shape are
 // planted in a path segment, query values, JSON body fields under names the field list does not
-// know, a form body, a Location header and an error message body, and in a text and an HTML body;
-// no record may carry any of them raw, and each is hashed where its field is recorded.
+// know (allowed, so they are recorded), a form body, a Location header and an error message body,
+// and in a text and an HTML body; no record may carry any of them raw, and each is hashed where its
+// field is recorded.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +25,8 @@ interface Interaction {
 }
 
 const leak = JSON.parse(readFileSync(join(SYNTHETIC, "leak", "interactions.json"), "utf8")) as { planted: string[]; interactions: Interaction[]; bodies: Interaction[] };
-const policy = JSON.parse(readFileSync(join(SYNTHETIC, "policy.json"), "utf8")) as { secrets: { shapes: string[] } };
+const toy = JSON.parse(readFileSync(join(SYNTHETIC, "policy.json"), "utf8")) as { secrets: { shapes: string[] }; observe: { bodies: { allow_fields: string[] } } };
+const policy = { ...toy, observe: { bodies: { allow_fields: [...toy.observe.bodies.allow_fields, "nickname", "note", "label"] } } };
 const facts: FixtureFacts = { address: "203.0.113.9", asn: 64512, as_org: "Example", country: "NL", colo: "AMS", tls: { protocol_version: "TLSv1.3", network_protocol_version: "HTTP/2", ja4: null, tls_ext_sha1: null, tls_hello_len: null }, platform_request_id: "leak-test" };
 
 const SHAPE = new RegExp(policy.secrets.shapes[0] ?? "(?!)");
@@ -53,7 +55,7 @@ test("no record carries a planted value raw, and each is hashed where its field 
   }
 });
 
-test("a text body is recorded as bytes and type only; an HTML page as page facts only; neither carries the planted value", async () => {
+test("a text body is recorded as its size only; an HTML page as page facts only; neither carries the planted value", async () => {
   for (const interaction of leak.bodies) {
     const fixture: Fixture = { name: `leak/${interaction.name}`, request: interaction.request, upstream: interaction.upstream, policy, facts };
     const result = await runFixture(fixture, makeIo({ upstream: interaction.upstream }));
@@ -61,11 +63,9 @@ test("a text body is recorded as bytes and type only; an HTML page as page facts
     const serialised = JSON.stringify(result.records);
     for (const value of interaction.planted) assert.ok(!serialised.includes(value), `${interaction.name}: the record carries ${value.slice(0, 6)}... raw`);
     if (interaction.expect === "bytes-and-type") {
-      const body = record["scope.body.response"] as Record<string, unknown> | null;
-      assert.ok(body, `${interaction.name}: an observed text answer is recorded as bytes and type`);
-      assert.deepEqual(Object.keys(body).sort(), ["bytes", "type"]);
-      assert.equal(body.type, "text/plain");
-      assert.equal(body.bytes, interaction.upstream.body?.length ?? 0);
+      assert.equal(record["scope.body.response"], null, `${interaction.name}: a text answer has no allowed field`);
+      assert.equal(record["scope.response.bytes"], interaction.upstream.body?.length ?? 0);
+      assert.match(record["http.response.header.content-type"] ?? "", /^text\/plain/);
     } else {
       assert.equal(record["scope.body.response"], null, `${interaction.name}: a page body is never recorded`);
       assert.ok(record["scope.page"], `${interaction.name}: a page read carries its page facts`);

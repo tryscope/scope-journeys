@@ -107,8 +107,8 @@ registers a new public key, writes the new private key where `init` wrote the fi
 |---|---|
 | the sensor throws | the request is handed to your app untouched; the record carries the error's class |
 | no install id (and no policy URL) | one log line naming `journeys init`; every request goes to your logic with no inner hop, the probe is still answered |
-| no salt | one log line naming `journeys init`; every request passes through under the forward-only default |
-| the policy fetch fails | the last good policy, or the embedded forward-only default |
+| no salt | one log line naming `journeys init`; nothing is recorded or sent, every request goes to your app untouched, and the probe answers `x-journeys-probe: no-salt` |
+| the policy fetch fails | the last good policy, or the embedded forward-only default, whose records say so (a `policy` decision with the reason) |
 | Scope's ingest is down | the record is dropped after one retry and counted; nothing waits |
 
 ## Remove it

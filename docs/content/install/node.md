@@ -102,8 +102,9 @@ On every request it forwards it adds a `Via` header naming itself, removes the h
 | failure | behaviour |
 |---|---|
 | the sensor throws, or the hop fails before a byte was written | a mount hands the request to your routes untouched (`next`); the proxy forwards untouched, or answers 502 when the origin is unreachable; the log line names the cause |
-| no install id or no salt | one log line naming `journeys init --node`; every request passes through under the forward-only default |
-| the policy fetch fails | the last good policy, or the embedded forward-only default |
+| no install id | one log line naming `journeys init --node`; every request passes through under the forward-only default |
+| no salt | one log line naming `journeys init --node`; nothing is recorded or sent, every request goes on untouched, and the probe answers `x-journeys-probe: no-salt` |
+| the policy fetch fails | the last good policy, or the embedded forward-only default, whose records say so (a `policy` decision with the reason) |
 | Scope's ingest is down, or answers 429 | one retry (after `Retry-After`, capped at 60 seconds, on a 429), then the record is dropped and counted; nothing waits in the request path |
 | the origin stays silent | the hop is given up after 30 seconds; the client gets a 502 |
 

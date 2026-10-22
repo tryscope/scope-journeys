@@ -97,36 +97,15 @@
       },
       "scope.oauth": null,
       "scope.body.request": {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-          "protocolVersion": "2025-06-18",
-          "capabilities": {},
-          "clientInfo": {
-            "name": "codex-mcp-client",
-            "version": "0.5.0"
-          }
-        }
+        "id": 1
       },
       "scope.body.response": {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "result": {
-          "protocolVersion": "2025-06-18",
-          "capabilities": {
-            "tools": {}
-          },
-          "serverInfo": {
-            "name": "acme-mcp",
-            "version": "1.2.0"
-          }
-        }
+        "id": 1
       },
       "scope.body.truncated": false,
       "scope.response.headers": {
         "content-type": "application/json",
-        "mcp-session-id": "sess-fixture-04",
+        "mcp-session-id": "d7cb7389a352",
         "www-authenticate": null,
         "location": null,
         "cache-control": null,

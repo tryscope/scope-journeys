@@ -40,6 +40,9 @@ export function secureUrl(value: string, name: string, log: (line: string) => vo
   return null;
 }
 
+/** The embedded default, named with the reason it runs instead of a document. */
+const builtIn = (now: number, fallback: string): PolicyState => ({ at: now, policy: { ...compilePolicy(defaultPolicy), fallback }, etag: null, environment: null, saltEpoch: null });
+
 function checked(document: unknown): CompiledPolicy {
   const refusals = policyRefusals(document);
   if (refusals.length) throw new PolicyError(refusals.map((f) => `${f.path} ${f.message}`).join("; "));
@@ -82,17 +85,21 @@ export interface LoadOptions {
 // does not take, keeps the last value seen; before any answer the adapter stamps epoch 1 and production.
 export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
   // The policy route answers only an install or a session: without a credential there is nothing to fetch.
+  const unfetchable = options.url === null ? "no settings address" : !options.credential ? "no install key" : null;
   const url = options.url === null || !options.credential ? null : secureUrl(options.url, "the policy url", options.log);
   const key = url ?? "default";
   const current = states.get(key);
   if (current && options.now - current.at < TTL_MS) return current;
   if (!url) {
-    const fresh = current ?? { at: options.now, policy: compilePolicy(defaultPolicy), etag: null, environment: null, saltEpoch: null };
+    const fresh = current ?? builtIn(options.now, unfetchable ?? "settings address refused");
     states.set(key, { ...fresh, at: options.now });
     return fresh;
   }
   const headers: Record<string, string> = { authorization: `Bearer ${options.credential}` };
   if (current?.etag) headers["if-none-match"] = current.etag;
+  // Settings held from an earlier answer outlive a failure; an embedded default is named anew with the new failure's reason.
+  const held = current && !current.policy.fallback ? current : null;
+  let reason: string;
   try {
     const warm = current ? null : await stored(options, url);
     if (warm) {
@@ -122,15 +129,18 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
       }
       return next;
     }
-    options.log(`journeys: policy fetch answered ${response.status}; keeping ${current ? "the last good policy" : "the embedded default"}`);
+    options.log(`journeys: policy fetch answered ${response.status}; keeping ${held ? "the last good policy" : "the embedded default"}`);
     // An unread body holds the connection open until the platform gives up on it; a cancel that fails changes nothing here.
     void response.body?.cancel().catch(() => undefined);
+    reason = `answered ${response.status}`;
   } catch (error) {
     // A body that is not JSON throws a SyntaxError and a refused pattern a PolicyError: the document is refused.
-    const what = error instanceof PolicyError || error instanceof SyntaxError ? `policy refused (${error.message})` : `policy fetch failed (${error instanceof Error ? error.message : String(error)})`;
-    options.log(`journeys: ${what}; keeping ${current ? "the last good policy" : "the embedded default"}`);
+    const refusedDocument = error instanceof PolicyError || error instanceof SyntaxError;
+    const what = refusedDocument ? `policy refused (${error.message})` : `policy fetch failed (${error instanceof Error ? error.message : String(error)})`;
+    options.log(`journeys: ${what}; keeping ${held ? "the last good policy" : "the embedded default"}`);
+    reason = refusedDocument ? "settings refused" : `fetch failed (${error instanceof Error ? error.name : "unknown"})`;
   }
-  const fallback: PolicyState = current ? { ...current, at: options.now } : { at: options.now, policy: compilePolicy(defaultPolicy), etag: null, environment: null, saltEpoch: null };
+  const fallback: PolicyState = held ? { ...held, at: options.now } : builtIn(options.now, reason);
   states.set(key, fallback);
   return fallback;
 }

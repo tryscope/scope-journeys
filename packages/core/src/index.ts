@@ -2,7 +2,7 @@
  * Scope Journeys: the sensor core. Pure functions over Request, Response and a policy; every
  * effect goes through the `io` object the adapter supplies.
  */
-export { observe, finish, PROBE_PATH, PROBE_HEADER, type Observation, type State } from "./observe.js";
+export { observe, finish, probeAnswer, PROBE_PATH, PROBE_HEADER, type Observation, type State } from "./observe.js";
 export { observeResponse, type Responded } from "./respond.js";
 export { verifyWebBotAuth, DIRECTORY_PATH, type SignatureReason, type SignatureResult } from "./webbotauth.js";
 export { agentName, assertionClaims, assertionFromEnv, importAssertionKey, resetAssertionKeys, signAssertion, ASSERTION_HEADER, AGENT_HEADER, ASSERTION_TYP, ASSERTION_TTL_SECONDS, type AgentName, type AssertionClaims } from "./assertion.js";

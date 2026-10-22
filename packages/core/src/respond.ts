@@ -2,7 +2,7 @@ import { isTextFace, requestedFace, servedFace } from "./classify.js";
 import { passHeaders } from "./gateway.js";
 import type { SensorRecord } from "./io.js";
 import type { ScopeRequest1 } from "./generated/request.js";
-import { finish, type State } from "./observe.js";
+import { finish, hashedOrNull, type State } from "./observe.js";
 import { readBody } from "./record.js";
 import { redactString } from "./redact.js";
 import { mintReference } from "./references.js";
@@ -12,7 +12,7 @@ import { gateResponse } from "./rules/gate.js";
 import { rewritePage } from "./rules/inject.js";
 import { notfoundPage } from "./rules/notfound.js";
 import { decide, errored, isLive } from "./rules/runner.js";
-import { gateStream, teeHead } from "./stream.js";
+import { countBytes, gateStream } from "./stream.js";
 
 export interface Responded {
   response: Response;
@@ -82,7 +82,7 @@ function respondByKind(upstream: Response, state: State, resType: string): Respo
   const responseHeaders = async (): Promise<void> => {
     record["scope.response.headers"] = {
       "content-type": resType,
-      [H.session]: upstream.headers.get(H.session),
+      [H.session]: await hashedOrNull(upstream.headers.get(H.session), io),
       "www-authenticate": upstream.headers.get("www-authenticate"),
       location: (await redactString(upstream.headers.get("location") ?? "", policy, io)) || null,
       "cache-control": upstream.headers.get("cache-control"),
@@ -95,10 +95,10 @@ function respondByKind(upstream: Response, state: State, resType: string): Respo
     let settle: (records: SensorRecord[]) => void = () => undefined;
     const records = new Promise<SensorRecord[]>((resolve) => (settle = resolve));
     if (state.gate && upstream.status === 200) {
-      const body = gateStream(upstream.body, state.gate, state.locals, state.gateLive, (seen, changed) => {
+      const body = gateStream(upstream.body, state.gate, state.locals, state.gateLive, (bytes, changed) => {
         void (async () => {
           await responseHeaders();
-          record["scope.body.response"] = { sse: seen };
+          record["scope.response.bytes"] = bytes;
           state.gateReasons.push("stream through gate");
           if (changed) state.gateReasons.push("tools/list amended");
           settle(await finish(state));
@@ -106,10 +106,10 @@ function respondByKind(upstream: Response, state: State, resType: string): Respo
       });
       return { response: new Response(body, { status: 200, headers: passHeaders(upstream.headers) }), records };
     }
-    const body = teeHead(upstream.body, (seen) => {
+    const body = countBytes(upstream.body, (bytes) => {
       void (async () => {
         await responseHeaders();
-        record["scope.body.response"] = { sse: seen };
+        record["scope.response.bytes"] = bytes;
         settle(await finish(state));
       })();
     });
@@ -188,7 +188,7 @@ function respondByKind(upstream: Response, state: State, resType: string): Respo
       await responseHeaders();
       const bytes = new Uint8Array(await upstream.arrayBuffer());
       const text = new TextDecoder().decode(bytes);
-      const read = await readBody(text, resType, policy, io);
+      const read = await readBody(text, resType, policy, io, "answer");
       record["scope.body.response"] = read.parsed as ScopeRequest1["scope.body.response"];
       record["scope.response.bytes"] = read.bytes;
       if (read.truncated) record["scope.body.truncated"] = true;
