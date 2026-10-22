@@ -13,7 +13,7 @@ export { redact, redactString, hashedValue } from "./redact.js";
 export { outboundHeaders, passHeaders, forwardedUrl } from "./gateway.js";
 export { readBody, uuidv7, uuidv4, RECORD_SCHEMA, DECLARATION_SCHEMA, POLICY_SCHEMA, BODY_LIMIT, type ReadBody } from "./record.js";
 export { bodyKeys, mcpFacts, oauthFacts, type BodyKeys, type McpFacts, type OauthFacts } from "./keys.js";
-export { DEFAULT_API_URL, loadPolicy, resetPolicyCache, secureUrl, type LoadOptions, type PolicyState } from "./policy-loader.js";
+export { DEFAULT_API_URL, loadPolicy, resetPolicyCache, secureUrl, trustPolicyKeyForTests, type LoadOptions, type PolicyState } from "./policy-loader.js";
 export { validatePolicy, validateRecord, findSecretShapedValues, type Finding, type Validation } from "./validate.js";
 export { familyOf, type Io, type IoCache, type Facts, type PlatformBot, type SensorRecord, type Source, type Environment, type LogLevel } from "./io.js";
 export type { ScopeRequest1 } from "./generated/request.js";

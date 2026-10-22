@@ -65,7 +65,7 @@ export function assertionClaims(record: ScopeRequest1, decisions: readonly Decis
 }
 
 const encoder = new TextEncoder();
-const base64url = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+export const base64url = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 /** The compact JWS: ES256 over the header and the claims, the signature in the raw r||s form JWS requires, which WebCrypto produces. */
 export async function signAssertion(claims: AssertionClaims, key: CryptoKey, kid: string): Promise<string> {

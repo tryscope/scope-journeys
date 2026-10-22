@@ -51,7 +51,7 @@ async function keysOf(signer: string, io: Pick<Io, "forward" | "cache">): Promis
   return keys;
 }
 
-const base64ToBytes = (b64: string): Uint8Array<ArrayBuffer> => {
+export const base64ToBytes = (b64: string): Uint8Array<ArrayBuffer> => {
   const raw = atob(b64);
   const bytes = new Uint8Array(new ArrayBuffer(raw.length));
   for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
