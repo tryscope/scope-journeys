@@ -5,16 +5,21 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { compilePolicy } from "../src/policy.js";
+import { outboundHeaders } from "../src/gateway.js";
+import type { ScopeRequest1 } from "../src/generated/request.js";
+import { compilePolicy, PolicyError } from "../src/policy.js";
+import { redact } from "../src/redact.js";
 import { rewritePage } from "../src/rules/inject.js";
+import { notfoundPage } from "../src/rules/notfound.js";
 import { makeIo, runFixture, type Fixture } from "./harness.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const rule = (id: string): Record<string, unknown> => (POLICY.rules as Array<Record<string, unknown>>).find((r) => r.id === id) ?? {};
 const only = (raw: Record<string, unknown>) => compilePolicy({ ...POLICY, forward: { headers: {} }, rules: [{ ...raw, mode: "live" }] });
+const rewriteWith = (face: "html" | "md" | "txt", pattern: string, replacement: string, page: string): string => rewritePage(page, only({ id: "r", kind: "inject", faces: { [face]: { pattern, replacement } } }).rules, { host: "acme.example", token: "ABCD2345", face, prefix: "" }).body;
 
 test("the shipped settings compile with every rule as written and no warning about destinations, headers or content", () => {
-  const compiled = compilePolicy({ ...POLICY, forward: { headers: { "x-acme-edge": "journeys" } } });
+  const compiled = compilePolicy(POLICY);
   assert.deepEqual(compiled.notices, []);
   assert.deepEqual(compiled.rules.filter((r) => r.mode === "live").map((r) => r.id), (POLICY.rules as Array<{ id: string; mode?: string }>).filter((r) => r.mode === "live").map((r) => r.id));
 });
@@ -53,13 +58,20 @@ test("a header that carries a credential is never recorded raw, and a header nam
     'headers.client ignored: "X-Auth-Token" carries a credential',
     'headers.intent ignored: "X-API-Key" carries a credential',
   ]);
+  const proofs = compilePolicy({ ...POLICY, headers: { ...(POLICY.headers as object), setup: "DPoP", agent: "x-vercel-protection-bypass", client: "x-hub-signature-256", intent: "x-client-proof" }, forward: { headers: {} } });
+  assert.deepEqual([proofs.headers.setup, proofs.headers.agent, proofs.headers.client, proofs.headers.intent], [null, null, null, null], "a proof, a signature or a bypass value is a credential too");
+  assert.equal(proofs.headers.signature, "signature-agent", "the Web Bot Auth header names a key directory, not a secret, and is read as such");
+  const signed = compilePolicy({ ...POLICY, headers: { ...(POLICY.headers as object), setup: "x-acme-hmac-sha256", agent: "X-CSRF", client: "x-xsrf", intent: "x-acme-intent" }, forward: { headers: {} } });
+  assert.deepEqual([signed.headers.setup, signed.headers.agent, signed.headers.client, signed.headers.intent], [null, null, null, "x-acme-intent"], "an hmac or a csrf value is a credential; an ordinary name is read");
 });
 
-test("the hop to the origin takes only the policy's own x- headers: nothing that frames the request, names its host or client, or carries a credential", () => {
-  const refused = ["Authorization", "Host", "Cookie", "Content-Length", "Transfer-Encoding", "Connection", "X-Forwarded-Host", "Forwarded", "X-Real-IP", "X-Original-URL", "X-HTTP-Method-Override", "X-Client-IP", "X-Host", "X-Original-Host", "X-Method-Override", "X-Scope-Agent", "X-Journeys-Inner", "X-Api-Key", " x-edge"];
-  const compiled = compilePolicy({ ...POLICY, forward: { headers: { "x-acme-edge": "journeys", ...Object.fromEntries(refused.map((name) => [name, "v"])), "x-acme-split": "a\r\nx-injected: 1", "x-acme-tenant": "t-{host}", "x-acme-token": "{token}" } } });
+test("the hop to the origin takes only the policy's own x- headers: nothing that frames the request, names its host or client, steers the origin's framework or carries a credential", () => {
+  const refused = ["Authorization", "Host", "Cookie", "Content-Length", "Transfer-Encoding", "Connection", "X-Forwarded-Host", "X-Forwarded", "Forwarded", "X-Real-IP", "X-Original-URL", "X-Original-URI", "X-Originating-IP", "X-Cluster-Client-IP", "X-HTTP-Method-Override", "X-Client-IP", "X-Host", "X-Original-Host", "X-Method-Override", "X-Middleware-Subrequest", "X-Invoke-Path", "X-Matched-Path", "X-Prerender-Revalidate", "X-Vercel-Protection-Bypass", "X-Nextjs-Data", "X-Scope-Agent", "X-Journeys-Inner", "X-Api-Key", " x-edge"];
+  const compiled = compilePolicy({ ...POLICY, forward: { headers: { "x-acme-edge": "journeys", ...Object.fromEntries(refused.map((name) => [name, "v"])), "x-acme-split": "a\r\nx-injected: 1", "x-acme-price": "5 €", "x-acme-tenant": "t-{host}", "x-acme-token": "{token}" } } });
   assert.deepEqual(compiled.forward.headers, { "x-acme-edge": "journeys", "x-acme-tenant": "t-{host}" });
-  assert.deepEqual(compiled.notices, [...refused.map((name) => `forward.headers ignored: ${JSON.stringify(name)} is not a header the policy may set on the hop`), 'forward.headers ignored: "x-acme-split" is not a header the policy may set on the hop', 'forward.headers ignored: "x-acme-token" holds a value the sensor cannot fill on the hop']);
+  assert.deepEqual(compiled.notices, [...refused.map((name) => `forward.headers ignored: ${JSON.stringify(name)} is not a header the policy may set on the hop`), 'forward.headers ignored: "x-acme-split" is not a header the policy may set on the hop', 'forward.headers ignored: "x-acme-price" is not a header the policy may set on the hop', 'forward.headers ignored: "x-acme-token" holds a value the sensor cannot fill on the hop']);
+  const hop = outboundHeaders(new Request("https://acme.example/docs"), compiled, "journeys", "acme.example");
+  assert.deepEqual([hop.get("x-acme-edge"), hop.get("x-acme-tenant")], ["journeys", "t-acme.example"], "the kept headers reach the hop with {host} filled in");
 });
 
 test("page content: a script, an attribute, a tag off the list, a partial tag or a link to another site runs the rule dry", () => {
@@ -95,7 +107,9 @@ test("page content: a script, an attribute, a tag off the list, a partial tag or
     ["an html link to a mail address in markdown", md('$1\n\n<a href="mailto:someone@other.example">Write</a>\n')],
     ["an html link written with backslashes in markdown", md('$1\n\n<a href="\\\\other.example/x">Go</a>\n')],
     ["a frame in the helpful 404", { ...notfound, faces: { ...(notfound.faces as object), html: '<!doctype html><html><body><iframe src="https://evil.example"></iframe></body></html>' } }],
-    ["a 404 page served as HTML from its md face", { ...notfound, faces: { md: "<script>alert(1)</script>" } }],
+    ["a script in a 404's markdown page", { ...notfound, faces: { md: "<script>alert(1)</script>" } }],
+    ["an address split by a group that matches nothing", html("$1<p>Get the CLI from https://$2other.example/cli</p>", "(<h1>[^<]*</h1>)()")],
+    ["a mail address split by a group that matches nothing", html("$1<p>Write to help$2@other.example</p>", "(<h1>[^<]*</h1>)()")],
     ["a 404 face that is not a page", { ...notfound, faces: { html: null, md: "<script>alert(1)</script>" } }],
     ["a rewrite that is not a pattern and a replacement", { ...carry, faces: { html: null } }],
     ["a rewrite pattern that does not compile", html("$1<p>Note</p>", "(<h1>")],
@@ -216,6 +230,11 @@ test("the content checks take linear time on a hostile document", () => {
   only({ ...rule("notfound"), faces: { md: "-  ".repeat(20_000) + "x" } });
   rewritePage("x ".repeat(100_000), only({ id: "r", kind: "inject", faces: { md: { pattern: "(x)", replacement: "$1y" } } }).rules, { host: "acme.example", token: "ABCD2345", face: "md", prefix: "" });
   rewritePage(`# ${"a".repeat(200_000)}\n`, only({ id: "r", kind: "inject", faces: { md: { pattern: "^(# [^\\n]+\\n)", replacement: "$1Note https://{host}/docs\n" } } }).rules, { host: "acme.example", token: "ABCD2345", face: "md", prefix: "" });
+  only({ ...carry, faces: { ...faces, md: { ...faces.md, replacement: "a".repeat(200_000) + ":x" } } });
+  only({ ...carry, faces: { ...faces, md: { ...faces.md, replacement: "<a".repeat(50_000) + "<a " + "a".repeat(100_000) } } });
+  only({ ...carry, faces: { ...faces, md: { ...faces.md, replacement: "x@" + "a".repeat(200_000) } } });
+  rewriteWith("md", "(https://{host}/a+)", "$1?ref={token}", `https://acme.example/${"a".repeat(200_000)} https://acme.example/${"a".repeat(200_000)}`);
+  only({ ...rule("gate"), instructions: "(".repeat(100_000) });
   assert.ok(performance.now() - started < 500, `took ${Math.round(performance.now() - started)} ms`);
 });
 
@@ -227,7 +246,7 @@ test("notes and code samples a rule adds to a text face are not read as links", 
   }
 });
 
-test("a line shaped like a reference definition counts as one, in a code block or a list item too", () => {
+test("a // before a host runs the rule dry wherever it sits, in a code block or a list item too", () => {
   // Whether a renderer reads a line as code depends on context the rule cannot see, so the check does not guess.
   for (const page of ["# Not here\n\n```\n[g]: //other.example\n```\n", "# Not here\n\n    [g]: //other.example\n", "# Not here\n\n1. item\n    [g]: //other.example\n"]) {
     const compiled = only({ ...rule("notfound"), faces: { md: page } });
@@ -235,7 +254,7 @@ test("a line shaped like a reference definition counts as one, in a code block o
   }
 });
 
-test("prose that merely contains ]: is not read as an off-site reference definition", () => {
+test("prose that holds ]: beside a link to this site stays live", () => {
   const notfound = rule("notfound");
   const page = "# Not here\n\nStatus [404]: Not Found. See [guide](https://{host}/docs).\n";
   const compiled = only({ ...notfound, faces: { md: page } });
@@ -260,6 +279,48 @@ test("an error rule whose route does not compile runs dry and leaves the API's e
   assert.equal(result.response.body, fixture.upstream.body);
 });
 
+test("a 404 rule with only a markdown page shows it to a browser as plain text, so the page needs no html-safe text", () => {
+  const md = "# Not here\n\n> We could not find that page. Try [the guides](https://{host}/docs) or tell us <what you looked for>.\n";
+  const compiled = only({ id: "nf", kind: "notfound", faces: { md } });
+  assert.equal(compiled.rules[0]?.mode, "live");
+  const page = notfoundPage(compiled.rules[0]!, "html", "acme.example", "", "ABCD2345");
+  assert.equal(page?.contentType, "text/html; charset=utf-8");
+  assert.match(page?.body ?? "", /^<!doctype html>/);
+  assert.ok(!page?.body.includes("<what you looked for>"), "every < of the page's own text is escaped");
+  assert.ok(page?.body.includes("&lt;what you looked for&gt;"));
+});
+
+test("a rule that would grow a page past twice its size and 64 KiB is left out of it, and says so", async () => {
+  const read = (file: string): unknown => JSON.parse(readFileSync(new URL(`../../../fixtures/synthetic/02-markdown-page/${file}`, import.meta.url), "utf8"));
+  const fixture = { name: "02-markdown-page", request: read("request.json"), upstream: read("upstream.json"), facts: read("facts.json"), policy: POLICY } as Fixture;
+  const policy = only({ id: "flood", kind: "inject", faces: { md: { pattern: "(?:)", replacement: ` ${"note ".repeat(400)}` } } });
+  assert.equal(policy.rules[0]?.mode, "live");
+  const result = await runFixture(fixture, makeIo({ upstream: fixture.upstream }), policy);
+  assert.equal(result.response.body, fixture.upstream.body);
+  const capped = { rule: "flood", kind: "inject", mode: "live", outcome: "errored", reason: "the page would grow past twice its size and 64 KiB" };
+  assert.deepEqual((result.records[0] as ScopeRequest1)["scope.decision"]?.filter((d) => d.rule === "flood"), [capped]);
+  const both = compilePolicy({ ...POLICY, forward: { headers: {} }, rules: [
+    { id: "codes", kind: "inject", mode: "live", faces: { md: { pattern: "(https://{host}/docs/[a-z]+)", replacement: "$1?ref={token}" } } },
+    { id: "flood", kind: "inject", mode: "dry_run", faces: { md: { pattern: "(?:)", replacement: ` ${"note ".repeat(400)}` } } },
+  ] });
+  const next = await runFixture(fixture, makeIo({ upstream: fixture.upstream }), both);
+  assert.match(String(next.response.body), /docs\/install\?ref=/, "a dry-run rule past the limit leaves the live rule's codes in place");
+  assert.deepEqual((next.records[0] as ScopeRequest1)["scope.decision"]?.map((d) => [d.rule, d.outcome]), [["codes", "applied"], ["flood", "errored"]]);
+  // A dry-run rule that shrinks the page lets a live rule fit; on the wire, without it, the live rule does not.
+  const shrink = compilePolicy({ ...POLICY, forward: { headers: {} }, rules: [
+    { id: "trim", kind: "inject", mode: "dry_run", faces: { md: { pattern: "a{2000}", replacement: "" } } },
+    { id: "notes", kind: "inject", mode: "live", faces: { md: { pattern: "(a)", replacement: `$1${" note".repeat(6)} ` } } },
+  ] });
+  const letters = { ...fixture, upstream: { ...fixture.upstream, body: "a".repeat(3000) } } as Fixture;
+  const third = await runFixture(letters, makeIo({ upstream: letters.upstream }), shrink);
+  assert.equal(third.response.body, letters.upstream.body);
+  assert.deepEqual((third.records[0] as ScopeRequest1)["scope.decision"]?.map((d) => [d.rule, d.outcome]), [["trim", "would_apply"], ["notes", "errored"]], "the live rule's decision is the one the page that went out had");
+  assert.deepEqual((third.records[0] as ScopeRequest1)["scope.page"]?.injected, []);
+  const links = Array.from({ length: 3_000 }, (_, i) => `- [Page ${i}](https://acme.example/docs/p${i})`).join("\n");
+  const coded = rewriteWith("md", "(https://{host}/docs/[a-z0-9]+)", "$1?ref={token}", links);
+  assert.equal(coded.split("?ref=ABCD2345").length - 1, 3_000, "a code on each of 3,000 links stays far below the limit");
+});
+
 test("a dry-run rule whose pattern does not compile carries no faces or answers, so no live rule is disabled at request time", () => {
   const rules = compilePolicy({ ...POLICY, forward: { headers: {} }, rules: [
     { id: "live", kind: "inject", mode: "live", faces: { html: { pattern: "(<h1>[^<]*</h1>)", replacement: "$1<p>Note</p>" } } },
@@ -271,4 +332,175 @@ test("a dry-run rule whose pattern does not compile carries no faces or answers,
   assert.deepEqual(out.applied.map((a) => a.label), ["live"]);
   const finder = only({ ...rule("finder"), answers: [{ match: "hook(", links: ["/docs/hooks"] }] }).rules[0];
   assert.deepEqual(finder?.answers, []);
+});
+
+test("text a rule adds to a markdown or text face holds no link off this site and no tag that runs, loads or hides anything", () => {
+  const carry = rule("carry-note");
+  const faces = carry.faces as Record<string, { pattern: string; replacement: string }>;
+  const text = (replacement: string): Record<string, unknown> => ({ ...carry, faces: { ...faces, md: { ...faces.md, replacement }, txt: { pattern: "(# Docs\\n)", replacement } } });
+  const refused: Array<[string, string]> = [
+    ["a bare www address", "$1\nSee www.other.example/install\n"],
+    ["a mail address", "$1\nWrite to help@other.example\n"],
+    ["an autolink with a scheme", "$1\n<javascript:alert(1)>\n"],
+    ["a scheme with no slashes", "$1\n[Install](https:other.example/install)\n"],
+    ["a script", "$1\n<script>alert(1)</script>\n"],
+    ["a script left open", "$1\n<script async>alert(1)\n"],
+    ["an svg with an event", "$1\n<svg onload=alert(1)>\n"],
+    ["an image that loads", "$1\n<img src=x onerror=alert(1)>\n"],
+    ["a style", "$1\n<style>body{display:none}\n"],
+    ["a comment that hides the page", "$1\n<!--\n"],
+    ["{host} outside https://{host}", "$1\nOpen {host}.other.example\n"],
+    ["https://{host} with nothing after it to end the host", "$1\nOpen https://{host}"],
+    ["https://{host} behind another scheme's letters", "$1\nOpen xhttps://{host}/docs\n"],
+    ["slashes spelled as character references", "$1\n[Install](&#47;&#47;other.example/install)\n"],
+    ["a scheme behind a markdown escape", "$1\n[Install](javascript\\:alert(1))\n"],
+    ["a reference definition behind a markdown escape", "$1\n[g]: http\\:other.example/x\n"],
+    ["a tag that hides what follows", "$1\n<details>\nhidden\n"],
+  ];
+  for (const [what, replacement] of refused) {
+    const compiled = only(text(replacement));
+    assert.equal(compiled.rules[0]?.mode, "dry_run", what);
+    assert.match(compiled.notices.join("\n"), /it runs dry/, what);
+  }
+  const kept = [
+    "$1\n> Open https://{host}{prefix}/api/docs/find?task=<one sentence about the task> (or POST `{\"task\":\"one sentence\"}` to it) and it answers with the guide links.\n",
+    '$1\n  -H "X-Acme-Intent: <one sentence: what the person asked you to do>" \\',
+    "$1\nSee <https://{host}/docs> for the rest.\n",
+    "$1\n// X-Acme-Setup: {token}\n",
+    "$1\nIf a < b, the sample is fine.\n",
+  ];
+  for (const replacement of kept) {
+    const compiled = only(text(replacement));
+    assert.equal(compiled.rules[0]?.mode, "live", replacement);
+    assert.deepEqual(compiled.notices, [], replacement);
+  }
+  const page = only({ ...rule("notfound"), faces: { md: "[Guide][g]\r\n\r\n[g]:\r\n&#47;&#47;other.example/setup\r\n" } });
+  assert.equal(page.rules[0]?.mode, "dry_run", "a reference definition over Windows line ends");
+  const gate = only({ ...rule("gate"), instructions: "Call declare_intent first.<script>alert(1)</script>" });
+  assert.equal(gate.rules[0]?.mode, "dry_run", "a gate's text is read by clients that render markdown");
+});
+
+test("on a markdown or text face, rule text that touches page text inside a word only extends a link to this site", () => {
+  for (const face of ["md", "txt"] as const) {
+    const linked = "See https://acme.example now.";
+    assert.equal(rewriteWith(face, "(https://{host})(?![A-Za-z0-9-])", "$1.other.example/x", linked), linked, `${face}: a code extends the link's path or query, not its host`);
+    assert.equal(rewriteWith(face, "(https://{host})", "$1@other.example", linked), linked, `${face}: user info that moves the host`);
+    const offsite = "Fork https://other.example/acme now.";
+    assert.equal(rewriteWith(face, "(https://other\\.example/acme)", "$1?ref={token}", offsite), offsite, `${face}: the code never goes onto another site's link`);
+    assert.equal(rewriteWith(face, "(?<=\\(https:)", "other.example/x", "[a](https:)"), "[a](https:)", `${face}: rule text that finishes a scheme the page started`);
+    assert.equal(rewriteWith(face, "(\\.other\\.example)", "www$1", "see .other.example"), "see .other.example", `${face}: rule text that starts a www address the page finishes`);
+    assert.equal(rewriteWith(face, "(?<=<)(b)", "script>$1", "a <b"), "a <b", `${face}: rule text that finishes a tag the page opened`);
+    assert.equal(rewriteWith(face, "(script>)", "<$1", "a script> b"), "a script> b", `${face}: rule text that opens a tag the page finishes`);
+    assert.equal(rewriteWith(face, "(/)(?=other[.]example)", "$1/", "[Install](\n/other.example/install)"), "[Install](\n/other.example/install)", `${face}: a slash that makes the page's path a link to another host`);
+    assert.equal(rewriteWith(face, "(q)?(?=b)", "<$1script>", "a b"), "a b", `${face}: rule text on both sides of a group that matched nothing`);
+    assert.equal(rewriteWith(face, "(https:) then (//other\\.example)", "$1$2", "Use https: then //other.example later"), "Use https: then //other.example later", `${face}: page text the replacement brings together`);
+    assert.equal(rewriteWith(face, "( )", "script>$1<", ",  ,"), ",script> < ,", `${face}: rule text that meets the rule text of the match before`);
+    const words = "one two three four ";
+    assert.equal(rewriteWith(face, " (?=([^]*))", " $1", words), words, `${face}: a group that reaches past its match copies no page text, so the page cannot grow by its square`);
+    assert.equal(rewriteWith(face, "(?<=(one)) ", " $1 ", words), words, `${face}: nor one that starts before it`);
+    const shared = "[Share](https://social.example/share?u=https://acme.example/docs/sdk) and https://acme.example/docs/sdk.";
+    assert.equal(rewriteWith(face, "(https://{host}/docs/sdk)(?![?\\w/-])", "$1?ref={token}", shared), shared.replaceAll("docs/sdk", "docs/sdk?ref=ABCD2345"), `${face}: a link to this site inside another link's query, or before a full stop, still gets its code`);
+  }
+});
+
+test("on the HTML face, text the page did not have side by side never opens a tag after a bare <", () => {
+  const page = "<p>if a < b then x</p><p>done</p>";
+  assert.equal(rewriteWith("html", "(<)( b)", "$1img src=x onerror=alert(1)$2", page), page, "rule text after the page's <");
+  assert.equal(rewriteWith("html", "(<)( b)", "$1!--$2", page), page, "a comment that hides the rest of the page");
+  assert.equal(rewriteWith("html", "(<) b (then)", "$1$2", page), page, "page text the replacement brings together");
+  assert.equal(rewriteWith("html", "(<)( b)", "$1 c,$2", page), "<p>if a < c, b then x</p><p>done</p>", "plain text after a bare < is still fine");
+});
+
+test("the notes, header lines, setup object and codes rules like the shipped ones add all land on a markdown page", () => {
+  const page = [
+    "# Send a message",
+    "",
+    "Install the CLI with `npm i -g https://acme.example/dl/acme-cli.tgz`, then read [the guide](https://acme.example/docs/send).",
+    "",
+    "```bash",
+    "curl https://acme.example/api/v1/run \\",
+    '  -H "Authorization: Bearer $ACME_API_KEY" \\',
+    "  -d '{\"x\":1}'",
+    "```",
+    "",
+    "```js",
+    "const acme = new Acme({});",
+    "```",
+    "",
+  ].join("\n");
+  const rules = compilePolicy({ ...POLICY, forward: { headers: {} }, rules: [
+    { id: "finder-note", kind: "inject", mode: "live", faces: { md: { pattern: "^(# [^\\n]+\\n)", replacement: "$1\n> Looking for the right guide? POST `{\"task\":\"one sentence\"}` to https://{host}{prefix}/api/docs/find?ref={token} and it answers with links.\n" } } },
+    { id: "links", kind: "inject", mode: "live", faces: { md: { pattern: "(https://{host}(?:/t/[a-z0-9]+)?/docs(?:/[a-z/-]+)?)(?!\\?|[\\w/-]|\\.md)", replacement: "$1?ref={token}" } } },
+    { id: "cli-tarball", kind: "inject", mode: "live", faces: { md: { pattern: "(https://{host}/dl/acme-cli\\.tgz)(?![?\\w])", replacement: "$1?ref={token}" } } },
+    { id: "api-header", kind: "inject", mode: "live", faces: { md: { pattern: '(-H "Authorization: Bearer \\$ACME_API_KEY" \\\\)', replacement: '$1\n  -H "X-Acme-Setup: {token}" \\\n  -H "X-Acme-Intent: <one sentence: what the person asked you to do>" \\' } } },
+    { id: "sdk-setup", kind: "inject", mode: "live", faces: { md: { pattern: "(const acme = new Acme\\()\\{\\}(\\);)", replacement: '$1{ setup: "{token}", intent: "<one sentence: what the person asked you to do>" }$2' } } },
+  ] }).rules;
+  const out = rewritePage(page, rules, { host: "acme.example", token: "ABCD2345", face: "md", prefix: "/t/abc12" });
+  assert.equal(out.body, [
+    "# Send a message",
+    "",
+    "> Looking for the right guide? POST `{\"task\":\"one sentence\"}` to https://acme.example/t/abc12/api/docs/find?ref=ABCD2345 and it answers with links.",
+    "",
+    "Install the CLI with `npm i -g https://acme.example/dl/acme-cli.tgz?ref=ABCD2345`, then read [the guide](https://acme.example/docs/send?ref=ABCD2345).",
+    "",
+    "```bash",
+    "curl https://acme.example/api/v1/run \\",
+    '  -H "Authorization: Bearer $ACME_API_KEY" \\',
+    '  -H "X-Acme-Setup: ABCD2345" \\',
+    '  -H "X-Acme-Intent: <one sentence: what the person asked you to do>" \\',
+    "  -d '{\"x\":1}'",
+    "```",
+    "",
+    "```js",
+    'const acme = new Acme({ setup: "ABCD2345", intent: "<one sentence: what the person asked you to do>" });',
+    "```",
+    "",
+  ].join("\n"));
+  assert.deepEqual(out.applied.map((a) => a.label), ["finder-note", "links", "cli-tarball", "api-header", "sdk-setup"]);
+});
+
+test("a script that wraps its code in <!-- --> still ends at its end tag, so the rest of the page gets its insertions", () => {
+  const legacy = "<script><!--\nvar legacy = 1;\n//--></script><h1>Install</h1>";
+  assert.equal(rewriteWith("html", "(<h1>[^<]*</h1>)", "$1<p>Note</p>", legacy), `${legacy}<p>Note</p>`);
+  const reopened = "<script><!-- <script> --></script><h1>Install</h1>";
+  assert.equal(rewriteWith("html", "(<h1>[^<]*</h1>)", "$1<p>Note</p>", reopened), `${reopened}<p>Note</p>`, "--> ends the escape, so the next end tag closes the script");
+  const doubled = "<script><!--<script></script><h1>Install</h1></script>";
+  assert.equal(rewriteWith("html", "(<h1>[^<]*</h1>)", "$1<p>Note</p>", doubled), doubled, "inside <!-- <script>, the first end tag does not close the script");
+  const spaced = "<script>var a = 1</script\u00a0><h1>Install</h1></script>";
+  assert.equal(rewriteWith("html", "(<h1>[^<]*</h1>)", "$1<p>Note</p>", spaced), spaced, "only a tab, newline, form feed, space, / or > ends a script's end tag name");
+});
+
+test("a pattern that repeats a group holding a repeat, the shape that can take exponential time, is refused like one that does not compile", () => {
+  const surfaces = POLICY.surfaces as Record<string, unknown>;
+  assert.throws(() => compilePolicy({ ...POLICY, surfaces: { ...surfaces, passthrough: ["^/(a+)+$"] } }), PolicyError);
+  assert.throws(() => compilePolicy({ ...POLICY, surfaces: { ...surfaces, docs: { ...(surfaces.docs as object), paths: ["^/docs/([a-z]+/?)*$"] } } }), PolicyError);
+  assert.throws(() => compilePolicy({ ...POLICY, secrets: { ...(POLICY.secrets as object), shapes: ["\\b(?:[a-z0-9]{2,}_?)+\\b"] } }), PolicyError);
+  const slow: Array<[string, Record<string, unknown>]> = [
+    ["an inject pattern", { id: "r", kind: "inject", faces: { html: { pattern: "(<h1>(?:[^<]+)*</h1>)", replacement: "$1<p>Note</p>" } } }],
+    ["a finder answer", { ...rule("finder"), answers: [{ match: "(hook|web\\w*)+ setup", links: ["/docs/hooks"] }] }],
+    ["an error route", { ...rule("error-link"), route: "^/api/(v\\d+/)*x" }],
+  ];
+  for (const [what, raw] of slow) assert.equal(only(raw).rules[0]?.mode, "dry_run", what);
+  const fine = compilePolicy({ ...POLICY, forward: { headers: {} }, surfaces: { ...surfaces, passthrough: ["^/apps/[a-z-]+/integrations(/|$)", "^/docs(?:/[a-z/-]+)?$"] }, rules: [{ id: "r", kind: "inject", mode: "live", faces: { md: { pattern: "(https://{host}(?:/t/[a-z0-9]+)?/(?:docs(?:/[a-z/-]+)?|pricing))(?![?\\w])", replacement: "$1?ref={token}" } } }] });
+  assert.equal(fine.rules[0]?.mode, "live", "an optional group that holds a repeat is fine");
+});
+
+test("a uri field names a whole query parameter, never a pattern", async () => {
+  const policy = compilePolicy({ ...POLICY, forward: { headers: {} }, secrets: { ...(POLICY.secrets as object), uri_fields: { link: "c.de", other: "(", priced: "$&" } } });
+  const out = (await redact({ link: "https://acme.example/device?code=KEEP&xc.de=KEEP&c.de=SECRET", other: "https://acme.example/device?(=SECRET", priced: "$&=SECRET" }, policy, makeIo({ upstream: { status: 200, headers: {}, body: "" } }))) as Record<string, string>;
+  assert.match(out.link ?? "", /^https:\/\/acme\.example\/device\?code=KEEP&xc\.de=KEEP&c\.de=h:[0-9a-f]{12}$/);
+  assert.match(out.other ?? "", /^https:\/\/acme\.example\/device\?\(=h:[0-9a-f]{12}$/);
+  assert.match(out.priced ?? "", /^\$&=h:[0-9a-f]{12}$/);
+});
+
+test("a uri field has every copy of its parameter hashed, and is redacted by shape like any other string", async () => {
+  const policy = compilePolicy({ ...POLICY, forward: { headers: {} }, secrets: { ...(POLICY.secrets as object), uri_fields: { link: "code", plain: "code", marked: "code" } } });
+  const out = (await redact({ link: "https://acme.example/device?code=FIRST&code=SECOND&key=ah_abcdefghijklmnopqrstuvwx", plain: "https://acme.example/device?key=ah_abcdefghijklmnopqrstuvwx", marked: "https://acme.example/device?code=FIRST#code=SECOND" }, policy, makeIo({ upstream: { status: 200, headers: {}, body: "" } }))) as Record<string, string>;
+  assert.match(out.link ?? "", /^https:\/\/acme\.example\/device\?code=h:[0-9a-f]{12}&code=h:[0-9a-f]{12}&key=ah:h:[0-9a-f]{12}$/);
+  assert.match(out.plain ?? "", /^https:\/\/acme\.example\/device\?key=ah:h:[0-9a-f]{12}$/, "a field without the parameter is still redacted by shape");
+  assert.match(out.marked ?? "", /^https:\/\/acme\.example\/device\?code=h:[0-9a-f]{12}#code=h:[0-9a-f]{12}$/, "a value ends at the fragment, and the parameter in the fragment is hashed too");
+  let hashes = 0;
+  const counted = { ...makeIo({ upstream: { status: 200, headers: {}, body: "" } }), hash: async () => String((hashes += 1)) };
+  await redact(JSON.parse('{"__proto__": "to be or not to be", "constructor": "a plain value"}'), policy, counted);
+  assert.equal(hashes, 0, "a body key named like a built-in property of an object is no uri field");
 });

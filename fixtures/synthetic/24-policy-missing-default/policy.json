@@ -23,8 +23,7 @@
     "signature": "signature-agent"
   },
   "forward": {
-    "headers": {},
-    "key_header": null
+    "headers": {}
   },
   "record_bodies": false,
   "rules": []

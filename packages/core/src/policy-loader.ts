@@ -1,5 +1,5 @@
-import type { IoCache } from "./io.js";
-import { compilePolicy, defaultPolicy, isRecord, PolicyError, type CompiledPolicy } from "./policy.js";
+import type { Environment, IoCache } from "./io.js";
+import { compilePolicy, defaultPolicy, isEnvironment, isRecord, PolicyError, type CompiledPolicy } from "./policy.js";
 import { policyRefusals } from "./validate.js";
 
 /**
@@ -13,7 +13,7 @@ export interface PolicyState {
   at: number;
   policy: CompiledPolicy;
   etag: string | null;
-  environment: string | null;
+  environment: Environment | null;
   saltEpoch: number | null;
 }
 
@@ -59,7 +59,7 @@ async function stored(options: LoadOptions, url: string): Promise<PolicyState | 
     // The cache is a convenience: one that cannot be read, or holds no JSON, is no stored copy.
     return null;
   }
-  if (!isRecord(entry) || !nullableString(entry.etag) || !nullableString(entry.environment) || !epochOf(entry.saltEpoch)) return null;
+  if (!isRecord(entry) || !nullableString(entry.etag) || !(entry.environment === null || isEnvironment(entry.environment)) || !epochOf(entry.saltEpoch)) return null;
   try {
     return { at: options.now, policy: checked(entry.document), etag: entry.etag, environment: entry.environment, saltEpoch: entry.saltEpoch };
   } catch (error) {
@@ -78,9 +78,8 @@ export interface LoadOptions {
   log: (line: string) => void;
 }
 
-// A policy answer without the environment or epoch header (an old API), or with an epoch that is not
-// a positive whole number, keeps the last value seen; before any answer the adapter stamps epoch 1
-// and production.
+// A policy answer without the environment or epoch header (an old API), or with a value this sensor
+// does not take, keeps the last value seen; before any answer the adapter stamps epoch 1 and production.
 export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
   // The policy route answers only an install or a session: without a credential there is nothing to fetch.
   const url = options.url === null || !options.credential ? null : secureUrl(options.url, "the policy url", options.log);
@@ -112,7 +111,8 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
       const policy = checked(document);
       for (const notice of policy.notices) options.log(`journeys: policy ${policy.version}: ${notice}`);
       const epoch = response.headers.get("x-journeys-salt-epoch");
-      const next: PolicyState = { at: options.now, policy, etag: response.headers.get("etag"), environment: response.headers.get("x-journeys-environment") ?? current?.environment ?? null, saltEpoch: epoch !== null && /^[1-9][0-9]*$/.test(epoch) && epochOf(Number(epoch)) ? Number(epoch) : (current?.saltEpoch ?? null) };
+      const environment = response.headers.get("x-journeys-environment");
+      const next: PolicyState = { at: options.now, policy, etag: response.headers.get("etag"), environment: isEnvironment(environment) ? environment : (current?.environment ?? null), saltEpoch: epoch !== null && /^[1-9][0-9]*$/.test(epoch) && epochOf(Number(epoch)) ? Number(epoch) : (current?.saltEpoch ?? null) };
       states.set(key, next);
       const keep = { document, etag: next.etag, environment: next.environment, saltEpoch: next.saltEpoch };
       try {
@@ -123,8 +123,10 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
       return next;
     }
     options.log(`journeys: policy fetch answered ${response.status}; keeping ${current ? "the last good policy" : "the embedded default"}`);
+    // An unread body holds the connection open until the platform gives up on it; a cancel that fails changes nothing here.
+    void response.body?.cancel().catch(() => undefined);
   } catch (error) {
-    // A body that is not JSON, or a pattern that does not compile, throws a SyntaxError: the document is refused.
+    // A body that is not JSON throws a SyntaxError and a refused pattern a PolicyError: the document is refused.
     const what = error instanceof PolicyError || error instanceof SyntaxError ? `policy refused (${error.message})` : `policy fetch failed (${error instanceof Error ? error.message : String(error)})`;
     options.log(`journeys: ${what}; keeping ${current ? "the last good policy" : "the embedded default"}`);
   }

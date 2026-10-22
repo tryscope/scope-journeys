@@ -82,7 +82,7 @@ export interface CompiledPolicy {
   surfaces: CompiledSurfaces | null;
   shapes: RegExp[];
   secretFields: Set<string>;
-  uriFields: Record<string, string>;
+  uriFields: Map<string, RegExp>;
   headers: { credential: string; session: string; reference: string[]; install: string | null; setup: string | null; agent: string | null; client: string | null; intent: string | null; signature: string };
   forward: { headers: Record<string, string> };
   recordBodies: boolean;
@@ -96,6 +96,7 @@ export interface CompiledPolicy {
 }
 
 const ENVIRONMENTS: Environment[] = ["production", "preview", "development"];
+export const isEnvironment = (value: unknown): value is Environment => ENVIRONMENTS.includes(value as Environment);
 
 /** The embedded forward-only default (version 0): nothing hashed by shape, nothing rewritten, every request recorded. */
 export const defaultPolicy: ScopePolicy1 = Object.freeze({
@@ -110,10 +111,48 @@ export const defaultPolicy: ScopePolicy1 = Object.freeze({
   rules: [],
 }) as ScopePolicy1;
 
-const anchored = (pattern: string): RegExp => new RegExp(pattern.startsWith("^") ? pattern : `^${pattern}`);
+/**
+ * Whether `source` repeats a group (`*`, `+` or `{`) that itself holds a repeat, as `(a+)+` or
+ * `(\w*\s?)*`: the shape that can take exponential time on a crafted path or page.
+ */
+function repeatsRepeat(source: string): boolean {
+  const open: boolean[] = [];
+  let inClass = false;
+  const repeat = (at: number): boolean => source[at] === "*" || source[at] === "+" || source[at] === "{";
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    if (char === "\\") i += 1;
+    else if (inClass) inClass = char !== "]";
+    else if (char === "[") inClass = true;
+    else if (char === "(") open.push(false);
+    else if (char === ")") {
+      const held = open.pop() ?? false;
+      if (held && repeat(i + 1)) return true;
+      if (held && open.length) open[open.length - 1] = true;
+    } else if (repeat(i) && open.length) open[open.length - 1] = true;
+  }
+  return false;
+}
+
+/** Why the sensor will not run a pattern, or null. */
+const patternProblem = (pattern: string): string | null => {
+  try {
+    new RegExp(pattern);
+  } catch {
+    return "does not compile";
+  }
+  return repeatsRepeat(pattern) ? "repeats a group that holds a repeat" : null;
+};
+
+const regex = (pattern: string, flags?: string): RegExp => {
+  const problem = patternProblem(pattern);
+  if (problem) throw new PolicyError(`the pattern ${JSON.stringify(pattern)} ${problem}`);
+  return new RegExp(pattern, flags);
+};
+const anchored = (pattern: string): RegExp => regex(pattern.startsWith("^") ? pattern : `^${pattern}`);
 const optional = (pattern: unknown): RegExp | null => (typeof pattern === "string" && pattern.length > 0 ? anchored(pattern) : null);
 const list = (patterns: unknown): RegExp[] => (Array.isArray(patterns) ? patterns.filter((p): p is string => typeof p === "string" && p.length > 0).map(anchored) : []);
-const loose = (pattern: unknown): RegExp | null => (typeof pattern === "string" && pattern.length > 0 ? new RegExp(pattern) : null);
+const loose = (pattern: unknown): RegExp | null => (typeof pattern === "string" && pattern.length > 0 ? regex(pattern) : null);
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -186,87 +225,34 @@ function compileSurfaces(raw: Record<string, unknown>): CompiledSurfaces {
   };
 }
 
-const compiles = (pattern: string): boolean => {
-  try {
-    new RegExp(pattern);
-    return true;
-  } catch {
-    return false;
-  }
-};
+/** A character reference, which a link target or an attribute decodes: `&#47;` or `&sol;` spells a slash. */
+const CHARACTER_REFERENCE = /&(?:#|[A-Za-z][A-Za-z0-9]*;)/;
 
 /** A link that stays on the customer's site: `https://{host}`, optionally `{prefix}`, then a path, query or fragment; or a plain path. */
 const onCustomerSite = (url: string): boolean => {
   // A character reference could spell a slash or a scheme inside an attribute; a plain `&` between query parameters cannot.
-  if (/[\s\\\u0000-\u001f\u007f]/.test(url) || /&(#|[A-Za-z][A-Za-z0-9]*;)/.test(url)) return false;
+  if (/[\s\\\u0000-\u001f\u007f]/.test(url) || CHARACTER_REFERENCE.test(url)) return false;
   if (url.startsWith("https://{host}")) return /^(\{prefix\})?([/?#]|$)/.test(url.slice("https://{host}".length));
   return /^\/(?![/\\])/.test(url) && !url.includes("{prefix}");
 };
 
 /**
- * The target of every markdown reference definition in `text` and the offset where it ends: a line
- * whose content, after any indentation and block-quote or list markers, starts `[label]:`, the target
- * on that line or the next. A line inside a code block counts too: whether a renderer reads it as code
- * depends on context the rule cannot see. Sticky expressions only move forward, so the cost is linear.
+ * Why text would send a reader off the customer's site, or run or hide something, or null. Markdown
+ * or text may be rendered as HTML and any word in it may become a link, so outside HTML it holds no
+ * scheme, character reference (a link target decodes it) or markup that a renderer would act on.
  */
-function referenceTargets(text: string): Array<{ target: string; end: number }> {
-  const found: Array<{ target: string; end: number }> = [];
-  const marker = /[ \t]*(?:>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)/y;
-  const definition = /[ \t]*\[[^\]\n]+\]:[ \t]*(?:\n[ \t]*)?<?([^\s>]*)/y;
-  for (let start = 0; start < text.length; ) {
-    const newline = text.indexOf("\n", start);
-    let at = start;
-    marker.lastIndex = at;
-    while (marker.exec(text)) at = marker.lastIndex;
-    definition.lastIndex = at;
-    const target = definition.exec(text)?.[1];
-    if (target) found.push({ target, end: definition.lastIndex });
-    start = newline === -1 ? text.length : newline + 1;
+function textProblem(text: string, html: boolean): string | null {
+  // Markdown drops a backslash before punctuation (`javascript\:` is a scheme), so outside HTML the text is read both ways.
+  for (const form of html ? [text] : [text, text.replace(/\\([!-/:-@[-`{-~])/g, "$1")]) {
+    const rest = form.replace(/(?<![A-Za-z0-9+.-])https:\/\/\{host\}(?:\{prefix\})?(?=[/?#\s"'`)\]<>,;!]|[.:](?:\s|$))/g, " ");
+    if (/[\\/]{2}(?=\S)/.test(rest)) return "a link off https://{host}";
+    if (/\{(?:host|prefix)\}/.test(rest)) return "{host} or {prefix} outside https://{host}{prefix}";
+    if (/(?<![A-Za-z0-9-])www\./i.test(rest) || /[A-Za-z0-9._%+-]@[A-Za-z0-9-]+\.[A-Za-z]/.test(rest)) return "a www or mail address";
+    if (html) return markupProblem(text);
+    if (/(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:(?=\S)/.test(rest)) return "a link off https://{host}";
+    if (CHARACTER_REFERENCE.test(rest)) return "a character reference";
+    if (/<[/!?]|<[A-Za-z][A-Za-z0-9+.-]*:|<[A-Za-z][^<>\s]*@|<[A-Za-z][^<>]*[=/"'`\\]|<(?:script|style|iframe|frame|frameset|object|embed|applet|svg|math|template|textarea|title|xmp|plaintext|listing|noscript|noembed|noframes|dialog|details|datalist|select|video|audio|canvas)(?![A-Za-z0-9-])/i.test(rest)) return "markup a renderer would run";
   }
-  return found;
-}
-
-/**
- * Every link target in `text` and the offset where it ends: a markdown link target, a reference
- * definition, an `href`, `src` or `action` value, and two slashes or backslashes followed by a host
- * (with the scheme before them, trailing sentence punctuation left out). Every scan moves forward.
- */
-export function linkTargets(text: string): Array<{ target: string; end: number }> {
-  const found = referenceTargets(text);
-  for (const m of text.matchAll(/\]\(\s*([^)\s]*)/g)) found.push({ target: m[1] ?? "", end: m.index + m[0].length });
-  for (const m of text.matchAll(/\b(?:href|src|action|formaction|xlink:href)\s*=\s*(?:"([^"]*)|'([^']*)|([^\s>]*))/gi)) found.push({ target: m[1] ?? m[2] ?? m[3] ?? "", end: m.index + m[0].length });
-  const slashes = /[\\/]{2}/g;
-  const rest = /[^\s)\]"'<>&]*/y;
-  for (let m = slashes.exec(text); m; m = slashes.exec(text)) {
-    rest.lastIndex = slashes.lastIndex;
-    rest.exec(text);
-    let end = rest.lastIndex;
-    while (end > slashes.lastIndex && /[.,:;!?]/.test(text[end - 1] ?? "")) end -= 1;
-    slashes.lastIndex = rest.lastIndex;
-    if (end === m.index + 2) continue;
-    let from = m.index;
-    if (text[from - 1] === ":") for (from -= 1; from > 0 && /[A-Za-z0-9+.-]/.test(text[from - 1] ?? ""); ) from -= 1;
-    found.push({ target: text.slice(from, end), end });
-  }
-  return found;
-}
-
-/**
- * Why text would send a reader off the customer's site, or null: a scheme followed by two slashes
- * or backslashes anywhere but `https://{host}` (then the end, a path, query, fragment or a word
- * break), a markdown link target or reference definition off the site, or `{prefix}` anywhere but right after the host.
- */
-function linkProblem(text: string): string | null {
-  for (const m of text.matchAll(/:[\\/][\\/]/g)) {
-    let at = m.index + 3;
-    if (m[0] !== "://" || text.slice(Math.max(0, m.index - 5), m.index).toLowerCase() !== "https" || /[a-z0-9+.-]/i.test(text[m.index - 6] ?? "") || !text.startsWith("{host}", at)) return "a link off https://{host}";
-    at += "{host}".length;
-    if (text.startsWith("{prefix}", at)) at += "{prefix}".length;
-    const next = text[at];
-    if (next !== undefined && !/[/?#\s"'`)\]<>,;!]/.test(next) && !(/[.:]/.test(next) && (text[at + 1] === undefined || /\s/.test(text[at + 1] ?? "")))) return "a link off https://{host}";
-  }
-  for (const m of text.matchAll(/\{prefix\}/g)) if (!text.startsWith("https://{host}", m.index - "https://{host}".length)) return "{prefix} outside https://{host}{prefix}";
-  for (const { target } of linkTargets(text)) if (!onCustomerSite(target)) return "a link off the customer's site";
   return null;
 }
 
@@ -307,13 +293,6 @@ function markupProblem(html: string): string | null {
   }
 }
 
-/**
- * Why a rule's content would be unsafe to serve, or null: a rewrite is a pattern and a replacement
- * that refers only to $1 to $9, a 404 face is a page, every text keeps its links on the customer's
- * site, HTML (an html face, or a 404's md page served as HTML when there is no html face) passes
- * markupProblem, the error and finder links are paths, and a gate's text and tool hold no link off
- * the site.
- */
 /** Whether `fill` supplies every placeholder in `template` from `vars`. */
 const fillable = (template: string, vars: Parameters<typeof fill>[1]): boolean => {
   try {
@@ -324,6 +303,12 @@ const fillable = (template: string, vars: Parameters<typeof fill>[1]): boolean =
   }
 };
 
+/**
+ * Why a rule's content would be unsafe to serve, or null: a rewrite is a pattern and a replacement
+ * that refers only to $1 to $9, a 404 face is a page, every text passes textProblem (a 404's md page
+ * shown to a browser is escaped into plain text), the error and finder links are paths on
+ * the customer's site, and a gate's text and tool pass as markdown.
+ */
 function contentProblem(raw: Record<string, unknown>, kind: RuleKind): string | null {
   const faces = isRecord(raw.faces) ? raw.faces : {};
   const texts: Array<{ text: string; html: boolean }> = [];
@@ -331,27 +316,30 @@ function contentProblem(raw: Record<string, unknown>, kind: RuleKind): string | 
     if (kind === "inject") {
       if (!isRecord(value) || typeof value.pattern !== "string" || typeof value.replacement !== "string") return `the ${face} face is not a pattern and a replacement`;
       if (!fillable(value.pattern, { host: "x" })) return `the ${face} face's pattern holds a placeholder other than {host}`;
-      if (!compiles(fill(value.pattern, { host: "x" }))) return `the ${face} face's pattern does not compile`;
+      const unrun = patternProblem(fill(value.pattern, { host: "x" }));
+      if (unrun) return `the ${face} face's pattern ${unrun}`;
       if (!fillable(value.replacement, { host: "x", token: "x", prefix: "x" })) return "a replacement holds a placeholder a page cannot fill";
       if (/\$(?![1-9])/.test(value.replacement)) return "a replacement refers to something other than $1 to $9";
       const refs = [...value.replacement.matchAll(/\$([1-9])/g)].map((m) => Number(m[1]));
       if (refs.some((ref, i) => ref <= (refs[i - 1] ?? 0))) return "a replacement uses a group out of order or twice";
-      for (const literal of value.replacement.split(/\$[1-9]/)) texts.push({ text: literal, html: face === "html" });
+      // Each piece, and the pieces side by side as a group that matches nothing leaves them.
+      for (const literal of new Set([...value.replacement.split(/\$[1-9]/), value.replacement.replace(/\$[1-9]/g, "")])) texts.push({ text: literal, html: face === "html" });
     }
     if (kind === "notfound") {
       if (typeof value !== "string") return `the ${face} face is not a page`;
-      texts.push({ text: value, html: face === "html" || (face === "md" && typeof faces.html !== "string") });
+      texts.push({ text: value, html: face === "html" });
     }
   }
   const strings = (value: unknown): string[] => (typeof value === "string" ? [value] : Array.isArray(value) ? value.flatMap(strings) : isRecord(value) ? Object.values(value).flatMap(strings) : []);
   if (kind === "error") {
-    if (typeof raw.route === "string" && !compiles(raw.route)) return "the route does not compile";
+    const unrun = typeof raw.route === "string" ? patternProblem(raw.route) : null;
+    if (unrun) return `the route ${unrun}`;
     texts.push({ text: typeof raw.suffix === "string" ? raw.suffix : "", html: false });
   }
-  if (kind === "finder" && Array.isArray(raw.answers) && raw.answers.some((a) => !isRecord(a) || typeof a.match !== "string" || !compiles(a.match))) return "an answer's match is not a pattern that compiles";
+  if (kind === "finder" && Array.isArray(raw.answers) && raw.answers.some((a) => !isRecord(a) || typeof a.match !== "string" || patternProblem(a.match) !== null)) return "an answer's match is not a pattern the sensor runs";
   if (kind === "gate") for (const text of strings([raw.tool, raw.instructions, raw.description_suffix, raw.acknowledgement])) texts.push({ text, html: false });
   for (const { text, html } of texts) {
-    const problem = linkProblem(text) ?? (html ? markupProblem(text) : null);
+    const problem = textProblem(text, html);
     if (problem) return problem;
   }
   const links = kind === "error" ? Object.values(isRecord(raw.links) ? raw.links : {}) : kind === "finder" ? [...(Array.isArray(raw.default_links) ? raw.default_links : []), ...(Array.isArray(raw.answers) ? raw.answers.flatMap((a) => (isRecord(a) && Array.isArray(a.links) ? a.links : [null])) : [])] : [];
@@ -368,7 +356,7 @@ function compileRule(raw: unknown, index: number, notices: string[]): CompiledRu
   if (problem) notices.push(`rule ${raw.id}: ${problem}; it runs dry`);
   // An unknown kind or unsafe content runs dry whatever the document says, so a newer policy never changes the wire through an older sensor.
   const mode: Mode = known && !problem && raw.mode === "live" ? "live" : "dry_run";
-  const environments = Array.isArray(raw.environments) ? raw.environments.filter((e): e is Environment => ENVIRONMENTS.includes(e as Environment)) : [...ENVIRONMENTS];
+  const environments = Array.isArray(raw.environments) ? raw.environments.filter(isEnvironment) : [...ENVIRONMENTS];
   const onError = raw.on_error === "closed" ? "closed" : "open";
   if (onError === "closed" && kind !== "gate") throw new PolicyError(`rules[${index}] ${raw.id}: on_error "closed" is honoured by a gate only`);
   return {
@@ -381,8 +369,8 @@ function compileRule(raw: unknown, index: number, notices: string[]): CompiledRu
     on_error: onError,
     label: typeof raw.label === "string" ? raw.label : raw.id,
     faces: isRecord(raw.faces) && !(kind === "inject" && problem) ? (raw.faces as Record<string, FaceRewrite | string>) : null,
-    // An error route is compiled on every error answer: one that does not compile is no route.
-    route: typeof raw.route === "string" && (kind !== "error" || compiles(raw.route)) ? raw.route : null,
+    // An error route is compiled on every error answer: one the sensor will not run is no route.
+    route: typeof raw.route === "string" && (kind !== "error" || patternProblem(raw.route) === null) ? raw.route : null,
     form: raw.form === "instructions" || raw.form === "descriptions" ? raw.form : "tool",
     tool: isRecord(raw.tool) && typeof raw.tool.name === "string" ? (raw.tool as CompiledRule["tool"]) : null,
     acknowledgement: typeof raw.acknowledgement === "string" ? raw.acknowledgement : "",
@@ -433,7 +421,7 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
   };
   const credential = headerName("credential", str(headers.credential, "authorization")) ?? "authorization";
   const apiCredential = isRecord(surfacesRaw?.api) && typeof surfacesRaw.api.credential_header === "string" ? surfacesRaw.api.credential_header.toLowerCase() : null;
-  const carriesCredential = (name: string): boolean => /auth|cookie|token|secret|passw|credential|key|jwt|assertion|oidc/i.test(name) || name.toLowerCase() === credential.toLowerCase() || name.toLowerCase() === apiCredential;
+  const carriesCredential = (name: string): boolean => /auth|cookie|token|secret|passw|credential|key|jwt|assertion|oidc|signature|bypass|dpop|proof|hmac|csrf|xsrf/i.test(name) || name.toLowerCase() === credential.toLowerCase() || name.toLowerCase() === apiCredential;
   const recorded = (field: string, name: string | null): string | null => {
     const valid = headerName(field, name);
     if (valid === null || !carriesCredential(valid)) return valid;
@@ -472,9 +460,9 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
         }
       : null,
     surfaces: surfacesRaw ? compileSurfaces(surfacesRaw) : null,
-    shapes: Array.isArray(secrets.shapes) ? secrets.shapes.filter((s): s is string => typeof s === "string").map((s) => new RegExp(s, "g")) : [],
+    shapes: Array.isArray(secrets.shapes) ? secrets.shapes.filter((s): s is string => typeof s === "string").map((s) => regex(s, "g")) : [],
     secretFields: new Set(Array.isArray(secrets.fields) ? secrets.fields.filter((f): f is string => typeof f === "string") : []),
-    uriFields: isRecord(secrets.uri_fields) ? Object.fromEntries(Object.entries(secrets.uri_fields).filter((e): e is [string, string] => typeof e[1] === "string")) : {},
+    uriFields: new Map(Object.entries(isRecord(secrets.uri_fields) ? secrets.uri_fields : {}).filter((e): e is [string, string] => typeof e[1] === "string").map(([field, param]) => [field, new RegExp(`(?<=(?:^|[?&#])${escapeRe(param)}=)[^&#]+`, "g")])),
     headers: {
       credential,
       session: recorded("session", str(headers.session, "mcp-session-id")) ?? "mcp-session-id",
@@ -487,8 +475,8 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
       signature: headerName("signature", str(headers.signature, "signature-agent")) ?? "signature-agent",
     },
     forward: {
-      // Only the policy's own x- headers reach the hop, on one line: nothing that frames the request (a
-      // length or encoding would split it), names its host or client, speaks for the sensor, or carries a credential.
+      // Only the policy's own x- headers reach the hop, as one line of latin-1: nothing that frames the request,
+      // names its host or client, steers the origin's framework, speaks for the sensor, or carries a credential.
       headers: Object.fromEntries(
         Object.entries(isRecord(forward.headers) ? forward.headers : {}).filter((e): e is [string, string] => {
           if (typeof e[1] !== "string") return false;
@@ -497,7 +485,7 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
             notices.push(`forward.headers ignored: ${JSON.stringify(e[0])} holds a value the sensor cannot fill on the hop`);
             return false;
           }
-          if (!/[\r\n\0]/.test(e[1]) && /^x-[a-z0-9-]+$/i.test(e[0]) && !/^x-(forwarded-|real-ip$|client-ip$|host$|original-host$|original-url$|rewrite-url$|http-method$|http-method-override$|method-override$|journeys-|scope-|envoy-)/i.test(e[0]) && !carriesCredential(e[0])) return true;
+          if (/^[\t\x20-\x7e\x80-\xff]*$/.test(e[1]) && /^x-[a-z0-9-]+$/i.test(e[0]) && !/^x-(forwarded(-|$)|real-ip$|client-ip$|cluster-client-ip$|originating-ip$|host$|original-|rewrite-url$|http-method$|http-method-override$|method-override$|middleware-|invoke-|matched-path$|prerender-|vercel-|nextjs-|journeys-|scope-|envoy-)/i.test(e[0]) && !carriesCredential(e[0])) return true;
           notices.push(`forward.headers ignored: ${JSON.stringify(e[0])} is not a header the policy may set on the hop`);
           return false;
         }),

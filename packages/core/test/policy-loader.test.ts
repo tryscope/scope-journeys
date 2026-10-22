@@ -16,8 +16,8 @@ function serving(...answers: Array<Record<string, unknown>>): { fetch: typeof fe
     calls.push(String(input));
     const next = answers.shift();
     if (!next) throw new Error("network down");
-    const { epoch, ...document } = next;
-    return Response.json(document, { headers: typeof epoch === "string" ? { "x-journeys-salt-epoch": epoch } : {} });
+    const { epoch, environment, ...document } = next;
+    return Response.json(document, { headers: { ...(typeof epoch === "string" ? { "x-journeys-salt-epoch": epoch } : {}), ...(typeof environment === "string" ? { "x-journeys-environment": environment } : {}) } });
   }) as typeof fetch;
   return { fetch: fetcher, calls };
 }
@@ -88,6 +88,16 @@ test("the salt epoch is a positive whole number or the last one seen", async () 
   assert.equal(await epochAt(183_000), 7);
 });
 
+test("the environment is production, preview or development, or the last one seen", async () => {
+  resetPolicyCache();
+  const answers = serving({ ...POLICY, environment: "preview" }, { ...POLICY, environment: "staging" }, { ...POLICY, environment: "Production" }, { ...POLICY, environment: "development" });
+  const environmentAt = async (now: number) => (await loadPolicy({ url: URL_A, credential: "k", fetch: answers.fetch, now, cache: null, log: () => undefined })).environment;
+  assert.equal(await environmentAt(0), "preview");
+  assert.equal(await environmentAt(61_000), "preview", "an environment the sensor does not know is not one");
+  assert.equal(await environmentAt(122_000), "preview", "the names are lower case");
+  assert.equal(await environmentAt(183_000), "development");
+});
+
 test("a value of the wrong type where the sensor reads it keeps the last good settings; what a newer schema adds, a missing section and a field the sensor ignores are accepted", async () => {
   resetPolicyCache();
   const wrongType = { ...POLICY, version: 4, headers: { ...(POLICY.headers as object), setup: 7 } };
@@ -125,6 +135,7 @@ test("a stored copy is checked like a fetched one; one that is refused or not in
     ["a refused document", { document: { ...POLICY, version: 9, headers: { setup: 7 } }, etag: '"9"', environment: null, saltEpoch: null }],
     ["an etag that is not a string", { document: { ...POLICY, version: 9 }, etag: 9, environment: null, saltEpoch: null }],
     ["an epoch that is not a whole number", { document: { ...POLICY, version: 9 }, etag: '"9"', environment: null, saltEpoch: "4" }],
+    ["an environment the sensor does not know", { document: { ...POLICY, version: 9 }, etag: '"9"', environment: "staging", saltEpoch: null }],
   ];
   for (const [what, entry] of cases) {
     resetPolicyCache();
@@ -139,4 +150,18 @@ test("a stored copy is checked like a fetched one; one that is refused or not in
   const answers = serving();
   const warm = await loadPolicy({ url: URL_A, credential: "k", fetch: answers.fetch, now: 0, cache: good, log: () => undefined });
   assert.deepEqual([warm.policy.version, warm.etag, warm.environment, warm.saltEpoch, answers.calls.length], [9, '"9"', "production", 2, 0], "a good stored copy starts warm without a fetch");
+});
+
+test("an answer the loader does not use has its body released, so the connection is not held", async () => {
+  resetPolicyCache();
+  const released: number[] = [];
+  const answers = [401, 500, 302].map((status) => new Response(new ReadableStream({ pull: () => undefined, cancel: () => void released.push(status) }), { status }));
+  const fetcher = (async () => answers.shift() ?? Promise.reject(new Error("network down"))) as typeof fetch;
+  for (const now of [0, 61_000, 122_000]) assert.equal((await loadPolicy({ url: URL_A, credential: "k", fetch: fetcher, now, cache: null, log: () => undefined })).policy.version, 0);
+  assert.deepEqual(released, [401, 500, 302]);
+  resetPolicyCache();
+  const lines: string[] = [];
+  const stuck = (async () => new Response(new ReadableStream({ pull: () => undefined, cancel: () => Promise.reject(new Error("socket already closed")) }), { status: 503 })) as typeof fetch;
+  await loadPolicy({ url: URL_A, credential: "k", fetch: stuck, now: 0, cache: null, log: (line) => void lines.push(line) });
+  assert.deepEqual(lines, ["journeys: policy fetch answered 503; keeping the embedded default"], "a body that cannot be released does not hide the answer's status");
 });

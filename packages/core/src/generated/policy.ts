@@ -32,14 +32,14 @@ export type ScopePolicy1 = {
    */
   routes?: {
     /**
-     * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+     * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
      */
     run_prefix?: string;
     passthrough?: Regex;
     not_content?: Regex;
     observed?: Regex;
     /**
-     * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+     * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
      */
     text_faces?: string;
   };
@@ -50,11 +50,11 @@ export type ScopePolicy1 = {
     docs?: {
       paths?: RegexList;
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       root?: string;
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       llms?: string;
       /**
@@ -82,33 +82,33 @@ export type ScopePolicy1 = {
     };
     oauth?: {
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       metadata?: string;
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       resource_metadata?: string;
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       register?: string;
       authorize?: Regex;
       token?: Regex;
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       approve?: string;
       fields?: FieldNames;
     };
     device?: {
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       start?: string;
       poll?: Regex;
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       approve?: string;
       poll_approved?: BodyMatch1;
@@ -126,7 +126,7 @@ export type ScopePolicy1 = {
     hooks?: {
       create?: Regex;
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       catch?: string;
       fields?: FieldNames3;
@@ -151,11 +151,11 @@ export type ScopePolicy1 = {
         };
     cli?: {
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       init?: string;
       /**
-       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+       * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
        */
       beacon?: string;
       fields?: FieldNames4;
@@ -174,7 +174,7 @@ export type ScopePolicy1 = {
       sdk?: string;
     };
     /**
-     * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+     * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
      */
     finder?: string;
     passthrough?: RegexList3;
@@ -197,14 +197,14 @@ export type ScopePolicy1 = {
      */
     shapes?: string[];
     /**
-     * a body field holding a url whose named query parameter is a code
+     * a body field holding a url whose named parameter, in the query or the fragment, is a code; only that parameter's value is hashed
      */
     uri_fields?: {
       [k: string]: string;
     };
   };
   /**
-   * the names of the headers the sensor reads; a name that is not a header name is ignored, and session, setup, agent, client and intent may not name one that carries a credential (a name with auth, cookie, token, secret, password, credential, key, jwt, assertion or oidc in it, the credential header, surfaces.api.credential_header)
+   * the names of the headers the sensor reads; a name that is not a header name is ignored, and session, setup, agent, client and intent may not name one that carries a credential (a name with auth, cookie, token, secret, password, credential, key, jwt, assertion, oidc, signature, bypass, dpop, proof, hmac, csrf or xsrf in it, the credential header, surfaces.api.credential_header)
    */
   headers: {
     credential?: string;
@@ -222,7 +222,7 @@ export type ScopePolicy1 = {
   };
   forward: {
     /**
-     * the policy's own x- headers added on the hop to the origin, with {host} filled in; x-forwarded-*, x-real-ip, x-client-ip, x-host, x-original-host, x-original-url, x-rewrite-url, x-http-method, x-http-method-override, x-method-override, x-journeys-*, x-scope-*, x-envoy-*, a name that carries a credential, a value with a placeholder other than {host}, and any name not starting x- are ignored
+     * the policy's own x- headers added on the hop to the origin, with {host} filled in; x-forwarded, x-forwarded-*, x-real-ip, x-client-ip, x-cluster-client-ip, x-originating-ip, x-host, x-original-*, x-rewrite-url, x-http-method, x-http-method-override, x-method-override, x-middleware-*, x-invoke-*, x-matched-path, x-prerender-*, x-vercel-*, x-nextjs-*, x-journeys-*, x-scope-*, x-envoy-*, a name that carries a credential, a value that is not one line of latin-1 or has a placeholder other than {host}, and any name not starting x- are ignored
      */
     headers?: {
       [k: string]: string;
@@ -233,7 +233,7 @@ export type ScopePolicy1 = {
     key_header?: string | null;
   };
   /**
-   * false is the lightest form: bodies are read where a rule needs them and never leave
+   * false is the lightest form: bodies are read where a rule needs them and never leave; true records the bodies of the routes the surface map observes, every field but secrets.fields and secrets.shapes as sent
    */
   record_bodies?: boolean;
   /**
@@ -264,7 +264,7 @@ export type ScopePolicy1 = {
     on_error?: "open" | "closed";
     label?: string;
     /**
-     * inject: a rewrite per face (html, md, txt); notfound: a page body per face, held to the same content as an inject replacement (an md page served as HTML when there is no html face is held to the html face's tags)
+     * inject: a rewrite per face (html, md, txt); notfound: a page body per face, held to the same content as an inject replacement (with no html face, the md page is shown to a browser as escaped plain text)
      */
     faces?: {};
     /**
@@ -314,7 +314,7 @@ export type ScopePolicy1 = {
   salt_epoch?: number;
 };
 /**
- * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^
+ * a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document
  */
 export type Regex = string;
 /**

@@ -4,7 +4,7 @@
   "title": "scope.policy/1",
   "description": "The configuration the sensor fetches. Immutable integer versions per customer; public to the customer; holds no secret (the sensor's validator refuses a secret-shaped value). A sensor that does not know a section ignores it; a rule kind it does not know runs as a skipped decision.",
   "$defs": {
-    "regex": { "type": "string", "description": "a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^" },
+    "regex": { "type": "string", "description": "a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document" },
     "regexList": { "type": "array", "items": { "$ref": "#/$defs/regex" } },
     "route": { "type": "string", "enum": ["docs", "docs_root", "download", "api", "mcp", "oauth.register", "oauth.authorize", "oauth.token", "oauth.approve", "device.start", "device.poll", "device.approve", "signup", "hooks.create", "hooks.catch", "credentials", "trial", "finder", "cli.init", "cli.beacon", "passthrough", "other"] },
     "faceRewrite": {
@@ -12,7 +12,7 @@
       "required": ["pattern", "replacement"],
       "properties": {
         "pattern": { "type": "string", "description": "a regular expression over the page body with {host} filled in; applied globally" },
-        "replacement": { "type": "string", "description": "the replacement with $1 to $9 groups and {host}, {prefix}, {token} filled in; plain text, every link on https://{host} or a path, and on the html face only whole tags from a, blockquote, body, code, h1, head, html, li, meta, p, pre, title, ul with an a's href and a meta's utf-8 charset; anything else runs the rule dry. Where the pattern lands it inside a tag, an inline script or style, a title or a text area, it only extends a link to https://{host} with a link-safe code" }
+        "replacement": { "type": "string", "description": "the replacement with $1 to $9 groups and {host}, {prefix}, {token} filled in; plain text, every link on https://{host} or a path, and on the html face only whole tags from a, blockquote, body, code, h1, head, html, li, meta, p, pre, title, ul with an a's href and a meta's utf-8 charset; on the md and txt faces no www or mail address, character reference or markup a renderer would act on; anything else runs the rule dry. Where the pattern lands it inside a tag, an inline script or style, a title or a text area, or joins it to the page's text inside a word on the md or txt face, it only extends a link to https://{host} with a link-safe code. A rule that would grow a page past twice its size and 64 KiB is left out of it" }
       },
       "additionalProperties": false
     },
@@ -138,13 +138,13 @@
       "properties": {
         "fields": { "type": "array", "items": { "type": "string" }, "description": "body fields hashed by name wherever they appear" },
         "shapes": { "type": "array", "items": { "type": "string" }, "description": "the product's signed-value shapes, hashed wherever they appear: path, query, body, Location" },
-        "uri_fields": { "type": "object", "additionalProperties": { "type": "string" }, "description": "a body field holding a url whose named query parameter is a code" }
+        "uri_fields": { "type": "object", "additionalProperties": { "type": "string" }, "description": "a body field holding a url whose named parameter, in the query or the fragment, is a code; only that parameter's value is hashed" }
       },
       "additionalProperties": false
     },
     "headers": {
       "type": "object",
-      "description": "the names of the headers the sensor reads; a name that is not a header name is ignored, and session, setup, agent, client and intent may not name one that carries a credential (a name with auth, cookie, token, secret, password, credential, key, jwt, assertion or oidc in it, the credential header, surfaces.api.credential_header)",
+      "description": "the names of the headers the sensor reads; a name that is not a header name is ignored, and session, setup, agent, client and intent may not name one that carries a credential (a name with auth, cookie, token, secret, password, credential, key, jwt, assertion, oidc, signature, bypass, dpop, proof, hmac, csrf or xsrf in it, the credential header, surfaces.api.credential_header)",
       "properties": {
         "credential": { "type": "string", "default": "authorization" },
         "session": { "type": "string", "default": "mcp-session-id" },
@@ -161,12 +161,12 @@
     "forward": {
       "type": "object",
       "properties": {
-        "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "the policy's own x- headers added on the hop to the origin, with {host} filled in; x-forwarded-*, x-real-ip, x-client-ip, x-host, x-original-host, x-original-url, x-rewrite-url, x-http-method, x-http-method-override, x-method-override, x-journeys-*, x-scope-*, x-envoy-*, a name that carries a credential, a value with a placeholder other than {host}, and any name not starting x- are ignored" },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "the policy's own x- headers added on the hop to the origin, with {host} filled in; x-forwarded, x-forwarded-*, x-real-ip, x-client-ip, x-cluster-client-ip, x-originating-ip, x-host, x-original-*, x-rewrite-url, x-http-method, x-http-method-override, x-method-override, x-middleware-*, x-invoke-*, x-matched-path, x-prerender-*, x-vercel-*, x-nextjs-*, x-journeys-*, x-scope-*, x-envoy-*, a name that carries a credential, a value that is not one line of latin-1 or has a placeholder other than {host}, and any name not starting x- are ignored" },
         "key_header": { "type": ["string", "null"], "description": "ignored by the sensor: the install key never goes to the origin; the signed assertion proves the hop" }
       },
       "additionalProperties": false
     },
-    "record_bodies": { "type": "boolean", "default": false, "description": "false is the lightest form: bodies are read where a rule needs them and never leave" },
+    "record_bodies": { "type": "boolean", "default": false, "description": "false is the lightest form: bodies are read where a rule needs them and never leave; true records the bodies of the routes the surface map observes, every field but secrets.fields and secrets.shapes as sent" },
     "observe": { "type": "object", "description": "reserved for the body allow list", "properties": { "bodies": { "type": "object", "properties": { "routes": { "type": "array" }, "allow_fields": { "type": "array" }, "max_bytes": { "type": "integer" }, "json_rpc": { "type": "boolean" } } } } },
     "rules": {
       "type": "array",
@@ -180,7 +180,7 @@
           "environments": { "type": "array", "items": { "type": "string", "enum": ["production", "preview", "development"] }, "default": ["production", "preview", "development"], "description": "where a live rule is live; elsewhere it runs dry" },
           "on_error": { "type": "string", "enum": ["open", "closed"], "default": "open", "description": "closed is honoured by a gate only: the declaration call is refused instead of forwarded" },
           "label": { "type": "string" },
-          "faces": { "type": "object", "description": "inject: a rewrite per face (html, md, txt); notfound: a page body per face, held to the same content as an inject replacement (an md page served as HTML when there is no html face is held to the html face's tags)" },
+          "faces": { "type": "object", "description": "inject: a rewrite per face (html, md, txt); notfound: a page body per face, held to the same content as an inject replacement (with no html face, the md page is shown to a browser as escaped plain text)" },
           "route": { "type": "string", "description": "finder and gate: the exact path; error: a regular expression over the path" },
           "form": { "type": "string", "enum": ["tool", "instructions", "descriptions"] },
           "tool": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "description": { "type": "string" }, "inputSchema": { "type": "object" } } },

@@ -1,8 +1,10 @@
-import { escapeRe, fill, linkTargets, type CompiledRule, type Face, type FaceRewrite } from "../policy.js";
+import { escapeRe, fill, type CompiledRule, type Face, type FaceRewrite } from "../policy.js";
 
 export interface Rewrite {
   body: string;
   applied: Array<{ rule: CompiledRule; label: string }>;
+  /** The rules left out because they would grow the page past twice its size and 64 KiB. */
+  capped: CompiledRule[];
 }
 
 /**
@@ -37,15 +39,28 @@ function placesOf(html: string): (offset: number) => { tag: boolean; raw: boolea
       if (end === -1) end = html.length;
     } else continue;
     tags.push([i, end]);
-    const element = /^<(script|style|title|textarea|xmp|iframe|noembed|noframes|noscript|plaintext)(?=[\s/>]|$)/i.exec(html.slice(i, i + 12))?.[1]?.toLowerCase();
+    const element = /^<(script|style|title|textarea|xmp|iframe|noembed|noframes|noscript|plaintext)(?=[\t\n\f\r />]|$)/i.exec(html.slice(i, i + 12))?.[1]?.toLowerCase();
     let after = end + 1;
     if (element) {
       // Without the u flag, i folds ASCII only, so `</SCRIPT` closes a script and no other letter does.
-      const closer = new RegExp(`</${element}(?=[\\s/>]|$)`, "gi");
+      const closer = new RegExp(`</${element}(?=[\\t\\n\\f\\r />])${element === "script" ? "|<!--|-->|<script(?=[\\t\\n\\f\\r />])" : ""}`, "gi");
       closer.lastIndex = after;
-      const close = closer.exec(html)?.index ?? html.length;
-      // Inside a script, `<!--` can keep the script open past its first end tag: the rest of the page counts as script.
-      const stop = element === "script" && html.slice(after, close).includes("<!--") ? html.length : close;
+      // In a script, `<!--` up to `-->` is escaped: there `<script` opens a stretch whose first `</script` does not end the script.
+      let escaped = false;
+      let doubled = false;
+      let stop = html.length;
+      for (let m = closer.exec(html); m; m = closer.exec(html)) {
+        if (m[0] === "<!--") {
+          escaped = true;
+          closer.lastIndex = m.index + 2;
+        } else if (m[0] === "-->") escaped = doubled = false;
+        else if (m[0][1] !== "/") doubled ||= escaped;
+        else if (doubled) doubled = false;
+        else {
+          stop = m.index;
+          break;
+        }
+      }
       raw.push([after, stop]);
       after = stop;
     }
@@ -70,11 +85,14 @@ function placesOf(html: string): (offset: number) => { tag: boolean; raw: boolea
 /** A page rule: a pattern and a replacement per face, with {host}, {prefix} and {token} filled in. */
 export function rewritePage(body: string, rules: readonly CompiledRule[], vars: { host: string; token: string; face: Face; prefix: string }): Rewrite {
   const applied: Rewrite["applied"] = [];
+  const capped: CompiledRule[] = [];
+  const limit = body.length * 2 + 65536;
   // Built once and kept while no rule changes the body: the offsets hold until a replacement moves them.
   let places: ReturnType<typeof placesOf> | null = null;
+  // Inside a tag or script, rule text continues a link only in characters that end no attribute, string or
+  // statement; on a text face (meets below) in any character a link holds that markdown does not read as syntax.
   const linkEnd = new RegExp(`https://${escapeRe(vars.host)}(?:[/?][A-Za-z0-9._~%/?=&-]*)?$`);
-  // A link target that stays on this site: a root-relative path, or https://host then a path, query or fragment.
-  const onSite = new RegExp(`^(?:/(?![/\\\\])|https://${escapeRe(vars.host)}(?:[/?#]|$))`);
+  const site = `https://${vars.host}`;
   for (const rule of rules) {
     if (rule.kind !== "inject" || !rule.faces) continue;
     const face = rule.faces[vars.face];
@@ -92,11 +110,16 @@ export function rewritePage(body: string, rules: readonly CompiledRule[], vars: 
     let out = "";
     let read = 0;
     let replaced = 0;
+    // The last `keep` characters written (the HTML face reads only the last), and where in the page the
+    // page text written last ends, or null after rule text.
+    const keep = vars.face === "html" ? 1 : 256;
+    let tail = "";
+    let joined: number | null = 0;
     for (const match of body.matchAll(re)) {
       const indices = match.indices;
       if (!indices) continue;
       const placeOf = vars.face === "html" ? (places ??= placesOf(body)) : null;
-      // On the HTML face the page's own bytes keep their meaning: groups lie in the match in page order, text
+      // Groups lie in the match in page order. On the HTML face the page's own bytes keep their meaning: text
       // the replacement drops is plain text, and inside a tag or text-only element rule text only extends a
       // link to this site (a ?ref= code). Any other match keeps the page's text.
       const end = match.index + match[0].length;
@@ -105,17 +128,34 @@ export function rewritePage(body: string, rules: readonly CompiledRule[], vars: 
       let before = "";
       let safe = true;
       const pieces: string[] = [];
+      tail = (tail + body.slice(Math.max(read, match.index - keep), match.index)).slice(-keep);
+      if (read !== match.index) joined = match.index;
+      // Text that did not stand side by side in the page (rule text, or page text the replacement brings
+      // together) never opens a tag after a bare `<`, and on a text face meets inside a word only to
+      // continue a link to this site past its host: a path, query or fragment such as a ?ref= code.
+      const meets = (next: string, from: number | null): boolean => {
+        if (!next || (from !== null && from === joined)) return true;
+        const left = tail + pieces.join("");
+        if (left.endsWith("<") && /^[A-Za-z/!?]/.test(next)) return false;
+        if (placeOf) return true;
+        if (!/^[\w.~%+@:/\\&#;<>!?=()[\]\u0080-\uffff-]{2}$/.test(left.slice(-1) + next[0])) return true;
+        const at = left.lastIndexOf(site);
+        if (at === -1 || /[A-Za-z0-9+.-]/.test(left[at - 1] ?? "")) return false;
+        const path = left.slice(at + site.length);
+        return path ? /^[/?#][^\s<>"'`()[\]{}\\|^]*$/.test(path) : /^[/?#]/.test(next);
+      };
       for (const segment of segments) {
         if ("group" in segment) {
           const span = indices[segment.group];
           before = span ? match[segment.group] ?? "" : "";
           if (span) {
-            if (placeOf && (span[0] < cursor || span[1] > end)) {
+            if (span[0] < cursor || span[1] > end || (before && !meets(before, span[0]))) {
               safe = false;
               break;
             }
             drops.push([cursor, span[0]]);
             cursor = span[1];
+            if (before) joined = span[1];
           }
           pieces.push(before);
         } else {
@@ -129,29 +169,33 @@ export function rewritePage(body: string, rules: readonly CompiledRule[], vars: 
               break;
             }
           }
-          // On a text face a link the rule completes or adds, alone or onto the page's own `](`, `]:` or scheme, stays on this site.
-          if (!placeOf && segment.text) {
-            // The page's own line before the match (at most 256 characters, so many matches stay cheap) and what this match wrote so far.
-            const lookBack = body.slice(Math.max(0, match.index - 256), match.index);
-            const prior = lookBack.slice(lookBack.lastIndexOf("\n") + 1) + pieces.join("");
-            if (linkTargets(prior + segment.text).some((t) => t.end > prior.length && !onSite.test(t.target))) {
-              safe = false;
-              break;
-            }
+          if (!meets(segment.text, null)) {
+            safe = false;
+            break;
           }
           before = "";
           pieces.push(segment.text);
+          if (segment.text) joined = null;
         }
       }
+      if (safe && !meets(body.slice(end, end + 1), end)) safe = false;
       drops.push([cursor, end]);
       if (placeOf && drops.some(([from, to]) => {
         if (from >= to) return false;
         const place = placeOf(from);
         return place.tag || place.raw || /[<>"'`]/.test(body.slice(from, to));
       })) safe = false;
-      out += body.slice(read, match.index);
-      out += safe ? pieces.join("") : match[0];
+      const written = safe ? pieces.join("") : match[0];
+      out += body.slice(read, match.index) + written;
+      tail = (tail + written).slice(-keep);
+      if (!safe) joined = end;
       read = end;
+      // Only a broken or hostile rule grows a page this far: it is left out, and the page keeps what the rules before it did.
+      if (out.length + body.length - read > limit) {
+        capped.push(rule);
+        replaced = 0;
+        break;
+      }
       if (safe) replaced += 1;
     }
     if (!replaced) continue;
@@ -159,5 +203,5 @@ export function rewritePage(body: string, rules: readonly CompiledRule[], vars: 
     places = null;
     if (!applied.some((a) => a.label === rule.label)) applied.push({ rule, label: rule.label });
   }
-  return { body, applied };
+  return { body, applied, capped };
 }
