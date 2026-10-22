@@ -119,10 +119,12 @@ test("with no JOURNEYS_API_URL the policy and the records go to Scope's producti
   reset();
   const production = world({ api: DEFAULT_API_URL });
   const installed = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: env.JOURNEYS_INSTALL_KEY, JOURNEYS_SALT: env.JOURNEYS_SALT };
-  const handler = withJourneys({ env: installed, fetch: production.fetch });
+  const handler = withJourneys({ now: () => NOW, env: installed, fetch: production.fetch });
   await (await handler(request("https://acme.example/docs/quickstart"), production.event as never)).text();
   await Promise.all(production.pending);
   assert.deepEqual(production.calls.map((c) => c.url).filter((u) => u.startsWith(DEFAULT_API_URL)), [`${DEFAULT_API_URL}/v1/installs/${INSTALL}/policy`, `${DEFAULT_API_URL}/v1/requests`]);
+  const shipped = (production.shipped[0] as Array<Record<string, unknown>>).find((r) => r.schema === "scope.request/1");
+  assert.equal((shipped?.observer as { policy_version: number }).policy_version, 3, "the signed policy loaded");
 
   reset();
   const plain = world({ api: "http://api.test.invalid" });
@@ -157,7 +159,7 @@ test("the inner hop and a host the install does not observe go to the app's own 
     seen.push(`${r.headers.get("host") ?? new URL(r.url).host} ${r.headers.get(INNER_HEADER) ?? "-"}`);
     return new Response("mine", { status: 200 });
   };
-  const handler = withJourneys({ env: { ...env, JOURNEYS_HOST: "acme.example" }, fetch: w.fetch, next });
+  const handler = withJourneys({ now: () => NOW, env: { ...env, JOURNEYS_HOST: "acme.example" }, fetch: w.fetch, next });
   const inner = await handler(request("https://acme.example/docs/quickstart", { [INNER_HEADER]: "1" }), w.event as never);
   assert.equal(await inner.text(), "mine");
   assert.equal(w.calls.length, 0, "the inner pass fetches nothing: no policy, no hop");
@@ -281,7 +283,7 @@ test("the host observed is the one the agent spoke to: under next start the forw
     assert.equal(record?.["scope.route"], "docs", shape.name);
   }
   const seen: string[] = [];
-  const only = withJourneys({ env: { ...env, JOURNEYS_HOST: "docs.example" }, fetch: app, next: async (r: NextRequest) => {
+  const only = withJourneys({ now: () => NOW, env: { ...env, JOURNEYS_HOST: "docs.example" }, fetch: app, next: async (r: NextRequest) => {
     seen.push(r.headers.get("x-forwarded-host") ?? "-");
     return new Response("mine", { status: 200 });
   } });
@@ -321,7 +323,7 @@ test("a request already carrying this sensor's Via without the marker is its own
     warnings.push(line);
   };
   try {
-    const handler = withJourneys({ env, fetch: w.fetch, next });
+    const handler = withJourneys({ now: () => NOW, env, fetch: w.fetch, next });
     for (const via of ["1.1 scope-journeys", "1.1 cdn-edge, 1.1 scope-journeys", "1.1 scope-journeys, 1.1 cdn-edge"]) {
       const looped = await handler(request("https://acme.example/docs/quickstart", { via }), w.event as never);
       assert.equal(await looped.text(), "mine", via);
@@ -345,7 +347,7 @@ test("the OIDC form: the project's token is the bearer on the policy fetch and o
   reset();
   const w = world();
   const token = "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL29pZGMudmVyY2VsLmNvbSJ9.sig";
-  const handler = withJourneys({ env: { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_SALT: "s", JOURNEYS_API_URL: API }, fetch: w.fetch });
+  const handler = withJourneys({ now: () => NOW, env: { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_SALT: "s", JOURNEYS_API_URL: API }, fetch: w.fetch });
   // The record finishes when the response body has streamed through, so the body is read before the shipment is awaited.
   await (await handler(request("https://acme.example/docs/quickstart", { "x-vercel-oidc-token": token }), w.event as never)).text();
   await Promise.all(w.pending);
@@ -367,7 +369,7 @@ test("the shipper on a 429: one retry after Retry-After (capped), then the batch
   assert.deepEqual(log, ["journeys: shipment answered 429, retrying once in 5 ms", "journeys: shipment answered 429, dropping the batch"]);
   assert.equal(droppedSoFar(), 2);
   const w = world();
-  const handler = withJourneys({ env, fetch: w.fetch });
+  const handler = withJourneys({ now: () => NOW, env, fetch: w.fetch });
   await (await handler(request("https://acme.example/docs/quickstart"), w.event as never)).text();
   await Promise.all(w.pending);
   const record = (w.shipped[0] as Array<Record<string, unknown>>).find((r) => r.schema === "scope.request/1");

@@ -5,9 +5,9 @@ import { base64ToBytes } from "./webbotauth.js";
 
 /**
  * The policy as every adapter runs it: fetched with If-None-Match over https, used only once Scope's
- * signature holds, checked against the schema before it is compiled, held 60 seconds per policy url,
- * the signed answer kept in the adapter's cache so a new isolate or instance starts warm, the last good
- * policy kept on any failure, the embedded forward-only default when nothing ever loaded. A fetch
+ * signature holds, checked against the schema before it is compiled, held 60 seconds per install and
+ * url, the signed answer kept in the adapter's cache so a new isolate or instance starts warm, the last
+ * good policy kept on any failure, the embedded forward-only default when nothing ever loaded. A fetch
  * never takes more than 2 seconds and never throws to the request path.
  */
 export interface PolicyState {
@@ -125,24 +125,25 @@ async function verified(installId: string, answer: Answer): Promise<Signed> {
   return { issuedAt: Number(stamp), environment: answer.environment, saltEpoch: answer.saltEpoch };
 }
 
-/** The held state for a signed answer, refused when it is older than the policy held; `policy` is the held compile of the same body, or null to compile it. */
+/** The held state for a signed answer, refused when it is older than the policy held or its environment or salt epoch is not one the sensor takes; `policy` is the held compile of the same body, or null to compile it. */
 function adopt(options: LoadOptions, answer: Answer, signed: Signed, policy: CompiledPolicy | null, held: PolicyState | undefined): PolicyState {
   if (held?.signed && signed.issuedAt < held.signed.issuedAt) throw new PolicyError("the answer is older than the policy held");
+  if (!isEnvironment(signed.environment)) throw new PolicyError(`the answer's environment ${JSON.stringify(signed.environment)} is not production, preview or development`);
+  if (!/^[1-9][0-9]*$/.test(signed.saltEpoch) || !Number.isSafeInteger(Number(signed.saltEpoch))) throw new PolicyError(`the answer's salt epoch ${JSON.stringify(signed.saltEpoch)} is not a positive whole number`);
   return {
     at: options.now,
     policy: policy ?? checked(JSON.parse(answer.body)),
-    // A signed environment or epoch this sensor does not take keeps the last one seen.
-    environment: isEnvironment(signed.environment) ? signed.environment : (held?.environment ?? null),
-    saltEpoch: /^[1-9][0-9]*$/.test(signed.saltEpoch) && Number.isSafeInteger(Number(signed.saltEpoch)) ? Number(signed.saltEpoch) : (held?.saltEpoch ?? null),
+    environment: signed.environment,
+    saltEpoch: Number(signed.saltEpoch),
     signed: { body: answer.body, issuedAt: signed.issuedAt, etag: answer.etag },
   };
 }
 
 /** The adapter's stored copy as a held state, checked again like a fresh answer but for the hour, or null when there is none or it is refused. */
-async function stored(options: LoadOptions, installId: string, url: string): Promise<PolicyState | null> {
+async function stored(options: LoadOptions, installId: string, key: string): Promise<PolicyState | null> {
   let entry: unknown;
   try {
-    const text = await options.cache?.get(`policy:${url}`);
+    const text = await options.cache?.get(`policy:${key}`);
     entry = text ? JSON.parse(text) : null;
   } catch {
     // The cache is a convenience: one that cannot be read, or holds no JSON, is no stored copy.
@@ -178,7 +179,8 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
     refused.add(`install:${url}`);
     options.log("journeys: JOURNEYS_INSTALL_ID is not set; the policy is signed for an install, so the embedded default runs");
   }
-  const key = url ?? "default";
+  // Held state is one install's answers from one url.
+  const key = url !== null && installId !== null ? `${installId} ${url}` : "default";
   const current = states.get(key);
   if (current && options.now - current.at < TTL_MS) return current;
   if (url === null || installId === null) {
@@ -186,7 +188,7 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
     states.set(key, { ...fresh, at: options.now });
     return fresh;
   }
-  // Loads for one url may finish in any order: an answer signed before the one now held never replaces it.
+  // Loads for one install and url may finish in any order: an answer signed before the one now held never replaces it.
   const hold = (next: PolicyState): PolicyState => {
     const latest = states.get(key);
     const kept = latest?.signed && next.signed && latest.signed.issuedAt > next.signed.issuedAt ? latest : next;
@@ -194,7 +196,7 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
     return kept;
   };
   try {
-    const warm = current ? null : await stored(options, installId, url);
+    const warm = current ? null : await stored(options, installId, key);
     if (warm) return hold(warm);
     // One deadline for the fetch and the full fetch that follows a 304 whose signature does not hold.
     const signal = AbortSignal.timeout(2_000);
@@ -227,7 +229,7 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
       const kept = hold(adopted);
       if (kept === adopted) {
         try {
-          await options.cache?.put(`policy:${url}`, JSON.stringify(answer), TTL_MS / 1000);
+          await options.cache?.put(`policy:${key}`, JSON.stringify(answer), TTL_MS / 1000);
         } catch {
           // The cache is a convenience; the held state is the copy that matters.
         }

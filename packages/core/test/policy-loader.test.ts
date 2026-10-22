@@ -1,6 +1,6 @@
 // The settings loader every adapter shares: the document is fetched over https only, used only when
 // Scope's signature over it holds, checked against the schema before it is compiled (a newer sensor's
-// rule kinds and fields are tolerated), held per url, and a missing url always means the embedded default.
+// rule kinds and fields are tolerated), held per install and url, and a missing url always means the embedded default.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -82,24 +82,32 @@ test("an empty credential is no credential", async () => {
   assert.deepEqual(answers.calls, []);
 });
 
-test("the salt epoch is a positive whole number or the last one seen", async () => {
+test("a signed answer whose salt epoch is not a positive whole number is refused, so the last good policy and its epoch run on", async () => {
   resetPolicyCache();
-  const answers = serving({ ...POLICY, epoch: "4" }, { ...POLICY, epoch: "-1" }, { ...POLICY, epoch: "1.5" }, { ...POLICY, epoch: "7" });
-  const epochAt = async (now: number) => (await loadPolicy({ installId: INSTALL, url: URL_A, credential: "k", fetch: answers.fetch, now, cache: null, log: () => undefined })).saltEpoch;
-  assert.equal(await epochAt(0), 4);
-  assert.equal(await epochAt(61_000), 4, "a negative epoch is not one");
-  assert.equal(await epochAt(122_000), 4, "a fraction is not one");
-  assert.equal(await epochAt(183_000), 7);
+  const answers = serving({ ...POLICY, epoch: "4" }, { ...POLICY, version: 5, epoch: "-1" }, { ...POLICY, version: 6, epoch: "1.5" }, { ...POLICY, version: 7, epoch: "7" });
+  const log: string[] = [];
+  const at = async (now: number) => {
+    const state = await loadPolicy({ installId: INSTALL, url: URL_A, credential: "k", fetch: answers.fetch, now, cache: null, log: (l) => log.push(l) });
+    return [state.policy.version, state.saltEpoch];
+  };
+  assert.deepEqual(await at(0), [3, 4]);
+  assert.deepEqual(await at(61_000), [3, 4], "a negative epoch is not one");
+  assert.match(log.at(-1) ?? "", /salt epoch "-1" is not a positive whole number\); keeping the last good policy$/);
+  assert.deepEqual(await at(122_000), [3, 4], "a fraction is not one");
+  assert.deepEqual(await at(183_000), [7, 7]);
 });
 
-test("the environment is production, preview or development, or the last one seen", async () => {
+test("a signed answer whose environment is not production, preview or development is refused, so the last good policy and its environment run on", async () => {
   resetPolicyCache();
-  const answers = serving({ ...POLICY, environment: "preview" }, { ...POLICY, environment: "staging" }, { ...POLICY, environment: "Production" }, { ...POLICY, environment: "development" });
-  const environmentAt = async (now: number) => (await loadPolicy({ installId: INSTALL, url: URL_A, credential: "k", fetch: answers.fetch, now, cache: null, log: () => undefined })).environment;
-  assert.equal(await environmentAt(0), "preview");
-  assert.equal(await environmentAt(61_000), "preview", "an environment the sensor does not know is not one");
-  assert.equal(await environmentAt(122_000), "preview", "the names are lower case");
-  assert.equal(await environmentAt(183_000), "development");
+  const answers = serving({ ...POLICY, environment: "preview" }, { ...POLICY, version: 5, environment: "staging" }, { ...POLICY, version: 6, environment: "Production" }, { ...POLICY, version: 7, environment: "development" });
+  const at = async (now: number) => {
+    const state = await loadPolicy({ installId: INSTALL, url: URL_A, credential: "k", fetch: answers.fetch, now, cache: null, log: () => undefined });
+    return [state.policy.version, state.environment];
+  };
+  assert.deepEqual(await at(0), [3, "preview"]);
+  assert.deepEqual(await at(61_000), [3, "preview"], "an environment the sensor does not know is not one");
+  assert.deepEqual(await at(122_000), [3, "preview"], "the names are lower case");
+  assert.deepEqual(await at(183_000), [7, "development"]);
 });
 
 test("a value of the wrong type where the sensor reads it keeps the last good settings; what a newer schema adds, a missing section and a field the sensor ignores are accepted", async () => {
@@ -360,4 +368,29 @@ test("an empty install id is no install id", async () => {
   const answers = serving(POLICY);
   assert.equal((await loadPolicy({ installId: "", url: URL_A, credential: "k", fetch: answers.fetch, now: 0, cache: null, log: () => undefined })).policy.version, 0);
   assert.deepEqual(answers.calls, []);
+});
+
+test("held settings belong to one install: another install, or none, on the same url never runs them", async () => {
+  resetPolicyCache();
+  const answers = [await signedPolicy(POLICY, { install: INSTALL, issuedAt: 1 }), await signedPolicy(POLICY, { install: INSTALL, issuedAt: 1 })];
+  const fetcher = (async () => answers.shift()) as typeof fetch;
+  const load = (installId: string | null) => loadPolicy({ installId, url: URL_A, credential: "k", fetch: fetcher, now: 0, cache: null, log: () => undefined });
+  assert.equal((await load(INSTALL)).policy.version, 3);
+  assert.equal((await load("jin_b")).policy.version, 0, "fetched for jin_b, the answer signed for jin_a is refused");
+  assert.equal((await load(null)).policy.version, 0, "without an install, the embedded default");
+  assert.equal((await load(INSTALL)).policy.version, 3, "jin_a's settings are still held for jin_a");
+});
+
+test("a refused answer leaves the stored copy as the sensor runs, so a new instance starts the same way", async () => {
+  resetPolicyCache();
+  const entries = new Map<string, string>();
+  const cache = { get: async (k: string) => entries.get(k) ?? null, put: async (k: string, v: string) => void entries.set(k, v) };
+  const answers = [await signedPolicy(POLICY, { install: INSTALL, issuedAt: 1, environment: "preview", saltEpoch: "4" }), await signedPolicy({ ...POLICY, version: 5 }, { install: INSTALL, issuedAt: 2, environment: "staging", saltEpoch: "4" })];
+  const load = (now: number) => loadPolicy({ installId: INSTALL, url: URL_A, credential: "k", fetch: (async () => answers.shift() ?? Promise.reject(new Error("network down"))) as typeof fetch, now, cache, log: () => undefined });
+  await load(0);
+  const running = await load(61_000);
+  resetPolicyCache();
+  const restarted = await load(62_000);
+  assert.deepEqual([restarted.policy.version, restarted.environment, restarted.saltEpoch], [running.policy.version, running.environment, running.saltEpoch]);
+  assert.deepEqual([restarted.policy.version, restarted.environment], [3, "preview"]);
 });
