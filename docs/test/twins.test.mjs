@@ -92,5 +92,5 @@ test("a path that is not a page answers 404 with the real pages listed, on both 
 test("the sensor fronts this host: the probe is answered by the sensor itself", async () => {
   const probe = await fetch(`${BASE}/.well-known/journeys-probe?journeys_probe=c21va2U`, { redirect: "manual" });
   assert.equal(probe.status, 204);
-  assert.equal(probe.headers.get("x-journeys-probe"), "received");
+  assert.equal(probe.headers.get("x-journeys-probe"), "no-salt", "the smoke runs unconfigured: a sensor without a salt records nothing and says so");
 });

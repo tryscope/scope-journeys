@@ -34,9 +34,9 @@ test("secret URL values are hashed under any policy, the built-in default includ
   for (const secret of ["SECRETCODE123", "sk_live_ABC", "TOK1", "TOK999", "AT1"]) assert.ok(!serialised.includes(secret), `${secret} left raw`);
   const nested = "https%3A%2F%2Fa.example%2F%3Ftoken%3DSEC5";
   const spelled = await run(defaultPolicy, { method: "GET", url: `https://acme.example/cb?apiKey=AK1&access-token=AT2&api%5Fkey=SEC1&%74oken=SEC2&password=%26SEC3&next=https://a.example/back?code=SEC4&return_to=${nested}&monkey=banana`, headers: {}, body: null }, { status: 204, headers: {} });
-  assert.equal(spelled.record["url.query"], `apiKey=h:${await hash("AK1")}&access-token=h:${await hash("AT2")}&api%5Fkey=h:${await hash("SEC1")}&%74oken=h:${await hash("SEC2")}&password=h:${await hash("%26SEC3")}&next=https://a.example/back?code=h:${await hash("SEC4")}&return_to=h:${await hash(nested)}&monkey=banana`, "any case and spelling, an encoded name or value, a URL inside a parameter (an encoded one hashed whole)");
+  assert.equal(spelled.record["url.query"], `apiKey=h:${await hash("AK1")}&access-token=h:${await hash("AT2")}&api%5Fkey=h:${await hash("SEC1")}&%74oken=h:${await hash("SEC2")}&password=h:${await hash("%26SEC3")}&next=https://a.example/back?code=h:${await hash("SEC4")}&return_to=https%3A%2F%2Fa.example%2F%3Ftoken%3Dh:${await hash("SEC5")}&monkey=banana`, "any case and spelling, an encoded name or value, a URL inside a parameter, encoded or not");
   for (const secret of ["SEC2", "SEC3", "SEC5"]) assert.ok(!spelled.serialised.includes(secret), `${secret} left raw`);
-  for (const query of ["next=https://a.example/b?r=https://c.example/?token=DEEP1", "next=https://a.example/b?r=https%3A%2F%2Fc%2F%3Ftoken%3DDEEP2", "return_to=https%3A%2F%2Fa%2F%3Fnext%3Dhttps%3A%2F%2Fb%2F%3Ftoken%3DDEEP3", "r=https%3A%2F%2Fa%2F%3Fname%3Dcaf%E9%26token%3DDEEP4", "a=b?c=d?token=DEEP5"]) {
+  for (const query of ["params=token%3DDEEP6%26foo%3Dbar", "x=%74oken%3DDEEP7", "error_description=invalid%20request%20token=DEEP8&state=s", "x=hello%0Atoken%3DDEEP9", "next=https%3A%2F%2Fa%2F%3Fq%3Dx%20token%3DDEEP0", "next=https://a.example/b?r=https://c.example/?token=DEEP1", "next=https://a.example/b?r=https%3A%2F%2Fc%2F%3Ftoken%3DDEEP2", "return_to=https%3A%2F%2Fa%2F%3Fnext%3Dhttps%3A%2F%2Fb%2F%3Ftoken%3DDEEP3", "r=https%3A%2F%2Fa%2F%3Fname%3Dcaf%E9%26token%3DDEEP4", "a=b?c=d?token=DEEP5"]) {
     const deep = await run(defaultPolicy, { method: "GET", url: `https://acme.example/cb?${query}`, headers: {}, body: null }, { status: 302, headers: { location: `https://app.example/p=1?${query}` } });
     assert.ok(!/DEEP\d/.test(deep.serialised), `a secret nested in ${query} left raw`);
   }
@@ -45,13 +45,27 @@ test("secret URL values are hashed under any policy, the built-in default includ
   assert.equal((await page({ ...defaultPolicy, headers: { ...defaultPolicy.headers, reference: ["ref", "code"] } })).record["url.query"], `code=${REFERENCE}`, "a valid reference code in a reference parameter stays readable");
 });
 
-const BODIES = { schema: "scope.policy/1", version: 7, surfaces: { signup: { path: "^/signup$", fields: { reference: ["token"] } }, device: { start: "^/device/code$" }, api: { paths: ["^/v1/"] } }, record_bodies: true, observe: { bodies: { allow_fields: ["email", "password", "token", "secret", "uri", "code", "error"] } }, secrets: { uri_fields: { uri: "code" } } };
+const BODIES = { schema: "scope.policy/1", version: 7, surfaces: { signup: { path: "^/signup$", fields: { reference: ["token"] } }, device: { start: "^/device/code$" }, api: { paths: ["^/v1/"] } }, record_bodies: true, observe: { bodies: { allow_fields: ["email", "password", "token", "secret", "uri", "code", "link", "note", "error"] } }, secrets: { uri_fields: { uri: "code" } } };
+
+test("a string holding more than 64 secret values is recorded as one hash, so the work per string stays bounded", async () => {
+  const flood = Array.from({ length: 65 }, (_, i) => `token=T${i}`).join("&");
+  const { record } = await run(defaultPolicy, { method: "GET", url: `https://acme.example/cb?${flood}`, headers: {}, body: null }, { status: 204, headers: {} });
+  assert.equal(record["url.query"], `h:${await hash(flood)}`);
+  const sixtyFour = Array.from({ length: 64 }, (_, i) => `token=T${i}`).join("&");
+  const kept = await run(defaultPolicy, { method: "GET", url: `https://acme.example/cb?${sixtyFour}`, headers: {}, body: null }, { status: 204, headers: {} });
+  assert.equal(kept.record["url.query"], (await Promise.all(Array.from({ length: 64 }, async (_, i) => `token=h:${await hash(`T${i}`)}`))).join("&"));
+});
 
 test("bodies keep only the fields the allowlist names, at any depth; a secret name inside them is still hashed; the keys are still read", async () => {
   const signup = await run(BODIES, { method: "POST", url: "https://api.acme.example/signup", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "a@b.example", password: "hunter2", client_secret: "cs_123", profile: { name: "Ada", token: REFERENCE }, card: { number: "4242" }, secret: { value: "nested-s3cret", hints: ["h1"] }, uri: "https://acme.example/device?code=ABCD-EFGH", code: 482913 }) }, { status: 400, headers: { "content-type": "application/json" }, body: JSON.stringify({ api_key: "newkey_456", error: { message: "email taken", code: "email_taken" } }) });
   assert.deepEqual(signup.record["scope.body.request"], { email: "a@b.example", password: `h:${await hash("hunter2")}`, profile: { token: REFERENCE }, secret: `h:${await hash(JSON.stringify({ value: "nested-s3cret", hints: ["h1"] }))}`, uri: `https://acme.example/device?code=h:${await hash("ABCD-EFGH")}`, code: `h:${await hash("482913")}` }, "a secret name's whole value is hashed once, a number too, a uri field's code once");
   assert.deepEqual(signup.record["scope.body.response"], { error: { message: "email taken", code: "email_taken" } }, "a code in an answer is an error code and stays readable");
   for (const secret of ["hunter2", "cs_123", "newkey_456", "4242", "Ada", "nested-s3cret", "482913"]) assert.ok(!signup.serialised.includes(secret), `${secret} left`);
+  const encoded = "https%3A%2F%2Fa.example%2F%3Ftoken%3DABC123";
+  const blobs = await run(BODIES, { method: "POST", url: "https://api.acme.example/signup", headers: { "content-type": "application/json" }, body: JSON.stringify({ link: encoded, note: `see ${encoded} and %74oken%3DXYZ789 later` }) }, { status: 200, headers: { "content-type": "application/json" }, body: "{}" });
+  const hidden = `https%3A%2F%2Fa.example%2F%3Ftoken%3Dh:${await hash("ABC123")}`;
+  assert.deepEqual(blobs.record["scope.body.request"], { link: hidden, note: `see ${hidden} and %74oken%3Dh:${await hash("XYZ789")} later` }, "a URL or pair sent wholly encoded has its secret hashed where it sits");
+  assert.ok(!blobs.serialised.includes("ABC123") && !blobs.serialised.includes("XYZ789"));
   const camel = await run(BODIES, { method: "POST", url: "https://api.acme.example/signup", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "a@b.example", profile: { token: "not-a-reference" } }) }, { status: 200, headers: { "content-type": "application/json" }, body: "{}" });
   assert.deepEqual(camel.record["scope.body.request"], { email: "a@b.example", profile: { token: `h:${await hash("not-a-reference")}` } }, "a value that is no reference is hashed in a reference field too");
 

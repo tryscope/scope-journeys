@@ -10,14 +10,22 @@ const bare = (name: string): string => name.toLowerCase().replace(/[_-]/g, "");
 const SECRET_FIELDS = new Set(SECRET_NAMES.map(bare));
 // A `code` the client sends is an OAuth or device code; in an answer it is far more often an error code.
 const ANSWER_FIELDS = new Set([...SECRET_FIELDS].filter((name) => name !== "code"));
-// A name=value pair at the top of a URL or free text, its raw value running to the next &, # or
-// space; then a name inside such a value, found without consuming the value it sits in, so pairs
-// nested at any depth are reached in one linear scan.
-const PAIR = /(^|[?&#\s])([^?&#\s=]+)=([^&#\s]*)/g;
-const NAME = /(?:^|[?&#\s])([^?&#\s=]+)=/g;
+// A name=value pair in a URL or free text, read twice without consuming the value a name sits in,
+// so pairs nested at any depth are reached: on the raw text, where a value runs to the next raw &,
+// # or space with its own escapes kept (`password=%26...`); and on the text with its ASCII escapes
+// decoded but whitespace escapes kept, where a name an encoded separator hid is found. A name may
+// start after `=` or an encoded space too (a pair carried as a value: `params=token%3D...`).
+const NAME = /(?<=^|[?&#\s=]|%20|%0[9a-d])((?:[^?&#\s=%]|%(?!20|0[9a-d]))+)=/gi;
 const VALUE = /[^&#\s]*/y;
-// Only ASCII escapes are decoded: every separator and secret name is ASCII, and this cannot throw.
-const ascii = (text: string): string => text.replace(/%[0-7][0-9a-f]/gi, (escape) => String.fromCharCode(parseInt(escape.slice(1), 16)));
+const NON_SPACE_ESCAPE = /%(?!20|0[9a-d])[0-7][0-9a-f]/gi;
+// A pair's name as the origin reads it: its ASCII escapes decoded (which cannot throw), and the part
+// after the last separator an encoded one hid (`b%26code` names `code`).
+const nameOf = (raw: string): string =>
+  raw
+    .replace(/%[0-7][0-9a-f]/gi, (escape) => String.fromCharCode(parseInt(escape.slice(1), 16)))
+    .toLowerCase()
+    .split(/[?&#\s]/)
+    .pop() ?? "";
 
 /** `text` with each match of the global `re` replaced by `mark(match, its hash)`; the hashes are computed together. */
 async function hashMatches(text: string, re: RegExp, io: Io, mark: (match: RegExpExecArray, hash: string) => string): Promise<string> {
@@ -39,14 +47,16 @@ async function hashMatches(text: string, re: RegExp, io: Io, mark: (match: RegEx
  */
 export async function redactString(value: string, policy: CompiledPolicy, io: Io): Promise<string> {
   let out = value;
-  const edits = value.includes("=") ? secretValues(value, policy) : [];
-  if (edits.length) {
-    const hashes = await Promise.all(edits.map(([, secret]) => io.hash(secret)));
+  const spans = /=|%3d/i.test(value) ? secretSpans(value, policy) : [];
+  // Past 64 secret values the string is one hash, so the secret names cost a bounded number of hashes per string.
+  if (spans.length > 64) out = `h:${await io.hash(value)}`;
+  else if (spans.length) {
+    const hashes = await Promise.all(spans.map(([start, end]) => io.hash(value.slice(start, end))));
     out = "";
     let last = 0;
-    edits.forEach(([at, secret], i) => {
-      out += `${value.slice(last, at)}h:${hashes[i]}`;
-      last = at + secret.length;
+    spans.forEach(([start, end], i) => {
+      out += `${value.slice(last, start)}h:${hashes[i]}`;
+      last = end;
     });
     out += value.slice(last);
   }
@@ -58,47 +68,58 @@ export async function redactString(value: string, policy: CompiledPolicy, io: Io
 /** Whether a pair's value is left as sent: empty, already hashed, or a valid reference where the policy says references travel. */
 const kept = (name: string, value: string, policy: CompiledPolicy): boolean => !value || hashedValue(value) !== null || (policy.referenceNames.has(name) && isReference(value));
 
-/** The start and value of every secret-named pair inside `text`, at any depth. */
-function nestedSecrets(text: string, policy: CompiledPolicy): Array<[number, string]> {
-  const found: Array<[number, string]> = [];
+/**
+ * The [start, end) of the secret values `text` holds, mapped through `at` to the raw string. The name
+ * is checked before the value is read, and the names inside a value already found are skipped, so
+ * the scan stays linear.
+ */
+function scanPairs(text: string, at: (position: number) => number, policy: CompiledPolicy): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
   let last = 0;
   for (const m of text.matchAll(NAME)) {
     const start = m.index + m[0].length;
     if (start < last) continue;
-    const name = ascii(m[1] ?? "").toLowerCase();
+    const name = nameOf(m[1] ?? "");
     if (!SECRET_FIELDS.has(bare(name))) continue;
     VALUE.lastIndex = start;
     const value = VALUE.exec(text)?.[0] ?? "";
     if (kept(name, value, policy)) continue;
-    found.push([start, value]);
     last = start + value.length;
+    spans.push([at(start), at(last)]);
   }
-  return found;
+  return spans;
 }
 
-/**
- * The start and value of every value to hash in `text`: a pair whose name, decoded, is a secret name.
- * Any other value carrying such a pair at any depth (a URL in a parameter) has those nested values
- * hashed where they sit when it was sent unencoded, and is hashed whole when it was encoded
- * (re-encoding it would not give back what was sent).
- */
-function secretValues(text: string, policy: CompiledPolicy): Array<[number, string]> {
-  const edits: Array<[number, string]> = [];
-  for (const m of text.matchAll(PAIR)) {
-    const name = ascii(m[2] ?? "").toLowerCase();
-    const value = m[3] ?? "";
-    const start = m.index + m[0].length - value.length;
-    if (SECRET_FIELDS.has(bare(name))) {
-      if (!kept(name, value, policy)) edits.push([start, value]);
-      continue;
-    }
-    const inner = ascii(value);
-    const nested = /[?&#\s]/.test(inner) ? nestedSecrets(inner, policy) : [];
-    if (!nested.length) continue;
-    if (inner === value) for (const [at, secret] of nested) edits.push([start + at, secret]);
-    else edits.push([start, value]);
+/** The raw [start, end) of every secret value in `text`, from both readings, overlapping or touching spans merged. */
+function secretSpans(text: string, policy: CompiledPolicy): Array<[number, number]> {
+  const spans = scanPairs(text, (position) => position, policy);
+  // The decoded text, and for each of its positions the raw position it came from (one more for the end).
+  let decoded = "";
+  const from: number[] = [];
+  let raw = 0;
+  const copy = (until: number): void => {
+    decoded += text.slice(raw, until);
+    for (; raw < until; raw += 1) from.push(raw);
+  };
+  for (const m of text.matchAll(NON_SPACE_ESCAPE)) {
+    copy(m.index);
+    decoded += String.fromCharCode(parseInt(m[0].slice(1), 16));
+    from.push(m.index);
+    raw = m.index + m[0].length;
   }
-  return edits;
+  if (raw > 0) {
+    copy(text.length);
+    from.push(text.length);
+    spans.push(...scanPairs(decoded, (position) => from[position] ?? text.length, policy));
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  for (const span of spans) {
+    const previous = merged[merged.length - 1];
+    if (previous && span[0] <= previous[1]) previous[1] = Math.max(previous[1], span[1]);
+    else merged.push(span);
+  }
+  return merged;
 }
 
 /**

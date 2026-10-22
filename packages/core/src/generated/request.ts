@@ -78,7 +78,7 @@ export interface ScopeRequest1 {
    */
   "url.path": string;
   /**
-   * the query string without the leading question mark; the value of a secret-named parameter (api_key, key, token, access_token, refresh_token, id_token, code, client_secret, password, secret, signature, sig, in any case or spelling, also percent-encoded or inside a URL carried by another parameter) becomes h:<hash>, unless it is a valid reference code where the policy says a reference travels (headers.reference, a door's fields.reference); then redacted by shape; null when the url has none
+   * the query string without the leading question mark; the value of a secret-named parameter (api_key, key, token, access_token, refresh_token, id_token, code, client_secret, password, secret, signature, sig, in any case or spelling, also percent-encoded or inside a URL carried by another parameter) becomes h:<hash>, unless it is a valid reference code where the policy says a reference travels (headers.reference, a door's fields.reference); a string holding more than 64 such values is recorded as one hash; then redacted by shape; null when the url has none
    */
   "url.query"?: string | null;
   "http.response.status_code"?: number | null;
