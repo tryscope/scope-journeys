@@ -2,6 +2,8 @@ import { Agent as HttpAgent, request as httpRequest, type IncomingMessage } from
 import { Agent as HttpsAgent, request as httpsRequest } from "node:https";
 import { Readable } from "node:stream";
 
+import { hopUrl, neverSent } from "scope-journeys";
+
 const agents = { http: new HttpAgent({ keepAlive: true }), https: new HttpsAgent({ keepAlive: true }) };
 
 /** The headers that describe a hop rather than a message (RFC 9110 section 7.6.1); a raw forward drops them so Node frames its own hop. */
@@ -35,8 +37,7 @@ export function headersOf(message: IncomingMessage): Headers {
  */
 export async function hop(outbound: Request, options: HopOptions): Promise<Response> {
   const body = outbound.body ? Buffer.from(await outbound.arrayBuffer()) : null;
-  const url = new URL(outbound.url);
-  const target = new URL(`${options.target.origin}${options.target.pathname.replace(/\/$/, "")}${url.pathname}${url.search}`);
+  const target = hopUrl(options.target, new URL(outbound.url));
   const headers: Record<string, string> = {};
   outbound.headers.forEach((value, name) => {
     headers[name] = value;
@@ -60,8 +61,8 @@ export async function hop(outbound: Request, options: HopOptions): Promise<Respo
       request.once("timeout", () => request.destroy(new DOMException(`the origin did not answer within ${options.timeoutMs} ms`, "TimeoutError")));
       request.once("error", (error: Error) => {
         // An idle kept-alive connection the origin closed: only an idempotent request goes again, once, on a fresh connection
-        // (RFC 9110 section 9.2.2); the first error is reported, since it says whether the request may have reached the origin.
-        if (!answered && request.reusedSocket && "code" in error && error.code === "ECONNRESET" && ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"].includes(outbound.method)) send(false).then(resolve, () => reject(error));
+        // (RFC 9110 section 9.2.2). A retry that never left reports the first error, which may have reached the origin.
+        if (!answered && request.reusedSocket && "code" in error && error.code === "ECONNRESET" && ["GET", "HEAD", "OPTIONS", "PUT", "DELETE"].includes(outbound.method)) send(false).then(resolve, (retryError: unknown) => reject(neverSent(retryError) ? error : retryError));
         else reject(error);
       });
       request.end(body);

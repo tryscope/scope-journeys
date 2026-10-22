@@ -519,7 +519,7 @@ test("an origin that is not an http or https URL is refused where it is read: a 
   }
 });
 
-test("a reused connection the origin reset before any answer: an idempotent request goes once more on a fresh connection, a POST is never sent again; a reset after the answer started, or a refused retry, sends nothing more", async () => {
+test("a reused connection the origin reset before any answer: an idempotent request goes once more on a fresh connection, a POST is never sent again; a reset after the answer started sends nothing more; a retry that times out reports its timeout, a refused one the first reset", async () => {
   const handled: string[] = [];
   const served = new WeakMap<object, number>();
   // A second request on a kept-alive connection is cut as it arrives, the way an origin closes a connection it held idle.
@@ -575,6 +575,25 @@ test("a reused connection the origin reset before any answer: an idempotent requ
   } finally {
     midway.closeAllConnections();
     await new Promise((resolve) => midway.close(resolve));
+  }
+
+  // The retry goes out and is never answered: its own timeout is the one reported.
+  let total = 0;
+  const stalls = createServer((req, res) => {
+    total += 1;
+    if (total === 1) res.end("ok");
+    else if (total === 2) req.socket.destroy();
+  });
+  const stallsPort = await listen(stalls);
+  const stallsBase = `http://127.0.0.1:${stallsPort}`;
+  const stalled = (): Promise<Response> => hop(new Request(`${stallsBase}/docs/one`), { target: new URL(stallsBase), host: "acme.example", timeoutMs: 200 });
+  try {
+    assert.equal(await (await stalled()).text(), "ok");
+    await assert.rejects(stalled(), (error: unknown) => error instanceof Error && error.name === "TimeoutError");
+    assert.equal(total, 3, "the reset request and its one retry");
+  } finally {
+    stalls.closeAllConnections();
+    await new Promise((resolve) => stalls.close(resolve));
   }
 
   // The retry finds the origin gone: the first failure, a reset that may have reached it, is the one reported.

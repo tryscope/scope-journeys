@@ -1,4 +1,4 @@
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardObserved, loadPolicy, observe, originUrl, passHeaders, secureUrl, type CompiledPolicy, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardObserved, hopUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, type CompiledPolicy, type Environment, type Io, type SensorRecord } from "scope-journeys";
 
 import { platformFacts, type RequestWithCf } from "./facts.js";
 import { workerCache } from "./cache.js";
@@ -92,11 +92,11 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
         }
         policy = (await loadPolicy({ url: null, installId: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
       }
-      const origin = b.JOURNEYS_ORIGIN ?? null;
       const url = new URL(request.url);
-      const target = origin ? originUrl(`${origin.replace(/\/$/, "")}${url.pathname}${url.search}`) : url;
+      const hopOrigin = originUrl(b.JOURNEYS_ORIGIN || url.origin);
       // Thrown before anything is forwarded, so passThroughOnException takes the request.
-      if (!target) throw new Error("journeys: JOURNEYS_ORIGIN is not an http or https URL with no credentials");
+      if (!hopOrigin) throw new Error("journeys: JOURNEYS_ORIGIN is not an http or https URL with no credentials");
+      const target = hopUrl(hopOrigin, url);
       const issuer = apiUrl && b.JOURNEYS_INSTALL_ID ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${b.JOURNEYS_INSTALL_ID}` : null;
       const identity = { install: b.JOURNEYS_INSTALL_ID ?? null, name, environment: (loaded.environment ?? b.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(b.JOURNEYS_ASSERTION_KEY, issuer) };
       const facts = platformFacts(request as RequestWithCf, identity);

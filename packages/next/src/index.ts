@@ -1,4 +1,4 @@
-import { DEFAULT_API_URL, PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, forwardObserved, forwardedUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, forwardObserved, forwardedUrl, hopUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, type Environment, type Io, type SensorRecord } from "scope-journeys";
 import type { NextFetchEvent, NextRequest } from "next/server.js";
 import { NextResponse } from "next/server.js";
 
@@ -131,8 +131,9 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
       // fetches), and the request URL's origin is the deployment's host on Vercel. Under `next
       // start` that URL carries the forwarded scheme on the listen host, so it is not the listener.
       const base = options.origin ?? env.JOURNEYS_ORIGIN ?? env.__NEXT_PRIVATE_ORIGIN ?? listen.origin;
-      const target = originUrl(`${base.replace(/\/$/, "")}${url.pathname}${url.search}`);
-      if (!target) throw new Error("journeys: the origin to forward to (JOURNEYS_ORIGIN, the origin option or the listen address) is not an http or https URL with no credentials");
+      const hopOrigin = originUrl(base);
+      if (!hopOrigin) throw new Error("journeys: the origin to forward to (JOURNEYS_ORIGIN, the origin option or the listen address) is not an http or https URL with no credentials");
+      const target = hopUrl(hopOrigin, url);
       const ship = await shipper(event);
       const io: Io = {
         now,

@@ -158,6 +158,9 @@ test("an origin that is not an http or https URL is refused before the hop: the 
   }) as typeof fetch;
   const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "origin.example.com", JOURNEYS_API_URL: "https://api.invalid" } });
   await expect(handler.fetch(new Request("https://acme.example/docs/quickstart", { headers: { accept: "text/html" } }), {}, { waitUntil: () => undefined, passThroughOnException: () => undefined })).rejects.toThrow(/JOURNEYS_ORIGIN is not an http or https URL/);
+  // An origin with no host, checked alone: the visitor's path never names where the hop goes.
+  const hostless = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "https://", JOURNEYS_API_URL: "https://api.invalid" } });
+  await expect(hostless.fetch(new Request("https://acme.example/example.com/checkout", { headers: { accept: "text/html" } }), {}, { waitUntil: () => undefined, passThroughOnException: () => undefined })).rejects.toThrow(/JOURNEYS_ORIGIN is not an http or https URL/);
   expect(hops).toBe(0);
   // An empty value is unset: the hop goes to the request's own URL.
   const unset = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "", JOURNEYS_API_URL: "https://api.invalid" } });

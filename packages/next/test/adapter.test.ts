@@ -234,7 +234,10 @@ test("an origin that is not an http or https URL is refused before the hop: the 
   } finally {
     console.error = original;
   }
-  assert.equal(runs, 2);
+  // An origin with no host, checked alone: the visitor's path never names where the hop goes.
+  const hostless = withJourneys({ env: { ...env, JOURNEYS_ORIGIN: "https://" }, fetch: w.fetch, now: () => NOW, next });
+  assert.equal(await (await hostless(request("https://acme.example/example.com/checkout"), w.event as never)).text(), "mine");
+  assert.equal(runs, 3);
   assert.equal(w.calls.filter((c) => !c.url.startsWith(API)).length, 0, "no hop was attempted");
   assert.ok(logged.every((l) => !l.includes("s3cret")), logged.join("\n"));
 });

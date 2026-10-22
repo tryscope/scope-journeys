@@ -33,6 +33,11 @@ export function originUrl(value: string): URL | null {
   return url && (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password ? url : null;
 }
 
+/** The URL a hop to `origin` goes to: the request's path and query under the origin's own path. */
+export function hopUrl(origin: URL, url: URL): URL {
+  return new URL(`${origin.origin}${origin.pathname.replace(/\/$/, "")}${url.pathname}${url.search}`);
+}
+
 const UNSENT = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"]);
 
 /**

@@ -1,13 +1,13 @@
 // The URL the agent spoke to, as the proxy in front named it: x-forwarded-host, else Host, else
 // the URL's own host (a server builds it from its listen address); the scheme from
 // x-forwarded-proto. A value without a host's shape is passed over for the next source. Which
-// origins the hop may go to, and which hop failures prove the origin never received the request,
-// from the errors Node really raises.
+// origins the hop may go to and the URL it goes to, and which hop failures prove the origin never
+// received the request, from the errors Node really raises.
 import assert from "node:assert/strict";
 import { createServer, request } from "node:http";
 import { test } from "node:test";
 
-import { forwardedUrl, neverSent, originUrl } from "../src/gateway.js";
+import { forwardedUrl, hopUrl, neverSent, originUrl } from "../src/gateway.js";
 
 const listen = new URL("http://localhost:3917/docs/quickstart?ref=ABCDEFGV");
 const at = (headers: Record<string, string>, url: URL = listen): string => forwardedUrl(url, new Headers(headers)).href;
@@ -79,5 +79,14 @@ test("originUrl: an http or https URL with no credentials, and nothing else", ()
   assert.equal(originUrl("http://127.0.0.1:3000")?.href, "http://127.0.0.1:3000/");
   assert.equal(originUrl("https://docs.example.com/base")?.href, "https://docs.example.com/base");
   assert.equal(originUrl("HTTPS://Docs.Example.com")?.host, "docs.example.com", "the scheme and host are read as a URL's");
-  for (const value of ["localhost:3000", "docs.example.com", "ftp://docs.example.com", "file:///etc/passwd", "https://user:pass@docs.example.com", "https://user@docs.example.com", "", "/docs"]) assert.equal(originUrl(value), null, value);
+  for (const value of ["localhost:3000", "docs.example.com", "ftp://docs.example.com", "file:///etc/passwd", "https://user:pass@docs.example.com", "https://user@docs.example.com", "https://", "https:", "", "/docs"]) assert.equal(originUrl(value), null, value);
+});
+
+test("hopUrl: the request's path and query under the origin's own path, on the origin's host whatever the path says", () => {
+  const request = new URL("https://acme.example/docs/quickstart?ref=ABCDEFGV#top");
+  assert.equal(hopUrl(new URL("http://127.0.0.1:3000"), request).href, "http://127.0.0.1:3000/docs/quickstart?ref=ABCDEFGV");
+  assert.equal(hopUrl(new URL("https://origin.example/base/"), request).href, "https://origin.example/base/docs/quickstart?ref=ABCDEFGV");
+  assert.equal(hopUrl(new URL("https://origin.example/base"), request).href, "https://origin.example/base/docs/quickstart?ref=ABCDEFGV");
+  assert.equal(hopUrl(new URL("https://origin.example/?x=1#h"), request).href, "https://origin.example/docs/quickstart?ref=ABCDEFGV", "the origin's own query and fragment are not the request's");
+  assert.equal(hopUrl(new URL("https://origin.example"), new URL("https://acme.example//evil.example/x")).host, "origin.example", "a path that looks like a host stays a path");
 });
