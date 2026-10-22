@@ -92,6 +92,8 @@ test("page content: a script, an attribute, a tag off the list, a partial tag or
     ["a reference definition in a block quote", md("$1\n\n> [g]: //other.example/guide\n")],
     ["a reference definition in a list item", md("$1\n\n- [g]: //other.example/guide\n")],
     ["a reference definition in an ordered list", md("$1\n\n1. [g]: //other.example/guide\n")],
+    ["an html link to a mail address in markdown", md('$1\n\n<a href="mailto:someone@other.example">Write</a>\n')],
+    ["an html link written with backslashes in markdown", md('$1\n\n<a href="\\\\other.example/x">Go</a>\n')],
     ["a frame in the helpful 404", { ...notfound, faces: { ...(notfound.faces as object), html: '<!doctype html><html><body><iframe src="https://evil.example"></iframe></body></html>' } }],
     ["a 404 page served as HTML from its md face", { ...notfound, faces: { md: "<script>alert(1)</script>" } }],
     ["a 404 face that is not a page", { ...notfound, faces: { html: null, md: "<script>alert(1)</script>" } }],
@@ -185,6 +187,10 @@ test("where a rewrite lands: inside a tag or an inline script only a code that e
   assert.equal(mdLink("(\\]\\()", "$1//other.example", "[Install](x)"), "[Install](x)", "rule text cannot finish a page link off this site");
   assert.equal(mdLink("(\\[[^\\]]*\\])", "$1(//other.example)", "see [docs] now"), "see [docs] now", "rule text cannot add the ( and url to a page's [label]");
   assert.equal(mdLink("(\\[[^\\]]*\\])", "$1: //other.example", "see [g] now"), "see [g] now", "rule text cannot add a reference definition off this site");
+  assert.equal(mdLink("/docs", "//other.example/docs", "[g](/docs)"), "[g](/docs)", "a // link the rule writes over the page's path");
+  assert.equal(mdLink("Docs", "mailto:someone@other.example", "[a](Docs)"), "[a](Docs)", "a link the rule finishes after the page's own ](");
+  assert.equal(mdLink("(Docs)", "$1 \\\\other.example/x", "Docs"), "Docs", "a link written with backslashes");
+  assert.equal(mdLink("(Docs)", "$1 //other.example/x", "Docs"), "Docs", "a // link the rule adds as text");
   assert.equal(mdLink("(https://{host}/docs)", "$1?ref={token}", "[Install](https://acme.example/docs)"), "[Install](https://acme.example/docs?ref=ABCD2345)", "a ref code still extends a markdown link to this site");
   const kept = rewritePage(classed, only({ id: "r", kind: "inject", faces: { html: { pattern: '(class="note)', replacement: "$1-wide" } } }).rules, vars);
   assert.deepEqual(kept.applied, [], "a rule whose every match keeps the page's text is not applied");
@@ -207,7 +213,26 @@ test("the content checks take linear time on a hostile document", () => {
   only({ ...carry, faces: { ...faces, html: { ...faces.html, replacement: "<p>".repeat(20_000) + "<" } } });
   rewritePage(`<h1>Install</h1>${'<a href="https://acme.example/docs/x">x</a>'.repeat(5_000)}`, only({ id: "r", kind: "inject", faces: { html: { pattern: "(https://{host}/docs/x)", replacement: "$1?ref={token}" } } }).rules, { host: "acme.example", token: "ABCD2345", face: "html", prefix: "" });
   only({ ...carry, faces: { ...faces, md: { ...faces.md, replacement: "a".repeat(200_000) + "://" } } });
+  only({ ...rule("notfound"), faces: { md: "-  ".repeat(20_000) + "x" } });
+  rewritePage("x ".repeat(100_000), only({ id: "r", kind: "inject", faces: { md: { pattern: "(x)", replacement: "$1y" } } }).rules, { host: "acme.example", token: "ABCD2345", face: "md", prefix: "" });
+  rewritePage(`# ${"a".repeat(200_000)}\n`, only({ id: "r", kind: "inject", faces: { md: { pattern: "^(# [^\\n]+\\n)", replacement: "$1Note https://{host}/docs\n" } } }).rules, { host: "acme.example", token: "ABCD2345", face: "md", prefix: "" });
   assert.ok(performance.now() - started < 500, `took ${Math.round(performance.now() - started)} ms`);
+});
+
+test("notes and code samples a rule adds to a text face are not read as links", () => {
+  for (const face of ["md", "txt"] as const) {
+    const add = (replacement: string): string => rewritePage("# Docs\n", only({ id: "r", kind: "inject", faces: { [face]: { pattern: "(Docs)", replacement } } }).rules, { host: "acme.example", token: "ABCD2345", face, prefix: "" }).body;
+    assert.equal(add("$1\nStatus [404]: Not Found"), "# Docs\nStatus [404]: Not Found\n", `${face}: a status note`);
+    assert.equal(add("$1\n// X-Acme-Setup: {token}"), "# Docs\n// X-Acme-Setup: ABCD2345\n", `${face}: a setup comment`);
+  }
+});
+
+test("a line shaped like a reference definition counts as one, in a code block or a list item too", () => {
+  // Whether a renderer reads a line as code depends on context the rule cannot see, so the check does not guess.
+  for (const page of ["# Not here\n\n```\n[g]: //other.example\n```\n", "# Not here\n\n    [g]: //other.example\n", "# Not here\n\n1. item\n    [g]: //other.example\n"]) {
+    const compiled = only({ ...rule("notfound"), faces: { md: page } });
+    assert.equal(compiled.rules[0]?.mode, "dry_run", JSON.stringify(page));
+  }
 });
 
 test("prose that merely contains ]: is not read as an off-site reference definition", () => {

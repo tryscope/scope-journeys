@@ -204,6 +204,54 @@ const onCustomerSite = (url: string): boolean => {
 };
 
 /**
+ * The target of every markdown reference definition in `text` and the offset where it ends: a line
+ * whose content, after any indentation and block-quote or list markers, starts `[label]:`, the target
+ * on that line or the next. A line inside a code block counts too: whether a renderer reads it as code
+ * depends on context the rule cannot see. Sticky expressions only move forward, so the cost is linear.
+ */
+function referenceTargets(text: string): Array<{ target: string; end: number }> {
+  const found: Array<{ target: string; end: number }> = [];
+  const marker = /[ \t]*(?:>[ \t]?|[-*+][ \t]+|\d{1,9}[.)][ \t]+)/y;
+  const definition = /[ \t]*\[[^\]\n]+\]:[ \t]*(?:\n[ \t]*)?<?([^\s>]*)/y;
+  for (let start = 0; start < text.length; ) {
+    const newline = text.indexOf("\n", start);
+    let at = start;
+    marker.lastIndex = at;
+    while (marker.exec(text)) at = marker.lastIndex;
+    definition.lastIndex = at;
+    const target = definition.exec(text)?.[1];
+    if (target) found.push({ target, end: definition.lastIndex });
+    start = newline === -1 ? text.length : newline + 1;
+  }
+  return found;
+}
+
+/**
+ * Every link target in `text` and the offset where it ends: a markdown link target, a reference
+ * definition, an `href`, `src` or `action` value, and two slashes or backslashes followed by a host
+ * (with the scheme before them, trailing sentence punctuation left out). Every scan moves forward.
+ */
+export function linkTargets(text: string): Array<{ target: string; end: number }> {
+  const found = referenceTargets(text);
+  for (const m of text.matchAll(/\]\(\s*([^)\s]*)/g)) found.push({ target: m[1] ?? "", end: m.index + m[0].length });
+  for (const m of text.matchAll(/\b(?:href|src|action|formaction|xlink:href)\s*=\s*(?:"([^"]*)|'([^']*)|([^\s>]*))/gi)) found.push({ target: m[1] ?? m[2] ?? m[3] ?? "", end: m.index + m[0].length });
+  const slashes = /[\\/]{2}/g;
+  const rest = /[^\s)\]"'<>&]*/y;
+  for (let m = slashes.exec(text); m; m = slashes.exec(text)) {
+    rest.lastIndex = slashes.lastIndex;
+    rest.exec(text);
+    let end = rest.lastIndex;
+    while (end > slashes.lastIndex && /[.,:;!?]/.test(text[end - 1] ?? "")) end -= 1;
+    slashes.lastIndex = rest.lastIndex;
+    if (end === m.index + 2) continue;
+    let from = m.index;
+    if (text[from - 1] === ":") for (from -= 1; from > 0 && /[A-Za-z0-9+.-]/.test(text[from - 1] ?? ""); ) from -= 1;
+    found.push({ target: text.slice(from, end), end });
+  }
+  return found;
+}
+
+/**
  * Why text would send a reader off the customer's site, or null: a scheme followed by two slashes
  * or backslashes anywhere but `https://{host}` (then the end, a path, query, fragment or a word
  * break), a markdown link target or reference definition off the site, or `{prefix}` anywhere but right after the host.
@@ -218,8 +266,7 @@ function linkProblem(text: string): string | null {
     if (next !== undefined && !/[/?#\s"'`)\]<>,;!]/.test(next) && !(/[.:]/.test(next) && (text[at + 1] === undefined || /\s/.test(text[at + 1] ?? "")))) return "a link off https://{host}";
   }
   for (const m of text.matchAll(/\{prefix\}/g)) if (!text.startsWith("https://{host}", m.index - "https://{host}".length)) return "{prefix} outside https://{host}{prefix}";
-  for (const m of text.matchAll(/\]\(\s*([^)\s]*)/g)) if (!onCustomerSite(m[1] ?? "")) return "a link off the customer's site";
-  for (const m of text.matchAll(/^(?:[ \t]{0,3}(?:>|[-*+][ \t]+|\d{1,9}[.)][ \t]+))*[ \t]*\[[^\]\n]+\]:[ \t]*\n?[ \t]*<?([^\s>]*)/gm)) if (!onCustomerSite(m[1] ?? "")) return "a link off the customer's site";
+  for (const { target } of linkTargets(text)) if (!onCustomerSite(target)) return "a link off the customer's site";
   return null;
 }
 

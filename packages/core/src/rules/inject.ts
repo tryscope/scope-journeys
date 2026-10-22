@@ -1,4 +1,4 @@
-import { escapeRe, fill, type CompiledRule, type Face, type FaceRewrite } from "../policy.js";
+import { escapeRe, fill, linkTargets, type CompiledRule, type Face, type FaceRewrite } from "../policy.js";
 
 export interface Rewrite {
   body: string;
@@ -129,17 +129,15 @@ export function rewritePage(body: string, rules: readonly CompiledRule[], vars: 
               break;
             }
           }
-          // On a text face a link the rule completes or adds, by itself or onto the page's own `](`, `]:` or `//`, must stay on this site.
+          // On a text face a link the rule completes or adds, alone or onto the page's own `](`, `]:` or scheme, stays on this site.
           if (!placeOf && segment.text) {
-            const context = before + segment.text;
-            for (const m of context.matchAll(/\]\(\s*([^)\s]*)|\]:[ \t]*\n?[ \t]*<?([^\s>]*)|(?:https?:)?\/\/[^\s)\]]*/g)) {
-              const target = m[1] ?? m[2] ?? m[0];
-              if (m.index + m[0].length > before.length && !onSite.test(target)) {
-                safe = false;
-                break;
-              }
+            // The page's own line before the match (at most 256 characters, so many matches stay cheap) and what this match wrote so far.
+            const lookBack = body.slice(Math.max(0, match.index - 256), match.index);
+            const prior = lookBack.slice(lookBack.lastIndexOf("\n") + 1) + pieces.join("");
+            if (linkTargets(prior + segment.text).some((t) => t.end > prior.length && !onSite.test(t.target))) {
+              safe = false;
+              break;
             }
-            if (!safe) break;
           }
           before = "";
           pieces.push(segment.text);
