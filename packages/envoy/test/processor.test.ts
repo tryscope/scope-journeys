@@ -12,17 +12,19 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import * as grpc from "@grpc/grpc-js";
-import { DEFAULT_API_URL, resetPolicyCache } from "scope-journeys";
+import { DEFAULT_API_URL, resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
 
 import { applyMask, canonical, maskResponse, maskText } from "../../../scripts/canonical.mjs";
 import type { FixtureDirectory, FixtureFacts, FixtureRequest, FixtureUpstream } from "../../core/test/harness.js";
 import { validateRecord } from "../../core/src/validate.js";
 import { VERSION } from "../../core/src/version.js";
 import { BODY_MODE, ExternalProcessor, deliver, droppedSoFar, resetCache, resetDelivery, serveExtProc, type HeaderMutation, type HeaderValue, type ProcessingRequest, type ProcessingResponse } from "../src/index.js";
+import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
 
 const ROOT = new URL("../../../", import.meta.url).pathname;
 const FIXTURES = join(ROOT, "fixtures", "synthetic");
 const INSTALL = "jin_fixture0000000000000000";
+trustPolicyKeyForTests(TEST_POLICY_KID, (await testPolicyKeys()).publicKey);
 const API = "https://api.fixture.example";
 // The three fixtures whose stream the gate amends on the other forms: here the stream passes unamended and the decision says so.
 const ENVOY_EXPECTATION = new Set(["10-sse-tools-list", "11-sse-tool-call", "12-sse-declaration-appended"]);
@@ -40,7 +42,7 @@ interface Captured {
 function world(name: string, policy: unknown, facts: FixtureFacts, directory: FixtureDirectory | undefined, shipped: unknown[][], forwarded: Captured[]): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
-    if (url === `https://policy.fixture.example/${name}`) return Response.json(policy, { headers: { etag: `"${name}"`, "x-journeys-salt-epoch": String(facts.salt_epoch ?? 1), "x-journeys-environment": facts.environment ?? "production" } });
+    if (url === `https://policy.fixture.example/${name}`) return signedPolicy(policy, { install: INSTALL, issuedAt: Math.floor(Date.parse(facts.ts ?? "2026-10-10T12:00:00.000Z") / 1000), saltEpoch: String(facts.salt_epoch ?? 1), environment: facts.environment ?? "production", etag: `"${name}"` });
     if (url === `${API}/v1/requests`) {
       const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
       const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
@@ -225,7 +227,7 @@ test("with no JOURNEYS_API_URL the processor fetches its policy from and ships i
   const fetcher = (async (input: RequestInfo | URL) => {
     const url = String(input instanceof Request ? input.url : input);
     urls.push(url);
-    return url.endsWith("/policy") ? Response.json(policy, { headers: { etag: '"3"' } }) : new Response(null, { status: 202 });
+    return url.endsWith("/policy") ? signedPolicy(policy, { install: INSTALL, issuedAt: Math.floor(Date.now() / 1000), etag: '"3"' }) : new Response(null, { status: 202 });
   }) as typeof fetch;
   for (const key of ["sjk_test_dddddddddddddddddddddddddddddddd", null]) {
     resetPolicyCache();

@@ -117,9 +117,9 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
         return passTo(request, event);
       }
       const cache = memoryCache(now);
-      const loaded = await loadPolicy({ url: policyUrl, credential: cred, fetch: fetchFn, now: now(), cache, log: (line) => log("warn", line) });
+      const loaded = await loadPolicy({ url: policyUrl, installId, credential: cred, fetch: fetchFn, now: now(), cache, log: (line) => log("warn", line) });
       const salt = env.JOURNEYS_SALT;
-      const policy = salt ? loaded.policy : (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
+      const policy = salt ? loaded.policy : (await loadPolicy({ url: null, installId: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
       if (!salt && !warnedNoSalt) {
         warnedNoSalt = true;
         log("warn", "journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init`)");

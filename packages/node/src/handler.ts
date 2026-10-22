@@ -113,14 +113,14 @@ export function createSensor(options: NodeOptions = {}): Sensor {
         warnedNoInstall = true;
         warn("journeys: JOURNEYS_INSTALL_ID is not set; forwarding every request untouched under the default policy (run `npx scope-journeys init --node`)");
       }
-      const loaded = await loadPolicy({ url: policyUrl, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
+      const loaded = await loadPolicy({ url: policyUrl, installId, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
       let policy = loaded.policy;
       if (!salt) {
         if (!warnedNoSalt) {
           warnedNoSalt = true;
           warn("journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init --node`)");
         }
-        policy = (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
+        policy = (await loadPolicy({ url: null, installId: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
       }
       const target = targetFor(exchange);
       const identity = { install: installId, name, environment: (loaded.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(env.JOURNEYS_ASSERTION_KEY, issuer) };

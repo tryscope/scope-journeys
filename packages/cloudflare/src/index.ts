@@ -79,7 +79,7 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
       const apiUrl = secureUrl(b.JOURNEYS_API_URL ?? DEFAULT_API_URL, "JOURNEYS_API_URL", (line) => log("warn", line));
       const policyUrl = b.JOURNEYS_POLICY_URL ?? (apiUrl && b.JOURNEYS_INSTALL_ID ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${b.JOURNEYS_INSTALL_ID}/policy` : null);
       const cache = workerCache(typeof caches !== "undefined" ? (caches as unknown as { default: Cache }).default : null, now);
-      const loaded = await loadPolicy({ url: policyUrl, credential: b.JOURNEYS_INSTALL_KEY ?? null, fetch: fetchFn, now: now(), cache, log: (line) => log("warn", line) });
+      const loaded = await loadPolicy({ url: policyUrl, installId: b.JOURNEYS_INSTALL_ID ?? null, credential: b.JOURNEYS_INSTALL_KEY ?? null, fetch: fetchFn, now: now(), cache, log: (line) => log("warn", line) });
       let policy: CompiledPolicy = loaded.policy;
       const salt = b.JOURNEYS_SALT;
       if (!salt) {
@@ -89,7 +89,7 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
           warnedNoSalt.add(name);
           log("warn", "journeys: JOURNEYS_SALT is not set; running the forward-only default policy (set the secret and redeploy, or run journeys init)");
         }
-        policy = (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
+        policy = (await loadPolicy({ url: null, installId: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
       }
       const origin = b.JOURNEYS_ORIGIN ?? null;
       const url = new URL(request.url);

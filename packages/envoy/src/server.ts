@@ -169,14 +169,14 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
       warnedNoInstall = true;
       warn("journeys: JOURNEYS_INSTALL_ID is not set; forwarding every request untouched under the default policy (run `npx scope-journeys init --envoy`)");
     }
-    const state = await loadPolicy({ url: policyUrl, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
+    const state = await loadPolicy({ url: policyUrl, installId, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
     let policy = state.policy;
     if (!salt) {
       if (!warnedNoSalt) {
         warnedNoSalt = true;
         warn("journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init --envoy`)");
       }
-      policy = (await loadPolicy({ url: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
+      policy = (await loadPolicy({ url: null, installId: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
     }
     return { policy, environment: (state.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: state.saltEpoch ?? 1 };
   };

@@ -56,7 +56,7 @@ export { onRequestError } from "scope-journeys-next/instrumentation"
 
 | name | secret | meaning |
 |---|---|---|
-| `JOURNEYS_INSTALL_ID` | no | your install, `jin_...` |
+| `JOURNEYS_INSTALL_ID` | no | your install, `jin_...`; the policy is signed for it, so without it the sensor runs the embedded default |
 | `JOURNEYS_INSTALL_KEY` | yes | the install key; not needed when the project's OIDC federation is on |
 | `JOURNEYS_SALT` | yes | 32 random bytes you generate; every hash is salted with it and Scope never receives it |
 | `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |

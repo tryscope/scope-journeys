@@ -13,7 +13,9 @@ import express from "express";
 import Fastify from "fastify";
 import { Hono } from "hono";
 
-import { DEFAULT_API_URL, resetPolicyCache } from "scope-journeys";
+import { DEFAULT_API_URL, resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
+
+import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
 
 import { canonicalAddress, createNodeHandler, deliver, droppedSoFar, fastifyJourneys, honoJourneys, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler } from "../src/index.js";
 
@@ -22,6 +24,7 @@ const INSTALL = "jin_test0000000000000000000000";
 const API = "https://api.test.invalid";
 const KEY = "sjk_test_dddddddddddddddddddddddddddddddd";
 const env = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: KEY, JOURNEYS_SALT: "fixture-salt", JOURNEYS_API_URL: API };
+trustPolicyKeyForTests(TEST_POLICY_KID, (await testPolicyKeys()).publicKey);
 
 interface World {
   calls: Array<{ url: string; headers: Record<string, string> }>;
@@ -38,7 +41,7 @@ function world(policy: Record<string, unknown> = POLICY, api = API): World {
       const headers: Record<string, string> = {};
       new Headers(init?.headers).forEach((v, k) => (headers[k] = v));
       w.calls.push({ url, headers });
-      if (url === `${api}/v1/installs/${INSTALL}/policy`) return Response.json(policy, { headers: { etag: '"3"', "x-journeys-salt-epoch": "2" } });
+      if (url === `${api}/v1/installs/${INSTALL}/policy`) return signedPolicy(policy, { install: INSTALL, issuedAt: Math.floor(Date.now() / 1000), saltEpoch: "2", etag: '"3"' });
       if (url === `${api}/v1/requests`) {
         const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
         const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
