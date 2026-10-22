@@ -108,14 +108,14 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
       const apiUrl = secureUrl(options.apiUrl ?? env.JOURNEYS_API_URL ?? DEFAULT_API_URL, "JOURNEYS_API_URL", (line) => log("warn", line));
       const cred = credentialOf(request, env);
       const policyUrl = options.policyUrl ?? env.JOURNEYS_POLICY_URL ?? (apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}/policy` : null);
+      const salt = env.JOURNEYS_SALT;
       if (!installId && !policyUrl) {
         if (!warnedNoInstall) {
           warnedNoInstall = true;
           log("warn", "journeys: JOURNEYS_INSTALL_ID is not set; passing every request to the app untouched, the probe aside (run `npx scope-journeys init`)");
         }
-        return probeAnswer(request.method, url.pathname, "received") ?? passTo(request, event);
+        return probeAnswer(request.method, url.pathname, salt ? "received" : "no-salt") ?? passTo(request, event);
       }
-      const salt = env.JOURNEYS_SALT;
       if (!salt) {
         // Without a salt nothing can be hashed, so nothing is recorded: the app answers, the probe says why.
         if (!warnedNoSalt) {

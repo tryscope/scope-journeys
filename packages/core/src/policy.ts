@@ -446,7 +446,7 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
   // The setup, agent, client and intent headers are recorded: never one that holds the client's address, the session id or the install id.
   const recordedRaw = (field: string, name: string | null): string | null => {
     const valid = recorded(field, name);
-    if (valid === null || (!CLIENT_ADDRESS.test(valid) && ![session, install].some((other) => other?.toLowerCase() === valid.toLowerCase()))) return valid;
+    if (valid === null || (!CLIENT_ADDRESS.test(valid) && !["mcp-session-id", session, install].some((other) => other?.toLowerCase() === valid.toLowerCase()))) return valid;
     notices.push(`headers.${field} ignored: ${JSON.stringify(valid)} holds the client's address, the session id or the install id`);
     return null;
   };

@@ -3,15 +3,21 @@ import type { CompiledPolicy } from "./policy.js";
 import { isReference } from "./references.js";
 
 // The names hashed under every policy, the built-in default included: a URL parameter or a body
-// field so named, in any case and spelling (apiKey, api-key; in a URL also percent-encoded, as in a
-// URL carried inside a parameter). A valid reference code stays only where the policy says
-// references travel.
+// field so named, in any case and spelling (apiKey, api-key; in a URL also percent-encoded). A valid
+// reference code stays only where the policy says references travel.
 const SECRET_NAMES = ["api_key", "key", "token", "access_token", "refresh_token", "id_token", "code", "client_secret", "password", "secret", "signature", "sig"];
 const bare = (name: string): string => name.toLowerCase().replace(/[_-]/g, "");
 const SECRET_FIELDS = new Set(SECRET_NAMES.map(bare));
 // A `code` the client sends is an OAuth or device code; in an answer it is far more often an error code.
 const ANSWER_FIELDS = new Set([...SECRET_FIELDS].filter((name) => name !== "code"));
-const SECRET_PARAMS = new RegExp(`(?<=(?:^|[?&#\\s]|%3f|%26|%23)(${SECRET_NAMES.map((n) => n.replace(/_/g, "(?:[_-]|%5f|%2d)?")).join("|")})(?:=|%3d))(?:(?!%26|%23)[^&#\\s])+`, "gi");
+// A name=value pair at the top of a URL or free text, its raw value running to the next &, # or
+// space; then a name inside such a value, found without consuming the value it sits in, so pairs
+// nested at any depth are reached in one linear scan.
+const PAIR = /(^|[?&#\s])([^?&#\s=]+)=([^&#\s]*)/g;
+const NAME = /(?:^|[?&#\s])([^?&#\s=]+)=/g;
+const VALUE = /[^&#\s]*/y;
+// Only ASCII escapes are decoded: every separator and secret name is ASCII, and this cannot throw.
+const ascii = (text: string): string => text.replace(/%[0-7][0-9a-f]/gi, (escape) => String.fromCharCode(parseInt(escape.slice(1), 16)));
 
 /** `text` with each match of the global `re` replaced by `mark(match, its hash)`; the hashes are computed together. */
 async function hashMatches(text: string, re: RegExp, io: Io, mark: (match: RegExpExecArray, hash: string) => string): Promise<string> {
@@ -33,16 +39,72 @@ async function hashMatches(text: string, re: RegExp, io: Io, mark: (match: RegEx
  */
 export async function redactString(value: string, policy: CompiledPolicy, io: Io): Promise<string> {
   let out = value;
-  if (out.search(SECRET_PARAMS) !== -1) out = await hashMatches(out, SECRET_PARAMS, io, (m, hash) => (hashedValue(m[0]) || (policy.referenceNames.has((m[1] ?? "").toLowerCase()) && isReference(m[0])) ? m[0] : `h:${hash}`));
+  const edits = value.includes("=") ? secretValues(value, policy) : [];
+  if (edits.length) {
+    const hashes = await Promise.all(edits.map(([, secret]) => io.hash(secret)));
+    out = "";
+    let last = 0;
+    edits.forEach(([at, secret], i) => {
+      out += `${value.slice(last, at)}h:${hashes[i]}`;
+      last = at + secret.length;
+    });
+    out += value.slice(last);
+  }
   // Most strings hold no secret: they skip the hashing and its await (search leaves the shared lastIndex alone).
   for (const re of policy.shapes) if (out.search(re) !== -1) out = await hashMatches(out, re, io, (m, hash) => `${m[1] ?? "v"}:h:${hash}`);
   return out;
 }
 
+/** Whether a pair's value is left as sent: empty, already hashed, or a valid reference where the policy says references travel. */
+const kept = (name: string, value: string, policy: CompiledPolicy): boolean => !value || hashedValue(value) !== null || (policy.referenceNames.has(name) && isReference(value));
+
+/** The start and value of every secret-named pair inside `text`, at any depth. */
+function nestedSecrets(text: string, policy: CompiledPolicy): Array<[number, string]> {
+  const found: Array<[number, string]> = [];
+  let last = 0;
+  for (const m of text.matchAll(NAME)) {
+    const start = m.index + m[0].length;
+    if (start < last) continue;
+    const name = ascii(m[1] ?? "").toLowerCase();
+    if (!SECRET_FIELDS.has(bare(name))) continue;
+    VALUE.lastIndex = start;
+    const value = VALUE.exec(text)?.[0] ?? "";
+    if (kept(name, value, policy)) continue;
+    found.push([start, value]);
+    last = start + value.length;
+  }
+  return found;
+}
+
+/**
+ * The start and value of every value to hash in `text`: a pair whose name, decoded, is a secret name.
+ * Any other value carrying such a pair at any depth (a URL in a parameter) has those nested values
+ * hashed where they sit when it was sent unencoded, and is hashed whole when it was encoded
+ * (re-encoding it would not give back what was sent).
+ */
+function secretValues(text: string, policy: CompiledPolicy): Array<[number, string]> {
+  const edits: Array<[number, string]> = [];
+  for (const m of text.matchAll(PAIR)) {
+    const name = ascii(m[2] ?? "").toLowerCase();
+    const value = m[3] ?? "";
+    const start = m.index + m[0].length - value.length;
+    if (SECRET_FIELDS.has(bare(name))) {
+      if (!kept(name, value, policy)) edits.push([start, value]);
+      continue;
+    }
+    const inner = ascii(value);
+    const nested = /[?&#\s]/.test(inner) ? nestedSecrets(inner, policy) : [];
+    if (!nested.length) continue;
+    if (inner === value) for (const [at, secret] of nested) edits.push([start + at, secret]);
+    else edits.push([start, value]);
+  }
+  return edits;
+}
+
 /**
  * Redaction by field name, recursively: a field the policy names as a secret, or one of the names
- * hashed under every policy, becomes `h:<hash>` of its string, or of its whole value as JSON when
- * that is an object or an array (one hash per field, however large); a field the policy names as a
+ * hashed under every policy, becomes `h:<hash>` of its string, or of its whole value as JSON
+ * otherwise (one hash per field, however large); a field the policy names as a
  * uri field has its named parameter, in the query or the fragment, hashed in place; every other
  * string is redacted as above.
  */
@@ -54,8 +116,7 @@ export async function redact(value: unknown, policy: CompiledPolicy, io: Io, fro
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       const param = policy.uriFields.get(k);
       const reference = typeof v === "string" && policy.referenceNames.has(k.toLowerCase()) && isReference(v);
-      const secret = (typeof v === "string" && v.length > 0) || (v !== null && typeof v === "object");
-      if (secret && (policy.secretFields.has(k) || ((from === "answer" ? ANSWER_FIELDS : SECRET_FIELDS).has(bare(k)) && !reference))) out[k] = `h:${await io.hash(typeof v === "string" ? v : JSON.stringify(v))}`;
+      if (v !== null && v !== undefined && v !== "" && (policy.secretFields.has(k) || ((from === "answer" ? ANSWER_FIELDS : SECRET_FIELDS).has(bare(k)) && !reference))) out[k] = `h:${await io.hash(typeof v === "string" ? v : JSON.stringify(v))}`;
       else if (param && typeof v === "string") out[k] = await redactString(await hashMatches(v, param, io, (_, hash) => `h:${hash}`), policy, io);
       else out[k] = await redact(v, policy, io, from);
     }

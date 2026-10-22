@@ -85,13 +85,14 @@ export interface LoadOptions {
 // does not take, keeps the last value seen; before any answer the adapter stamps epoch 1 and production.
 export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
   // The policy route answers only an install or a session: without a credential there is nothing to fetch.
-  const unfetchable = options.url === null ? "no settings address" : !options.credential ? "no install key" : null;
   const url = options.url === null || !options.credential ? null : secureUrl(options.url, "the policy url", options.log);
-  const key = url ?? "default";
+  const unfetched = options.url === null ? "no settings address" : !options.credential ? "no install key" : "settings address refused";
+  // Each reason the embedded default runs is held on its own, so one configuration's reason never names another's.
+  const key = url ?? `default:${unfetched}`;
   const current = states.get(key);
   if (current && options.now - current.at < TTL_MS) return current;
   if (!url) {
-    const fresh = current ?? builtIn(options.now, unfetchable ?? "settings address refused");
+    const fresh = current ?? builtIn(options.now, unfetched);
     states.set(key, { ...fresh, at: options.now });
     return fresh;
   }

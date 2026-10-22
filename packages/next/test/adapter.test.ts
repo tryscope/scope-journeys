@@ -215,6 +215,8 @@ test("without JOURNEYS_SALT nothing is fetched or recorded: every request goes t
   };
   try {
     const { JOURNEYS_SALT: _salt, ...unsalted } = env;
+    const bare = await withJourneys({ env: {}, fetch: w.fetch, next })(request("https://acme.example/.well-known/journeys-probe?journeys_probe=c21va2U"), w.event as never);
+    assert.equal(bare.headers.get("x-journeys-probe"), "no-salt", "no install and no salt: the probe names the salt");
     const handler = withJourneys({ env: unsalted, fetch: w.fetch, next });
     for (let i = 0; i < 2; i += 1) assert.equal(await (await handler(request("https://acme.example/docs/quickstart"), w.event as never)).text(), "mine");
     const probe = await handler(request("https://acme.example/.well-known/journeys-probe?journeys_probe=c21va2U"), w.event as never);

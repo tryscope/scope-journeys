@@ -171,8 +171,7 @@ test("the embedded default carries the reason it runs, so its records can name i
   const answering = (status: number): typeof fetch => (async () => new Response("down", { status })) as typeof fetch;
   resetPolicyCache();
   assert.equal((await loadPolicy({ url: null, credential: "k", fetch: serving().fetch, now: 0, ...quiet })).policy.fallback, "no settings address");
-  resetPolicyCache();
-  assert.equal((await loadPolicy({ url: URL_A, credential: null, fetch: serving().fetch, now: 0, ...quiet })).policy.fallback, "no install key");
+  assert.equal((await loadPolicy({ url: URL_A, credential: null, fetch: serving().fetch, now: 0, ...quiet })).policy.fallback, "no install key", "each reason is its own, never another configuration's held one");
   resetPolicyCache();
   assert.equal((await loadPolicy({ url: "http://api.example/v1/installs/jin_a/policy", credential: "k", fetch: serving().fetch, now: 0, ...quiet })).policy.fallback, "settings address refused");
   resetPolicyCache();
