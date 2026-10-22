@@ -6,7 +6,7 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { forwardedUrl } from "scope-journeys";
+import { forwardedUrl, isHost } from "scope-journeys";
 
 import { afterResponse, createNodeHandler, createSensor, requestHost, toRequest, type Exchange, type NodeOptions } from "./handler.js";
 import { forwardedAddress, socketFacts } from "./facts.js";
@@ -86,18 +86,18 @@ export function honoJourneys(options: NodeOptions = {}): (c: HonoLikeContext, ne
     const { incoming, outgoing } = nodeEnv(c.env);
     // Fetch-native (no Node message): the runtime built the URL on the Host header; behind a trusted proxy the forwarded host names it, as toRequest does for a Node message.
     const url = sensor.forwardedHost && !incoming ? forwardedUrl(new URL(request.url), request.headers) : new URL(request.url);
-    const host = incoming ? requestHost(incoming, sensor.forwardedHost) : url.host;
+    const host = incoming ? requestHost(incoming, sensor.forwardedHost) : isHost(url.host) ? url.host : null;
     if (!sensor.observes(request.headers.get("x-journeys-inner"), host)) {
       await next();
       return undefined;
     }
-    const exchange: Exchange = {
-      request: incoming ? toRequest(incoming, sensor.trustProxy, sensor.forwardedHost) : url.href === request.url ? request : new Request(url, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit),
-      socket: incoming ? socketFacts(incoming, sensor.trustProxy) : { address: sensor.trustProxy ? forwardedAddress(request.headers.get("x-forwarded-for") ?? undefined) : null, peer: null, tls_protocol_version: null, network_protocol_version: null },
-      localPort: incoming?.socket?.localPort ?? null,
-      afterResponse: outgoing ? afterResponse(outgoing) : (work) => work(),
-    };
     try {
+      const exchange: Exchange = {
+        request: incoming ? toRequest(incoming, sensor.trustProxy, sensor.forwardedHost) : url.href === request.url ? request : new Request(url, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit),
+        socket: incoming ? socketFacts(incoming, sensor.trustProxy) : { address: sensor.trustProxy ? forwardedAddress(request.headers.get("x-forwarded-for") ?? undefined) : null, peer: null, tls_protocol_version: null, network_protocol_version: null },
+        localPort: incoming?.socket?.localPort ?? null,
+        afterResponse: outgoing ? afterResponse(outgoing) : (work) => work(),
+      };
       return await sensor.sense(exchange);
     } catch (error) {
       sensor.log("error", `journeys: the sensor failed, passing the request on untouched: ${error instanceof Error ? error.message : String(error)}`);

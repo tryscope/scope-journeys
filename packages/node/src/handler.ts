@@ -3,7 +3,7 @@ import type { TLSSocket } from "node:tls";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardObserved, forwardedUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, type Environment, type LogLevel } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardObserved, forwardedUrl, isHost, loadPolicy, observe, originUrl, passHeaders, secureUrl, type Environment, type LogLevel } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { droppedSoFar } from "./deliver.js";
@@ -56,7 +56,7 @@ export interface Sensor {
   trustProxy: boolean;
   /** Whether x-forwarded-host names the request: a mount behind a trusted proxy. The standalone proxy is a gateway and names the host it serves, the Host it receives. */
   forwardedHost: boolean;
-  /** Whether the request is the sensor's to observe: not the inner pass, and on the observed host. */
+  /** Whether the request is the sensor's to observe: not the inner pass, and a host, the observed one. */
   observes(inner: string | null, host: string | null): boolean;
   /** The response to send. Throws when the sensor could not run or its hop never left, and the caller passes the request on untouched. */
   sense(exchange: Exchange): Promise<Response>;
@@ -106,7 +106,7 @@ export function createSensor(options: NodeOptions = {}): Sensor {
     trustProxy,
     forwardedHost: trustProxy && form === "mount",
     log,
-    observes: (inner, host) => !inner && (!observeHost || host === observeHost),
+    observes: (inner, host) => !inner && host !== null && (!observeHost || host === observeHost),
     async sense(exchange) {
       const { request, socket } = exchange;
       const url = new URL(request.url);
@@ -155,9 +155,11 @@ export interface NodeHandler {
 
 const first = (value: string | string[] | undefined): string | null => (Array.isArray(value) ? (value[0] ?? null) : (value ?? null));
 
-/** The request's host as the sensor names it: the Host header (a proxy in front preserves it), else the listener itself; with `forwardedHost`, the host a trusted proxy named in x-forwarded-host. */
+/** The request's host as the sensor names it: the Host header (a proxy in front preserves it), else the listener itself; with `forwardedHost`, the host a trusted proxy named in x-forwarded-host. Null for a Host that is not a host: that request is not the sensor's to observe. */
 export function requestHost(req: IncomingMessage, forwardedHost = false): string | null {
-  const own = req.headers.host || (req.socket?.localPort ? `127.0.0.1:${req.socket.localPort}` : null);
+  const header = req.headers.host;
+  if (header && !isHost(header)) return null;
+  const own = header || (req.socket?.localPort ? `127.0.0.1:${req.socket.localPort}` : null);
   return forwardedHost && own ? forwardedUrl(new URL(`http://${own}`), headersOf(req)).host : own;
 }
 
@@ -168,9 +170,10 @@ export function toRequest(req: IncomingMessage, trustProxy: boolean, forwardedHo
   const forwardedProto = trustProxy ? first(req.headers["x-forwarded-proto"])?.split(",")[0]?.trim() : null;
   const scheme = encrypted ? "https" : forwardedProto === "https" ? "https" : "http";
   const host = requestHost(req) ?? "127.0.0.1";
-  const path = req.url ?? "/";
+  // An absolute target keeps only its path: the host is the Host header's, the one observes() checked.
+  const path = (req.url ?? "/").replace(/^https?:\/\/[^/?#]*/i, "");
   const headers = headersOf(req);
-  const own = new URL(/^https?:\/\//i.test(path) ? path : `${scheme}://${host}${path.startsWith("/") ? path : `/${path}`}`);
+  const own = new URL(`${scheme}://${host}${path.startsWith("/") ? path : `/${path}`}`);
   const url = forwardedHost ? forwardedUrl(own, headers) : own;
   const bodyless = req.method === "GET" || req.method === "HEAD";
   return new Request(url, { method: req.method ?? "GET", headers, body: bodyless ? null : (Readable.toWeb(req) as ReadableStream<Uint8Array>), redirect: "manual", ...(bodyless ? {} : { duplex: "half" }) } as RequestInit);
@@ -220,18 +223,31 @@ export async function send(res: ServerResponse, response: Response): Promise<voi
  */
 export function createNodeHandler(options: NodeOptions = {}): NodeHandler {
   const sensor = createSensor(options);
-  const observes = (req: IncomingMessage): boolean => sensor.observes(first(req.headers[INNER_HEADER]), requestHost(req, sensor.forwardedHost));
+  // The fetch API refuses TRACE (CONNECT and TRACK never reach a request handler on node:http): never observed.
+  const observes = (req: IncomingMessage): boolean => req.method !== "TRACE" && sensor.observes(first(req.headers[INNER_HEADER]), requestHost(req, sensor.forwardedHost));
   const handler = async (req: IncomingMessage, res: ServerResponse, next?: () => void): Promise<void> => {
-    const exchange: Exchange = { request: toRequest(req, sensor.trustProxy, sensor.forwardedHost), socket: socketFacts(req, sensor.trustProxy), localPort: req.socket?.localPort ?? null, afterResponse: afterResponse(res) };
-    if (!observes(req)) {
-      if (next) return next();
-      return send(res, await sensor.untouched(exchange));
-    }
-    let response: Response;
+    // Decided before the request is built: building it starts reading the body, which `next` must get whole.
+    const observed = observes(req);
+    if (!observed && next) return next();
+    // The proxy's hop is a Request, which cannot carry TRACE either.
+    if (req.method === "TRACE") return send(res, new Response("Not Implemented", { status: 501, headers: { "content-type": "text/plain" } }));
+    let exchange: Exchange;
     try {
-      response = await sensor.sense(exchange);
+      exchange = { request: toRequest(req, sensor.trustProxy, sensor.forwardedHost), socket: socketFacts(req, sensor.trustProxy), localPort: req.socket?.localPort ?? null, afterResponse: afterResponse(res) };
     } catch (error) {
-      sensor.log("error", `journeys: the sensor failed, passing the request on untouched: ${error instanceof Error ? error.message : String(error)}`);
+      sensor.log("error", `journeys: the request could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      if (next) return next();
+      return send(res, new Response("Bad Request", { status: 400, headers: { "content-type": "text/plain" } }));
+    }
+    let response: Response | null = null;
+    if (observed) {
+      try {
+        response = await sensor.sense(exchange);
+      } catch (error) {
+        sensor.log("error", `journeys: the sensor failed, passing the request on untouched: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    if (!response) {
       if (next) return next();
       try {
         response = await sensor.untouched(exchange);
