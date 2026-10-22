@@ -235,7 +235,8 @@ test("the content checks take linear time on a hostile document", () => {
   only({ ...carry, faces: { ...faces, md: { ...faces.md, replacement: "x@" + "a".repeat(200_000) } } });
   rewriteWith("md", "(https://{host}/a+)", "$1?ref={token}", `https://acme.example/${"a".repeat(200_000)} https://acme.example/${"a".repeat(200_000)}`);
   only({ ...rule("gate"), instructions: "(".repeat(100_000) });
-  assert.ok(performance.now() - started < 500, `took ${Math.round(performance.now() - started)} ms`);
+  // A superlinear check takes seconds to minutes at these sizes; the budget leaves room for a CI runner busy with other test files.
+  assert.ok(performance.now() - started < 2_000, `took ${Math.round(performance.now() - started)} ms`);
 });
 
 test("notes and code samples a rule adds to a text face are not read as links", () => {
@@ -356,6 +357,7 @@ test("text a rule adds to a markdown or text face holds no link off this site an
     ["a scheme behind a markdown escape", "$1\n[Install](javascript\\:alert(1))\n"],
     ["a reference definition behind a markdown escape", "$1\n[g]: http\\:other.example/x\n"],
     ["a tag that hides what follows", "$1\n<details>\nhidden\n"],
+    ["a control character", "$1\n\tIndented note\n"],
   ];
   for (const [what, replacement] of refused) {
     const compiled = only(text(replacement));

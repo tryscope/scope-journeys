@@ -239,7 +239,7 @@ const onCustomerSite = (url: string): boolean => {
 /**
  * Why text would send a reader off the customer's site, or run or hide something, or null. Markdown
  * or text may be rendered as HTML and any word in it may become a link, so outside HTML it holds no
- * scheme, character reference (a link target decodes it) or markup that a renderer would act on.
+ * scheme, character reference, control character (links drop or decode both) or running markup.
  */
 function textProblem(text: string, html: boolean): string | null {
   // Markdown drops a backslash before punctuation (`javascript\:` is a scheme), so outside HTML the text is read both ways.
@@ -251,6 +251,7 @@ function textProblem(text: string, html: boolean): string | null {
     if (html) return markupProblem(text);
     if (/(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*:(?=\S)/.test(rest)) return "a link off https://{host}";
     if (CHARACTER_REFERENCE.test(rest)) return "a character reference";
+    if (/[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f]/.test(rest)) return "a control character";
     if (/<[/!?]|<[A-Za-z][A-Za-z0-9+.-]*:|<[A-Za-z][^<>\s]*@|<[A-Za-z][^<>]*[=/"'`\\]|<(?:script|style|iframe|frame|frameset|object|embed|applet|svg|math|template|textarea|title|xmp|plaintext|listing|noscript|noembed|noframes|dialog|details|datalist|select|video|audio|canvas)(?![A-Za-z0-9-])/i.test(rest)) return "markup a renderer would run";
   }
   return null;
