@@ -10,7 +10,7 @@ export { compilePolicy, defaultPolicy, effectiveMode, fieldNames, fill, PolicyEr
 export { classifyRoute, classifyReader, isTextFace, requestedFace, servedFace, READER_TABLE, AGENT_READERS, type Reader, type RouteInfo, type FetchMetadata } from "./classify.js";
 export { mintReference, isReference, findReference, REFERENCE } from "./references.js";
 export { redact, redactString, hashedValue } from "./redact.js";
-export { outboundHeaders, passHeaders, forwardedUrl } from "./gateway.js";
+export { outboundHeaders, passHeaders, forwardedUrl, isHost } from "./gateway.js";
 export { readBody, uuidv7, uuidv4, RECORD_SCHEMA, DECLARATION_SCHEMA, POLICY_SCHEMA, BODY_LIMIT, type ReadBody } from "./record.js";
 export { bodyKeys, mcpFacts, oauthFacts, type BodyKeys, type McpFacts, type OauthFacts } from "./keys.js";
 export { DEFAULT_API_URL, loadPolicy, resetPolicyCache, secureUrl, trustPolicyKeyForTests, type LoadOptions, type PolicyState } from "./policy-loader.js";

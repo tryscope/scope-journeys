@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { forwardedUrl } from "../src/gateway.js";
+import { forwardedUrl, isHost } from "../src/gateway.js";
 
 const listen = new URL("http://localhost:3917/docs/quickstart?ref=ABCDEFGV");
 const at = (headers: Record<string, string>, url: URL = listen): string => forwardedUrl(url, new Headers(headers)).href;
@@ -35,4 +35,9 @@ test("lists are read by their first entry; a value without a host's shape, or on
   assert.equal(at({ "x-forwarded-host": "docs.example:99999", host: "docs.example" }), "http://docs.example/docs/quickstart?ref=ABCDEFGV", "a port past 65535 is refused by the parser");
   assert.equal(at({ "x-forwarded-host": "", host: "" }), "http://localhost:3917/docs/quickstart?ref=ABCDEFGV");
   assert.equal(at({ "x-forwarded-host": "[::1]:3000", "x-forwarded-proto": "ws" }), "http://[::1]:3000/docs/quickstart?ref=ABCDEFGV", "an address literal is a host; a scheme that is not http or https is not a scheme");
+});
+
+test("isHost: a name or an address literal, with a port or without, that the URL parser also takes", () => {
+  for (const host of ["docs.example", "docs.example:8443", "127.0.0.1:3917", "[::1]", "[::1]:3000"]) assert.equal(isHost(host), true, host);
+  for (const host of ["", "docs.example/x", "user@docs.example", "docs.example:99999"]) assert.equal(isHost(host), false, host);
 });

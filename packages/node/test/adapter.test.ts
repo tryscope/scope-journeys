@@ -5,7 +5,7 @@
 // in flight when close is called completes and its record ships), and the listen address parser.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { test } from "node:test";
 
 import { serve } from "@hono/node-server";
@@ -17,7 +17,7 @@ import { DEFAULT_API_URL, resetPolicyCache, trustPolicyKeyForTests } from "scope
 
 import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
 
-import { canonicalAddress, createNodeHandler, deliver, droppedSoFar, fastifyJourneys, honoJourneys, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler } from "../src/index.js";
+import { canonicalAddress, createNodeHandler, deliver, droppedSoFar, fastifyJourneys, honoJourneys, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler, type RunningProxy } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const INSTALL = "jin_test0000000000000000000000";
@@ -386,16 +386,22 @@ test("the standalone proxy: the origin's Host on the hop, no marker; close() dra
     await new Promise((resolve) => origin.close(resolve));
   }
 
-  reset();
-  const down = world();
-  const logs: string[] = [];
-  const proxy2 = await serveProxy({ origin: "http://127.0.0.1:1", listen: "127.0.0.1:0", env, fetch: down.fetch, drainMs: 500, signals: false, log: (_level, line) => logs.push(line) });
-  try {
-    const response = await fetch(`${proxy2.url}/docs/quickstart`, { headers: agent });
-    assert.equal(response.status, 502);
-    assert.ok(logs.some((l) => /could not be reached/.test(l)), logs.join("\n"));
-  } finally {
-    await proxy2.close();
+  // Observed or not, an origin that is down is a 502, and the proxy keeps answering.
+  for (const [label, proxyEnv] of [["observed", env], ["a host the install does not observe", { ...env, JOURNEYS_HOST: "acme.example" }]] as const) {
+    reset();
+    const down = world();
+    const logs: string[] = [];
+    const proxy2 = await serveProxy({ origin: "http://127.0.0.1:1", listen: "127.0.0.1:0", env: proxyEnv, fetch: down.fetch, drainMs: 500, signals: false, log: (_level, line) => logs.push(line) });
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await fetch(`${proxy2.url}/docs/quickstart`, { headers: agent, signal: AbortSignal.timeout(5_000) });
+        assert.equal(response.status, 502, label);
+        await response.text();
+      }
+      assert.ok(logs.some((l) => /could not be reached/.test(l)), logs.join("\n"));
+    } finally {
+      await proxy2.close();
+    }
   }
 });
 
@@ -511,4 +517,128 @@ test("shipping follows no redirect: a redirected batch is dropped and counted", 
   assert.deepEqual(log, ["journeys: shipment refused with 307; dropping the batch"]);
   assert.equal(droppedSoFar(), 1);
   resetDelivery();
+});
+
+/** A request `fetch` cannot send (TRACE, an absolute target, a Host of the caller's choosing), over node:http: the status and the body. */
+const nodeRequest = (port: number, method: string, path: string, headers: Record<string, string> = agent): Promise<{ status: number; body: string }> =>
+  new Promise((resolve, reject) => {
+    const req = httpRequest({ host: "127.0.0.1", port, method, path, headers }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk: string) => (body += chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+    });
+    req.setTimeout(5_000, () => req.destroy(new Error(`no answer to ${method} ${path} within 5 s`)));
+    req.on("error", reject);
+    req.end();
+  });
+
+/** The standalone proxy in front of an origin that answers PAGE. */
+async function proxied(w: World, run: (proxy: RunningProxy) => Promise<void>): Promise<void> {
+  const origin = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(PAGE);
+  });
+  const originPort = await listen(origin);
+  const proxy = await serveProxy({ origin: `http://127.0.0.1:${originPort}`, listen: "127.0.0.1:0", env, fetch: w.fetch, drainMs: 500, signals: false, log: () => undefined });
+  try {
+    await run(proxy);
+  } finally {
+    await proxy.close();
+    origin.closeAllConnections();
+    await new Promise((resolve) => origin.close(resolve));
+  }
+}
+
+const shippedAddress = (w: World): unknown => (w.shipped[0] ?? []).find((r) => r.schema === "scope.request/1")?.["server.address"];
+
+test("TRACE, which the fetch API cannot carry, goes to a mount's app untouched and gets a 501 from the proxy, which keeps serving", async () => {
+  reset();
+  const w = world();
+  const app = express();
+  app.use(journeys({ env, fetch: w.fetch, log: () => undefined }));
+  app.trace("/docs/quickstart", (_req, res) => {
+    res.status(200).send("traced by the app");
+  });
+  const server = createServer(app);
+  const port = await listen(server);
+  try {
+    assert.deepEqual(await nodeRequest(port, "TRACE", "/docs/quickstart"), { status: 200, body: "traced by the app" });
+    assert.equal(w.shipped.length, 0, "TRACE is not observed");
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+
+  reset();
+  await proxied(world(), async (proxy) => {
+    assert.equal((await nodeRequest(proxy.port, "TRACE", "/docs/quickstart")).status, 501);
+    assert.equal((await nodeRequest(proxy.port, "GET", "/docs/quickstart")).status, 200, "the proxy keeps serving after a TRACE");
+  });
+});
+
+test("an absolute request target is named by the Host header, as observes() read it", async () => {
+  reset();
+  const w = world();
+  await proxied(w, async (proxy) => {
+    assert.equal((await nodeRequest(proxy.port, "GET", "http://other.example/docs/quickstart")).status, 200);
+    await until(() => w.shipped.length === 1, "the record shipped");
+    assert.equal(shippedAddress(w), `127.0.0.1:${proxy.port}`, "the host is the Host header's, not the target's");
+  });
+});
+
+test("a mount's app gets the whole body of a request the sensor does not observe, even when it reads it late", async () => {
+  reset();
+  const other = world();
+  const bodies: string[] = [];
+  const app = express();
+  app.use(journeys({ env: { ...env, JOURNEYS_HOST: "acme.example" }, fetch: other.fetch, log: () => undefined }));
+  // An app that reads the body after an await, as an async session store would.
+  app.use((_req, _res, next) => void setTimeout(next, 20));
+  app.use(express.text({ type: "*/*" }));
+  app.post("/api/v1/hooks", (req, res) => {
+    bodies.push(typeof req.body === "string" ? req.body : "");
+    res.status(201).end();
+  });
+  const server = createServer(app);
+  const port = await listen(server);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/hooks`, { method: "POST", headers: { ...agent, "content-type": "application/json" }, body: JSON.stringify({ hook: "orders" }) });
+    assert.equal(response.status, 201);
+    assert.deepEqual(bodies, [JSON.stringify({ hook: "orders" })], "the body reached the app whole");
+    assert.equal(other.shipped.length, 0, "a host the install does not observe");
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("a Host that is not a host name is passed on untouched and never observed: the proxy and a Fastify mount serve the page and keep serving", async () => {
+  // A port past 65535 is refused by the URL parser; a quote is not a host character.
+  const hosts = ["docs.example:99999", 'docs.example"x'];
+  reset();
+  const w = world();
+  await proxied(w, async (proxy) => {
+    for (const host of hosts) assert.deepEqual(await nodeRequest(proxy.port, "GET", "/docs/quickstart", { ...agent, host }), { status: 200, body: PAGE }, host);
+    assert.equal((await nodeRequest(proxy.port, "GET", "/docs/quickstart")).status, 200, "the proxy keeps serving");
+    await until(() => w.shipped.length === 1, "the request with a real Host is observed");
+    assert.equal(shippedAddress(w), `127.0.0.1:${proxy.port}`, "the one record is the real Host's");
+  });
+
+  reset();
+  const mountWorld = world();
+  const app = Fastify({ forceCloseConnections: true });
+  await app.register(fastifyJourneys, { env, fetch: mountWorld.fetch, log: () => undefined });
+  app.get("/docs/quickstart", (_request, reply) => reply.type("text/html").send(PAGE));
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const address = app.server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  try {
+    for (const host of hosts) assert.deepEqual(await nodeRequest(port, "GET", "/docs/quickstart", { ...agent, host }), { status: 200, body: PAGE }, host);
+    assert.equal((await nodeRequest(port, "GET", "/docs/quickstart")).status, 200, "the app keeps serving");
+    await until(() => mountWorld.shipped.length === 1, "the request with a real Host is observed");
+    assert.equal(shippedAddress(mountWorld), `127.0.0.1:${port}`, "the one record is the real Host's");
+  } finally {
+    await app.close();
+  }
 });

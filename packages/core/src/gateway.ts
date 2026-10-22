@@ -30,6 +30,11 @@ export function passHeaders(headers: Headers): Headers {
 /** A host as a proxy names it in x-forwarded-host or a client in Host: a name or an address literal, with a port or without. Anything else is not a host. */
 const HOST_SHAPE = /^(\[[0-9a-f:.]+\]|[a-z0-9._-]+)(:\d{1,5})?$/i;
 
+/** Whether `value` is a host in that shape that the URL parser also takes (a port past 65535 or a label it refuses is not). */
+export function isHost(value: string): boolean {
+  return HOST_SHAPE.test(value) && URL.canParse(`http://${value}`);
+}
+
 /**
  * The URL the agent spoke to, as the proxy in front named it: the host from the first
  * x-forwarded-host entry, else the Host header, else the URL's own (a server builds that one from
@@ -41,13 +46,6 @@ export function forwardedUrl(url: URL, headers: Headers): URL {
   const first = (name: string): string => (headers.get(name) ?? "").split(",")[0]?.trim() ?? "";
   const proto = first("x-forwarded-proto").toLowerCase();
   const scheme = proto === "https" || proto === "http" ? proto : url.protocol.slice(0, -1);
-  for (const host of [first("x-forwarded-host"), headers.get("host")?.trim() ?? ""]) {
-    if (!HOST_SHAPE.test(host)) continue;
-    try {
-      return new URL(`${scheme}://${host}${url.pathname}${url.search}`);
-    } catch {
-      // A port past 65535, or a label the parser refuses: not a host either.
-    }
-  }
+  for (const host of [first("x-forwarded-host"), headers.get("host")?.trim() ?? ""]) if (isHost(host)) return new URL(`${scheme}://${host}${url.pathname}${url.search}`);
   return new URL(`${scheme}://${url.host}${url.pathname}${url.search}`);
 }
