@@ -6,6 +6,7 @@
 // completes and its record ships), and the listen address parser.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { test } from "node:test";
 
@@ -506,25 +507,28 @@ test("a hop that fails after the request left is never sent again: the proxy and
   }
 });
 
-test("an origin that is not an http or https URL is refused where it is read: a mount passes every request to the app untouched and says why, the proxy refuses to start", async () => {
+test("an origin that is not an http or https URL is refused where it is read: a mount passes every request to the app untouched and says why, with a salt or without; the proxy refuses to start", async () => {
   reset();
   const w = world();
-  const logs: string[] = [];
-  const app = express();
-  app.use(journeys({ env: { ...env, JOURNEYS_ORIGIN: "localhost:3000" }, fetch: w.fetch, log: (_level, line) => logs.push(line) }));
-  app.get("/docs/quickstart", (_req, res) => {
-    res.type("html").send(PAGE);
-  });
-  const server = createServer(app);
-  const port = await listen(server);
-  try {
-    const response = await fetch(`http://127.0.0.1:${port}/docs/quickstart`, { headers: agent });
-    assert.equal(response.status, 200, "the app answers; the sensor never forwards to a value that is not a URL it can reach");
-    assert.match(await response.text(), /Quickstart/);
-    assert.ok(logs.some((l) => /JOURNEYS_ORIGIN or the origin option\) is not an http or https URL/.test(l)), logs.join("\n"));
-  } finally {
-    server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+  const { JOURNEYS_SALT: _salt, ...unsalted } = env;
+  for (const configured of [env, unsalted]) {
+    const logs: string[] = [];
+    const app = express();
+    app.use(journeys({ env: { ...configured, JOURNEYS_ORIGIN: "localhost:3000" }, fetch: w.fetch, log: (_level, line) => logs.push(line) }));
+    app.get("/docs/quickstart", (_req, res) => {
+      res.type("html").send(PAGE);
+    });
+    const server = createServer(app);
+    const port = await listen(server);
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/docs/quickstart`, { headers: agent });
+      assert.equal(response.status, 200, "the app answers; the sensor never forwards to a value that is not a URL it can reach");
+      assert.match(await response.text(), /Quickstart/);
+      assert.ok(logs.some((l) => /JOURNEYS_ORIGIN or the origin option\) is not an http or https URL/.test(l)), logs.join("\n"));
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
   }
   await assert.rejects(serveProxy({ origin: "docs.example.com", listen: "127.0.0.1:0", env, fetch: w.fetch, signals: false, log: () => undefined }), /needs an http or https origin/);
 
@@ -740,6 +744,103 @@ test("the policy's report address and key header are ignored: records go to JOUR
   assert.deepEqual(w.calls.map((c) => c.url), [`${API}/v1/installs/${INSTALL}/policy`, `${API}/v1/requests`], "nothing went to the policy's report address");
   assert.equal(w.calls[1]?.headers.authorization, `Bearer ${KEY}`);
   assert.equal(w.calls[1]?.headers["x-ingest-key"], undefined);
+});
+
+test("without JOURNEYS_SALT nothing is fetched or recorded: the request reaches the app untouched, the probe answers no-salt, one warning", async () => {
+  reset();
+  const w = world();
+  const log: string[] = [];
+  const { JOURNEYS_SALT: _salt, ...unsalted } = env;
+  await mounted(createNodeHandler({ env: unsalted, fetch: w.fetch, log: (_level, line) => log.push(line) }), async (base) => {
+    const page = await fetch(`${base}/docs/quickstart`, { headers: agent });
+    assert.equal(await page.text(), PAGE, "the app's page as it answered");
+    assert.equal(page.headers.get("via"), null, "not observed: no hop of the sensor's own");
+    const probe = await fetch(`${base}/.well-known/journeys-probe?journeys_probe=bm9uY2Ux`);
+    assert.equal(probe.status, 204);
+    assert.equal(probe.headers.get("x-journeys-probe"), "no-salt");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  assert.deepEqual(w.calls, [], "no settings fetch and no shipment");
+  assert.equal(log.filter((l) => /JOURNEYS_SALT is not set/.test(l)).length, 1, log.join("\n"));
+});
+
+test("without JOURNEYS_SALT a hop that fails after the request left is never sent again either: the proxy and an Express mount answer 502 and the origin acts once", async () => {
+  reset();
+  const w = world();
+  const { JOURNEYS_SALT: _salt, ...unsalted } = env;
+  let received = 0;
+  // The origin reads the whole request, acts on it, then drops the connection before answering.
+  const origin = createServer((req) => {
+    received += 1;
+    req.resume().on("end", () => req.socket.destroy());
+  });
+  const originPort = await listen(origin);
+  const proxy = await serveProxy({ origin: `http://127.0.0.1:${originPort}`, listen: "127.0.0.1:0", env: unsalted, fetch: w.fetch, drainMs: 500, signals: false, log: () => undefined });
+  try {
+    const checkout = await fetch(`${proxy.url}/api/v1/actions/checkout`, { method: "POST", headers: { ...agent, "content-type": "application/json" }, body: JSON.stringify({ amount: 100 }) });
+    assert.equal(checkout.status, 502);
+    await checkout.text();
+    assert.equal(received, 1, "the origin received the POST once");
+  } finally {
+    await proxy.close();
+    origin.closeAllConnections();
+    await new Promise((resolve) => origin.close(resolve));
+  }
+
+  let charged = 0;
+  const app = express();
+  app.use(journeys({ env: unsalted, fetch: w.fetch, log: () => undefined }));
+  app.post("/api/v1/actions/checkout", (req, res) => {
+    charged += 1;
+    if (req.headers["x-journeys-inner"]) req.resume().on("end", () => req.socket.destroy());
+    else res.json({ status: "success" });
+  });
+  const server = createServer(app);
+  const port = await listen(server);
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/actions/checkout`, { method: "POST", headers: { ...agent, "content-type": "application/json" }, body: JSON.stringify({ amount: 100 }) });
+    assert.equal(response.status, 502);
+    await response.text();
+    assert.equal(charged, 1, "the route ran once, through the hop; next() was not called after it");
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+  assert.deepEqual(w.calls, [], "no settings fetch and no shipment");
+});
+
+test("without JOURNEYS_SALT an answer the origin compressed reaches the client still marked so, through the proxy and a mount", async () => {
+  reset();
+  const w = world();
+  const { JOURNEYS_SALT: _salt, ...unsalted } = env;
+  const answer = (req: IncomingMessage, res: import("node:http").ServerResponse): void => {
+    const gzip = /gzip/.test(req.headers["accept-encoding"] ?? "");
+    res.writeHead(200, { "content-type": "text/html", ...(gzip ? { "content-encoding": "gzip" } : {}) });
+    res.end(gzip ? gzipSync(PAGE) : PAGE);
+  };
+  const origin = createServer(answer);
+  const originPort = await listen(origin);
+  const proxy = await serveProxy({ origin: `http://127.0.0.1:${originPort}`, listen: "127.0.0.1:0", env: unsalted, fetch: w.fetch, drainMs: 500, signals: false, log: () => undefined });
+  try {
+    const page = await fetch(`${proxy.url}/docs/quickstart`, { headers: { ...agent, "accept-encoding": "gzip" } });
+    assert.equal(await page.text(), PAGE);
+  } finally {
+    await proxy.close();
+    origin.closeAllConnections();
+    await new Promise((resolve) => origin.close(resolve));
+  }
+  const app = express();
+  app.use(journeys({ env: unsalted, fetch: w.fetch, log: () => undefined }));
+  app.get("/docs/quickstart", (req, res) => answer(req, res));
+  const server = createServer(app);
+  const port = await listen(server);
+  try {
+    const page = await fetch(`http://127.0.0.1:${port}/docs/quickstart`, { headers: { ...agent, "accept-encoding": "gzip" } });
+    assert.equal(await page.text(), PAGE);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("parseListen: host:port, :port, port, a bracketed IPv6 host; refuses the rest", () => {

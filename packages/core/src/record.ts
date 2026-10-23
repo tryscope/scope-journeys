@@ -15,10 +15,10 @@ export interface ReadBody {
 }
 
 /**
- * A body as the record keeps it: JSON or a form parsed and redacted by field and by shape, capped
- * at 64 KB; a text or HTML body is `{bytes, type}` and nothing else.
+ * A body as the sensor reads it: JSON or a form parsed and redacted by field and by shape, capped
+ * at 64 KB; a text or HTML body is `{bytes, type}` and nothing else. The record keeps only its allowed fields.
  */
-export async function readBody(text: string, contentType: string, policy: CompiledPolicy, io: Io): Promise<ReadBody> {
+export async function readBody(text: string, contentType: string, policy: CompiledPolicy, io: Io, from: "request" | "answer"): Promise<ReadBody> {
   const truncated = text.length > BODY_LIMIT;
   const slice = truncated ? text.slice(0, BODY_LIMIT) : text;
   let parsed: unknown = null;
@@ -31,7 +31,7 @@ export async function readBody(text: string, contentType: string, policy: Compil
   } else if (/x-www-form-urlencoded/.test(contentType)) parsed = Object.fromEntries(new URLSearchParams(slice));
   else parsed = { bytes: text.length, type: contentType.split(";")[0] ?? "" };
   if (parsed === null) return { parsed: { bytes: text.length, unparsed: true }, bytes: text.length, truncated };
-  const redacted = await redact(parsed, policy, io);
+  const redacted = await redact(parsed, policy, io, from);
   return { parsed: (redacted && typeof redacted === "object" ? redacted : { value: redacted }) as ReadBody["parsed"], bytes: text.length, truncated };
 }
 

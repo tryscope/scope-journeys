@@ -83,9 +83,14 @@ export interface CompiledPolicy {
   shapes: RegExp[];
   secretFields: Set<string>;
   uriFields: Map<string, RegExp>;
+  /** The URL parameters and body fields a reference travels in (headers.reference, every door's fields.reference), lowercased: a valid reference there is never hashed by name. */
+  referenceNames: Set<string>;
   headers: { credential: string; session: string; reference: string[]; install: string | null; setup: string | null; agent: string | null; client: string | null; intent: string | null; signature: string };
   forward: { headers: Record<string, string> };
+  /** Bodies leave only with `record_bodies` true and at least one field in `observe.bodies.allow_fields`. */
   recordBodies: boolean;
+  /** The body field names that may leave, matched at any depth. */
+  allowFields: Set<string>;
   /** The Web Bot Auth signers whose key directories the sensor fetches: exact https origins. */
   signers: string[];
   /** The signed assertion on the hop to the origin: off by default; `audience` null means every host this sensor fronts. */
@@ -93,9 +98,13 @@ export interface CompiledPolicy {
   rules: CompiledRule[];
   /** What the compiler noticed and tolerated: an absent schema field, an ignored routes section, a section or a rule kind it does not know (DEPRECATION.md). */
   notices: string[];
+  /** Why the embedded default runs instead of a document; set by the settings loader only. */
+  fallback?: string;
 }
 
 const ENVIRONMENTS: Environment[] = ["production", "preview", "development"];
+/** The headers that carry the client's address: never recorded as sent, never set by the policy on the hop. */
+const CLIENT_ADDRESS = /^(forwarded|x-forwarded-for|x-original-forwarded-for|x-originating-ip|x-real-ip|cf-connecting-ip|cf-connecting-ipv6|true-client-ip|x-client-ip|x-cluster-client-ip|fastly-client-ip|fly-client-ip|x-azure-clientip|x-appengine-user-ip|x-envoy-external-address|x-vercel-forwarded-for|x-vercel-proxied-for)$/i;
 export const isEnvironment = (value: unknown): value is Environment => ENVIRONMENTS.includes(value as Environment);
 
 /** The embedded forward-only default (version 0): nothing hashed by shape, nothing rewritten, every request recorded. */
@@ -407,6 +416,9 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
   const secrets = isRecord(raw.secrets) ? raw.secrets : {};
   const headers = isRecord(raw.headers) ? raw.headers : {};
   const forward = isRecord(raw.forward) ? raw.forward : {};
+  const bodies = isRecord(raw.observe) && isRecord(raw.observe.bodies) ? raw.observe.bodies : {};
+  const allowFields = new Set(Array.isArray(bodies.allow_fields) ? bodies.allow_fields.filter((f): f is string => typeof f === "string" && f.length > 0) : []);
+  if (raw.record_bodies === true && allowFields.size === 0) notices.push("record_bodies ignored: observe.bodies.allow_fields names no field");
   const str = (v: unknown, fallback: string): string => (typeof v === "string" ? v : fallback);
   const nullable = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
   // Whoever serves the document never chooses where traffic, records or the install key go.
@@ -429,7 +441,20 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
     notices.push(`headers.${field} ignored: ${JSON.stringify(valid)} carries a credential`);
     return null;
   };
+  const session = recorded("session", str(headers.session, "mcp-session-id")) ?? "mcp-session-id";
+  const install = headerName("install", nullable(headers.install));
+  // The setup, agent, client and intent headers are recorded: never one that holds the client's address, the session id or the install id.
+  const recordedRaw = (field: string, name: string | null): string | null => {
+    const valid = recorded(field, name);
+    if (valid === null || (!CLIENT_ADDRESS.test(valid) && !["mcp-session-id", session, install].some((other) => other?.toLowerCase() === valid.toLowerCase()))) return valid;
+    notices.push(`headers.${field} ignored: ${JSON.stringify(valid)} holds the client's address, the session id or the install id`);
+    return null;
+  };
   const rules = Array.isArray(raw.rules) ? raw.rules.map((rule, index) => compileRule(rule, index, notices)) : [];
+  const surfaces = surfacesRaw ? compileSurfaces(surfacesRaw) : null;
+  const referenceParams = Array.isArray(headers.reference) ? headers.reference.filter((r): r is string => typeof r === "string") : [];
+  const doors = surfaces ? [surfaces.oauth, surfaces.device, surfaces.hooks, surfaces.credentials, surfaces.trial, surfaces.signup, surfaces.cli] : [];
+  const referenceNames = new Set([...referenceParams, ...doors.flatMap((d) => d.fields.reference ?? [])].map((n) => n.toLowerCase()));
   let signers = ["https://crawler.exa.ai", "https://chatgpt.com"];
   if (Array.isArray(raw.signers)) {
     signers = [];
@@ -460,19 +485,20 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
           textFaces: optional(routesRaw.text_faces),
         }
       : null,
-    surfaces: surfacesRaw ? compileSurfaces(surfacesRaw) : null,
+    surfaces,
     shapes: Array.isArray(secrets.shapes) ? secrets.shapes.filter((s): s is string => typeof s === "string").map((s) => regex(s, "g")) : [],
     secretFields: new Set(Array.isArray(secrets.fields) ? secrets.fields.filter((f): f is string => typeof f === "string") : []),
+    referenceNames,
     uriFields: new Map(Object.entries(isRecord(secrets.uri_fields) ? secrets.uri_fields : {}).filter((e): e is [string, string] => typeof e[1] === "string").map(([field, param]) => [field, new RegExp(`(?<=(?:^|[?&#])${escapeRe(param)}=)[^&#]+`, "g")])),
     headers: {
       credential,
-      session: recorded("session", str(headers.session, "mcp-session-id")) ?? "mcp-session-id",
-      reference: Array.isArray(headers.reference) ? headers.reference.filter((r): r is string => typeof r === "string") : [],
-      install: headerName("install", nullable(headers.install)),
-      setup: recorded("setup", nullable(headers.setup)),
-      agent: recorded("agent", nullable(headers.agent)),
-      client: recorded("client", nullable(headers.client)),
-      intent: recorded("intent", nullable(headers.intent)),
+      session,
+      reference: referenceParams,
+      install,
+      setup: recordedRaw("setup", nullable(headers.setup)),
+      agent: recordedRaw("agent", nullable(headers.agent)),
+      client: recordedRaw("client", nullable(headers.client)),
+      intent: recordedRaw("intent", nullable(headers.intent)),
       signature: headerName("signature", str(headers.signature, "signature-agent")) ?? "signature-agent",
     },
     forward: {
@@ -486,13 +512,14 @@ export function compilePolicy(raw: unknown): CompiledPolicy {
             notices.push(`forward.headers ignored: ${JSON.stringify(e[0])} holds a value the sensor cannot fill on the hop`);
             return false;
           }
-          if (/^[\t\x20-\x7e\x80-\xff]*$/.test(e[1]) && /^x-[a-z0-9-]+$/i.test(e[0]) && !/^x-(forwarded(-|$)|real-ip$|client-ip$|cluster-client-ip$|originating-ip$|host$|original-|rewrite-url$|http-method$|http-method-override$|method-override$|middleware-|invoke-|matched-path$|prerender-|vercel-|nextjs-|journeys-|scope-|envoy-)/i.test(e[0]) && !carriesCredential(e[0])) return true;
+          if (/^[\t\x20-\x7e\x80-\xff]*$/.test(e[1]) && /^x-[a-z0-9-]+$/i.test(e[0]) && !CLIENT_ADDRESS.test(e[0]) && !/^x-(forwarded(-|$)|real-ip$|client-ip$|cluster-client-ip$|originating-ip$|host$|original-|rewrite-url$|http-method$|http-method-override$|method-override$|middleware-|invoke-|matched-path$|prerender-|vercel-|nextjs-|journeys-|scope-|envoy-)/i.test(e[0]) && !carriesCredential(e[0])) return true;
           notices.push(`forward.headers ignored: ${JSON.stringify(e[0])} is not a header the policy may set on the hop`);
           return false;
         }),
       ),
     },
-    recordBodies: raw.record_bodies === true,
+    recordBodies: raw.record_bodies === true && allowFields.size > 0,
+    allowFields,
     signers,
     rules,
     notices,

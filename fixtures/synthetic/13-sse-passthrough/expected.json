@@ -48,7 +48,7 @@
       "http.request.header.content-type": null,
       "http.response.header.content-type": "text/event-stream",
       "scope.request.bytes": null,
-      "scope.response.bytes": null,
+      "scope.response.bytes": 92,
       "scope.cache": null,
       "scope.timing": "MASKED",
       "scope.client.address_hash": "f8d68a8e6b22",
@@ -91,9 +91,7 @@
       "scope.mcp.client": null,
       "scope.oauth": null,
       "scope.body.request": null,
-      "scope.body.response": {
-        "sse": "event: order\ndata: {\"id\":\"ord_1\",\"total\":42}\n\nevent: order\ndata: {\"id\":\"ord_2\",\"total\":17}\n\n"
-      },
+      "scope.body.response": null,
       "scope.body.truncated": false,
       "scope.response.headers": {
         "content-type": "text/event-stream",

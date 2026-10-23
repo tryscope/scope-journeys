@@ -6,7 +6,7 @@ import type { ScopeRequest1 } from "./generated/request.js";
 import { bodyKeys, mcpFacts, oauthFacts } from "./keys.js";
 import type { CompiledPolicy, CompiledRule } from "./policy.js";
 import { DECLARATION_SCHEMA, RECORD_SCHEMA, iso, readBody, uuidv4, uuidv7, type ReadBody } from "./record.js";
-import { redactString } from "./redact.js";
+import { allowedFields, redact, redactString } from "./redact.js";
 import { findReference, isReference, mintReference } from "./references.js";
 import { finderAnswer, finderText } from "./rules/finder.js";
 import { gateRequest, refuseDeclarations, type JsonRpcMessage } from "./rules/gate.js";
@@ -46,7 +46,7 @@ export type Observation =
   | { kind: "forward"; request: Request; state: State }
   | { kind: "answer"; response: Response; state: State; records: Promise<SensorRecord[]> };
 
-const hashedOrNull = async (value: string | null, io: Io): Promise<string | null> => (value ? io.hash(value) : null);
+export const hashedOrNull = async (value: string | null, io: Io): Promise<string | null> => (value ? io.hash(value) : null);
 
 /**
  * The probe `journeys doctor` sends: answered by the sensor itself with 204 and
@@ -57,6 +57,12 @@ const hashedOrNull = async (value: string | null, io: Io): Promise<string | null
 export const PROBE_PATH = "/.well-known/journeys-probe";
 export const PROBE_HEADER = "x-journeys-probe";
 const PROBE_ROUTE: RouteInfo = { route: "passthrough", observed: false, content: false, known: true, hookId: null };
+
+/** The sensor's own answer to the probe: `received`, or `no-salt` from a sensor that records nothing. Null for any other request. */
+export function probeAnswer(method: string, path: string, status: "received" | "no-salt"): Response | null {
+  if (method !== "GET" || path !== PROBE_PATH) return null;
+  return new Response(null, { status: 204, headers: { [PROBE_HEADER]: status, "cache-control": "no-store" } });
+}
 
 let warnedNoAssertionKey = false;
 
@@ -122,6 +128,8 @@ export async function finish(state: State): Promise<SensorRecord[]> {
   record.observed_ts = iso(now);
   // A rule of a kind this sensor does not implement ran dry: say so on every observed request, so the console shows it waiting on a newer sensor.
   for (const rule of policy.rules) if (rule.kind === "unknown") state.decisions.push({ rule: rule.id, kind: "observe", mode: "dry_run", outcome: "skipped", reason: `unsupported_kind:${rule.unknown_kind}` });
+  // The embedded default and Scope's own default document are both version 0: a record says which ran.
+  if (policy.fallback) state.decisions.push({ rule: "policy", kind: "observe", mode: "live", outcome: "errored", reason: `built-in default: ${policy.fallback}` });
   record["scope.decision"] = [...state.decisions].sort((a, b) => ruleIndex(policy, a.rule) - ruleIndex(policy, b.rule));
   if (state.gate && state.gateReasons.length) {
     const reason = [...new Set(state.gateReasons)].join("; ");
@@ -129,7 +137,9 @@ export async function finish(state: State): Promise<SensorRecord[]> {
   }
   const requestBody = state.requestBody?.parsed ?? null;
   const responseBody = record["scope.body.response"] ?? null;
-  const authorizeClient = state.route.route === "oauth.authorize" ? state.url.searchParams.get("client_id") : null;
+  // Redacted as a body's client_id is, so the client is keyed the same on every route.
+  const authorizeQuery = state.route.route === "oauth.authorize" ? state.url.searchParams.get("client_id") : null;
+  const authorizeClient = authorizeQuery ? await redactString(authorizeQuery, policy, io) : null;
   const keys = await bodyKeys(state.route.route, policy.surfaces, requestBody, responseBody, authorizeClient, state.route.hookId, io);
   record["scope.key.device_code"] = keys.device_code;
   record["scope.key.user_code"] = keys.user_code;
@@ -144,6 +154,10 @@ export async function finish(state: State): Promise<SensorRecord[]> {
     record["scope.key.device_code"] = null;
     record["scope.key.user_code"] = null;
     if (!state.route.hookId) record["scope.key.hook"] = null;
+  } else {
+    // Cut after the keys above were read: they come from the whole redacted body.
+    record["scope.body.request"] = allowedFields(record["scope.body.request"], policy.allowFields) as ScopeRequest1["scope.body.request"];
+    record["scope.body.response"] = allowedFields(record["scope.body.response"], policy.allowFields) as ScopeRequest1["scope.body.response"];
   }
   const records: SensorRecord[] = [record, ...state.declarations];
   io.ship(records);
@@ -242,7 +256,8 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
   }
   const method = request.method;
   const bodyless = method === "GET" || method === "HEAD";
-  const probe = method === "GET" && path === PROBE_PATH;
+  const probed = probeAnswer(method, path, "received");
+  const probe = probed !== null;
   const route = probe ? PROBE_ROUTE : classifyRoute(path, policy);
   const base: Omit<State, "record"> = {
     io,
@@ -282,6 +297,7 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
   const state: State = { ...base, record };
   try {
     const H = policy.headers;
+    const said = async (value: unknown): Promise<string | null> => (typeof value === "string" ? redactString(value, policy, io) : null);
     const ua = request.headers.get("user-agent") ?? "";
     const reqType = request.headers.get("content-type") ?? "";
     const bearer = request.headers.get(H.credential)?.replace(/^Bearer\s+/i, "") ?? null;
@@ -302,25 +318,27 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
     record["scope.reader"] = classifyReader(ua, state.accept, fetchMetadata, signatureAgent, facts.platform_bot, policy.surfaces?.clients ?? null);
     record["scope.key.credential"] = await hashedOrNull(bearer, io);
     record["scope.key.install"] = await hashedOrNull(install, io);
-    record["scope.key.setup_header"] = H.setup ? request.headers.get(H.setup) : null;
+    // The setup header carries the session id the gate handed out, hashed alike so the two join; a reference code stays readable.
+    const setup = H.setup ? request.headers.get(H.setup) : null;
+    record["scope.key.setup_header"] = setup && !isReference(setup) ? await io.hash(setup) : setup;
     record["scope.key.agent_header"] = H.agent ? request.headers.get(H.agent) : null;
-    record["scope.key.intent_header"] = H.intent ? request.headers.get(H.intent) : null;
+    record["scope.key.intent_header"] = await said(H.intent ? request.headers.get(H.intent) : null);
     record["scope.key.client_header"] = H.client ? request.headers.get(H.client) : null;
     record["scope.key.reference"] = reference && isReference(reference) ? reference : null;
-    record["mcp.session.id"] = request.headers.get(H.session);
+    record["mcp.session.id"] = await hashedOrNull(request.headers.get(H.session), io);
 
     if (probe) {
       record["http.response.status_code"] = 204;
       state.answered = true;
       state.returnedAt = io.now();
       const records = finish(state);
-      return { kind: "answer", response: new Response(null, { status: 204, headers: { [PROBE_HEADER]: "received", "cache-control": "no-store" } }), state, records };
+      return { kind: "answer", response: probed, state, records };
     }
 
     // `head`: built from its head alone, the request left its body unread for the app; nothing is read or answered from it.
     if (route.observed && !bodyless && !head) {
       const text = await request.clone().text();
-      state.requestBody = await readBody(text, reqType, policy, io);
+      state.requestBody = await readBody(text, reqType, policy, io, "request");
       record["scope.body.request"] = state.requestBody.parsed as ScopeRequest1["scope.body.request"];
       record["scope.body.truncated"] = state.requestBody.truncated;
       record["scope.request.bytes"] = state.requestBody.bytes;
@@ -340,9 +358,12 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
         record["scope.mcp.tools"] = mcp.tools;
         record["scope.mcp.client"] = mcp.client;
       }
-      record["scope.oauth"] = oauthFacts(route.route, state.requestBody.parsed, url.searchParams);
-    } else if (route.route === "oauth.authorize") {
-      record["scope.oauth"] = oauthFacts(route.route, null, url.searchParams);
+      if (route.route !== "oauth.authorize") record["scope.oauth"] = oauthFacts(route.route, state.requestBody.parsed, url.searchParams);
+    }
+    if (route.route === "oauth.authorize") {
+      // The authorize query is read as sent: the URLs it names are redacted like url.query.
+      const oauth = oauthFacts(route.route, null, url.searchParams);
+      record["scope.oauth"] = oauth && { ...oauth, client_id_url: await said(oauth.client_id_url), resource: await said(oauth.resource) };
     }
 
     // An intent header on a call (the API samples show one) is a declaration against the call's credential.
@@ -355,7 +376,8 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
     // the agents whose fetch tool cannot POST.
     const finder = policy.rules.find((r) => r.kind === "finder" && r.route === path && (method === "POST" || method === "GET"));
     if (finder) {
-      const text = finderText(state.requestBody?.parsed ?? {}, url).trim();
+      // The finder answers a JSON task as sent, not its redacted copy; only the declaration is redacted.
+      const text = finderText(state.messages && !state.batch ? state.messages[0] : (state.requestBody?.parsed ?? {}), url).trim();
       if (head && !text) decide(state.decisions, finder, facts.environment, "skipped", "the body was left unread for the app");
       else {
         const token = mintReference(io);
@@ -367,7 +389,7 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
           record["http.response.status_code"] = text ? 200 : 400;
           record["scope.reference_minted"] = text ? token : null;
           record["scope.gateway"] = { declared: text ? 1 : 0, forwarded: 0 };
-          if (text) state.declarations.push(declaration(state, "finder", text, { "scope.reference_minted": token }));
+          if (text) state.declarations.push(declaration(state, "finder", await redactString(text, policy, io), { "scope.reference_minted": token }));
           state.answered = true;
           state.returnedAt = io.now();
           const records = finish(state);
@@ -383,15 +405,16 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
     if (gate && state.messages) {
       state.gate = gate;
       state.gateLive = isLive(gate, facts.environment);
-      const session = record["mcp.session.id"] ?? uuidv4(io);
+      const session = request.headers.get(H.session) ?? uuidv4(io);
       try {
         const split = gateRequest(state.messages, gate, session);
         if (split.declared.length) state.gateReasons.push("declaration answered");
         if (state.gateLive) {
           state.locals = split.local;
           for (const declared of split.declared) {
-            const text = typeof declared.intent === "string" ? declared.intent : JSON.stringify(declared);
-            state.declarations.push(declaration(state, "gate", text, { task: typeof declared.task === "string" ? declared.task : null, found_via: typeof declared.found_via === "string" ? declared.found_via : null, agent: typeof declared.agent === "string" ? declared.agent : null, "mcp.session.id": record["mcp.session.id"] }));
+            // What the agent declared is redacted like any body before it is recorded: an agent may paste a key into it.
+            const text = typeof declared.intent === "string" ? await redactString(declared.intent, policy, io) : JSON.stringify(await redact(declared, policy, io, "request"));
+            state.declarations.push(declaration(state, "gate", text, { task: await said(declared.task), found_via: await said(declared.found_via), agent: await said(declared.agent), "mcp.session.id": await io.hash(session) }));
           }
           record["scope.gateway"] = { declared: split.declared.length, forwarded: split.forward.length };
           if (split.forward.length === 0) {

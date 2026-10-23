@@ -189,7 +189,7 @@ export type ScopePolicy1 = {
   };
   secrets: {
     /**
-     * body fields hashed by name wherever they appear
+     * body fields hashed by name wherever they appear, beside the names the sensor always hashes in bodies and URLs (api_key, key, token, access_token, refresh_token, id_token, code, client_secret, password, secret, signature, sig, session_id, in any case or spelling, or a name whose last word is key, token, secret, password, signature or sig; such a field's whole value is hashed unless it is true or false, except code in an answer's body (usually an error code); a valid reference code stays readable only where headers.reference or a door's fields.reference names the field)
      */
     fields?: string[];
     /**
@@ -233,16 +233,19 @@ export type ScopePolicy1 = {
     key_header?: string | null;
   };
   /**
-   * false is the lightest form: bodies are read where a rule needs them and never leave; true records the bodies of the routes the surface map observes, every field but secrets.fields and secrets.shapes as sent
+   * false is the lightest form: bodies are read where a rule needs them and never leave; true records, on the routes the surface map observes and for an error answer (400 or above) on any route it does not pass through, only the fields observe.bodies.allow_fields names, with secret names and shapes hashed; true with no allowed field records no body
    */
   record_bodies?: boolean;
   /**
-   * reserved for the body allow list
+   * the body allowlist; routes, max_bytes and json_rpc are reserved and not read
    */
   observe?: {
     bodies?: {
       routes?: unknown[];
-      allow_fields?: unknown[];
+      /**
+       * the body field names that may leave, at any depth: an allowed field keeps its whole value, any other is dropped; a body with no allowed field is recorded as null
+       */
+      allow_fields?: string[];
       max_bytes?: number;
       json_rpc?: boolean;
     };

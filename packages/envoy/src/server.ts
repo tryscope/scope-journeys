@@ -2,7 +2,7 @@ import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import { createHash, randomBytes } from "node:crypto";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, loadPolicy, secureUrl, trustedProxies, classifyRoute, effectiveMode, isTextFace, observe, observeResponse, type CompiledPolicy, type Environment, type Io, type LogLevel, type Observation, type Responded, type ScopeDecision1, type SensorRecord, type State } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, loadPolicy, probeAnswer, secureUrl, trustedProxies, classifyRoute, effectiveMode, isTextFace, observe, observeResponse, type CompiledPolicy, type Environment, type Io, type LogLevel, type Observation, type Responded, type ScopeDecision1, type SensorRecord, type State } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { deliver, droppedSoFar } from "./deliver.js";
@@ -94,6 +94,14 @@ export function parseHeaders(map: HeaderMap | undefined): { headers: Headers; ps
 
 const setHeader = (name: string, value: string): HeaderValueOption => ({ header: { key: name, raw_value: Buffer.from(value, "latin1") }, append_action: OVERWRITE_IF_EXISTS_OR_ADD });
 
+/** A response the sensor answers itself, as Envoy's immediate response. */
+async function immediateFrom(response: Response): Promise<ProcessingResponse> {
+  const set_headers: HeaderValueOption[] = [];
+  response.headers.forEach((value, name) => set_headers.push(setHeader(name, value)));
+  const bytes = Buffer.from(await response.arrayBuffer());
+  return { immediate_response: { status: { code: response.status }, ...(set_headers.length ? { headers: { set_headers } } : {}), ...(bytes.length ? { body: bytes } : {}) } };
+}
+
 /** What Envoy must change so the message leaves as the core built it: the headers whose value differs, the ones the core dropped. */
 export function mutationBetween(incoming: Headers, outbound: Headers): HeaderMutation | undefined {
   const set_headers: HeaderValueOption[] = [];
@@ -166,7 +174,7 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
   const cache = memoryCache(now);
   const warn = (line: string): void => log("warn", line);
   let warnedNoInstall = false;
-  let warnedNoSalt = false;
+  if (!salt) warn("journeys: JOURNEYS_SALT is not set; recording nothing and letting every request through untouched (run `npx scope-journeys init --envoy`)");
 
   const load = async (): Promise<Loaded> => {
     if (!installId && !policyUrl && !warnedNoInstall) {
@@ -174,15 +182,7 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
       warn("journeys: JOURNEYS_INSTALL_ID is not set; forwarding every request untouched under the default policy (run `npx scope-journeys init --envoy`)");
     }
     const state = await loadPolicy({ url: policyUrl, installId, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
-    let policy = state.policy;
-    if (!salt) {
-      if (!warnedNoSalt) {
-        warnedNoSalt = true;
-        warn("journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init --envoy`)");
-      }
-      policy = (await loadPolicy({ url: null, installId: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
-    }
-    return { policy, environment: (state.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: state.saltEpoch ?? 1 };
+    return { policy: state.policy, environment: (state.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: state.saltEpoch ?? 1 };
   };
 
   const io = (host: string): Io => ({
@@ -203,7 +203,7 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
 
   return {
     process(call) {
-      const exchange = new Exchange({ load, io, name, installId, issuer, proxies, env, log, write: (response) => call.write(response) });
+      const exchange = new Exchange({ recording: Boolean(salt), load, io, name, installId, issuer, proxies, env, log, write: (response) => call.write(response) });
       call.on("data", (message: ProcessingRequest) => exchange.push(message));
       call.on("end", () => {
         void exchange.settled().then(() => call.end());
@@ -217,6 +217,8 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
 }
 
 interface ExchangeDeps {
+  /** False without a salt: nothing can be hashed, so the probe is answered and every message continues untouched. */
+  recording: boolean;
   load: () => Promise<Loaded>;
   io: (host: string) => Io;
   name: string;
@@ -274,6 +276,8 @@ class Exchange {
   }
 
   private async handle(message: ProcessingRequest): Promise<void> {
+    // Envoy sends some messages unasked (observability mode streams every body): without a salt each one continues untouched.
+    if (!this.deps.recording && message.request && message.request !== "request_headers") return this.write(continueFor(message));
     switch (message.request) {
       case "request_headers":
         return this.onRequestHeaders(message.request_headers ?? {});
@@ -298,6 +302,10 @@ class Exchange {
     this.requestHeaders = headers;
     const authority = pseudo[":authority"] ?? headers.get("host") ?? "localhost";
     this.url = new URL(`${pseudo[":scheme"] ?? "http"}://${authority}${pseudo[":path"] ?? "/"}`);
+    if (!this.deps.recording) {
+      const probe = probeAnswer(this.method, this.url.pathname, "no-salt");
+      return this.write(probe ? await immediateFrom(probe) : { request_headers: { response: { status: CONTINUE } } });
+    }
     this.loaded = await this.deps.load();
     if (message.end_of_stream || bodyless(this.method)) return this.observeNow(null, "request_headers");
     // The route decides whether the body is read: observed routes (the API, the MCP server, the
@@ -326,14 +334,7 @@ class Exchange {
     const request = new Request(url, { method: this.method, headers: this.requestHeaders, body: body && !bodyless(this.method) ? new Uint8Array(body) : null, redirect: "manual" });
     const observed: Observation = await observe(request, policy, facts, io);
     this.state = observed.state;
-    if (observed.kind === "answer") {
-      const response = observed.response;
-      const set_headers: HeaderValueOption[] = [];
-      response.headers.forEach((value, name) => set_headers.push(setHeader(name, value)));
-      const bytes = Buffer.from(await response.arrayBuffer());
-      this.write({ immediate_response: { status: { code: response.status }, ...(set_headers.length ? { headers: { set_headers } } : {}), ...(bytes.length ? { body: bytes } : {}) } });
-      return;
-    }
+    if (observed.kind === "answer") return this.write(await immediateFrom(observed.response));
     const outbound = new Headers(observed.request.headers);
     const header_mutation = mutationBetween(this.requestHeaders, outbound);
     const common: CommonResponse = { status: CONTINUE, ...(header_mutation ? { header_mutation } : {}) };
@@ -423,7 +424,7 @@ class Exchange {
     this.write({ response_body: { response: common } });
   }
 
-  /** The core's response path on what Envoy showed; the record finishes and ships from inside the core. A streamed body is drained so the tee never backs up. */
+  /** The core's response path on what Envoy showed; the record finishes and ships from inside the core. A streamed body is drained so its chunks never queue. */
   private finishResponse(upstream: Response): Responded {
     const state = this.state as State;
     const responded = observeResponse(upstream, state);

@@ -75,7 +75,7 @@ export function policyRefusals(document: unknown): Finding[] {
   const at = (path: string): unknown => path.split("/").slice(1).reduce<unknown>((value, key) => (value !== null && typeof value === "object" ? (value as Record<string, unknown>)[key.replace(/~1/g, "/").replace(/~0/g, "~")] : undefined), candidate);
   return errors
     .filter((e) => {
-      if (e.keyword !== "type" || reshaped.has(e.instancePath) || !/^\/(routes|surfaces|secrets|headers|forward\/headers|record_bodies|rules|assertion|signers)(\/|$)/.test(e.instancePath) || at(e.instancePath) === null) return false;
+      if (e.keyword !== "type" || reshaped.has(e.instancePath) || !/^\/(routes|surfaces|secrets|headers|forward\/headers|record_bodies|observe\/bodies\/allow_fields|rules|assertion|signers)(\/|$)/.test(e.instancePath) || at(e.instancePath) === null) return false;
       const rule = /^\/rules\/(\d+)\//.exec(e.instancePath);
       const kind = rule ? at(`/rules/${rule[1]}/kind`) : null;
       return !rule || (RULE_KINDS as readonly unknown[]).includes(kind);

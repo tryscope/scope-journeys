@@ -81,8 +81,8 @@ The host on every record (`server.address`, the `{host}` the rules fill, the aut
 | a request names this sensor in `Via` without its marker (its own hop come back without it, or a visitor's forgery) | the probe, the finder and a batch the gate answers whole are answered as usual; anything else is recorded as received, with no response, and handed to your app without a second hop, which could loop; one log line says so. When it is the sensor's own hop (something strips the marker, or the salt differs between two deployments), the request is recorded twice, once in full and once as received |
 | the hop to your app fails after the request left: the connection drops, or no answer within 30 seconds | the request is never handed to your app a second time: the client gets a 502, or a 504 on the timeout; the record carries the status and the error's class |
 | no install id (and no policy URL) | one log line naming `journeys init`; every request goes to your logic with no inner hop, the probe is still answered |
-| no salt | one log line naming `journeys init`; every request passes through under the forward-only default |
-| the policy fetch fails | the last good policy, or the embedded forward-only default |
+| no salt | one log line naming `journeys init`; nothing is recorded or sent, every request goes to your app untouched, and the probe answers `x-journeys-probe: no-salt` |
+| the policy fetch fails | the last good policy, or the embedded forward-only default, whose records say so (a `policy` decision with the reason) |
 | Scope's ingest is down, or answers 429 | one retry (after `Retry-After`, capped at 60 seconds, on a 429), then the record is dropped and counted; nothing waits |
 
 What it records is in `TELEMETRY.md` of `scope-journeys`; the data-handling statement is `SECURITY.md`.

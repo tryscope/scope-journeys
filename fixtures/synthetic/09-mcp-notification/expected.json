@@ -77,7 +77,7 @@
       "scope.key.device_code": null,
       "scope.key.user_code": null,
       "scope.key.oauth_client": null,
-      "mcp.session.id": "sess-fixture-04",
+      "mcp.session.id": "d7cb7389a352",
       "scope.key.hook": null,
       "scope.key.reference": null,
       "scope.key.setup_header": null,
@@ -91,10 +91,7 @@
       "scope.mcp.tools": [],
       "scope.mcp.client": null,
       "scope.oauth": null,
-      "scope.body.request": {
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized"
-      },
+      "scope.body.request": null,
       "scope.body.response": null,
       "scope.body.truncated": false,
       "scope.response.headers": {

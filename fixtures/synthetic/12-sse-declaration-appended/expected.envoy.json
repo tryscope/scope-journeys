@@ -51,7 +51,7 @@
       "http.request.header.content-type": "application/json",
       "http.response.header.content-type": "text/event-stream",
       "scope.request.bytes": 272,
-      "scope.response.bytes": null,
+      "scope.response.bytes": 373,
       "scope.cache": null,
       "scope.timing": "MASKED",
       "scope.client.address_hash": "f8d68a8e6b22",
@@ -81,7 +81,7 @@
       "scope.key.device_code": null,
       "scope.key.user_code": null,
       "scope.key.oauth_client": null,
-      "mcp.session.id": "sess-fixture-04",
+      "mcp.session.id": "d7cb7389a352",
       "scope.key.hook": null,
       "scope.key.reference": "5Z4KJ7N9",
       "scope.key.setup_header": null,
@@ -100,32 +100,22 @@
       "scope.oauth": null,
       "scope.body.request": [
         {
-          "jsonrpc": "2.0",
-          "id": 2,
-          "method": "tools/list"
+          "id": 2
         },
         {
-          "jsonrpc": "2.0",
           "id": 3,
-          "method": "tools/call",
           "params": {
-            "name": "declare_intent",
             "arguments": {
-              "intent": "Post to Slack when an order is added",
-              "task": "notification",
-              "found_via": "user",
               "agent": "codex"
             }
           }
         }
       ],
-      "scope.body.response": {
-        "sse": "event: message\nid: 14\ndata: {\"jsonrpc\": \"2.0\", \"id\": 2, \"result\": {\"tools\": [{\"name\": \"list_hooks\", \"description\": \"List the hooks in the workspace.\", \"inputSchema\": {\"type\": \"object\", \"properties\": {}}}, {\"name\": \"create_hook\", \"description\": \"Create a catch hook.\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}}, \"required\": [\"name\"]}}]}}\n\n"
-      },
+      "scope.body.response": null,
       "scope.body.truncated": false,
       "scope.response.headers": {
         "content-type": "text/event-stream",
-        "mcp-session-id": "sess-fixture-04",
+        "mcp-session-id": "d7cb7389a352",
         "www-authenticate": null,
         "location": null,
         "cache-control": "no-cache",
@@ -163,7 +153,7 @@
       "agent": "codex",
       "scope.client.address_hash": "f8d68a8e6b22",
       "scope.key.credential": null,
-      "mcp.session.id": "sess-fixture-04",
+      "mcp.session.id": "d7cb7389a352",
       "scope.key.reference": "5Z4KJ7N9",
       "scope.reference_minted": null
     }

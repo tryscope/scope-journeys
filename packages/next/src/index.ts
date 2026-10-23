@@ -1,4 +1,4 @@
-import { DEFAULT_API_URL, PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, finishLooped, finishUnsent, forwardObserved, forwardedUrl, hopUrl, loadPolicy, namesSensor, observe, originUrl, passHeaders, secureUrl, trustedProxies, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, finishLooped, finishUnsent, forwardObserved, forwardedUrl, hopUrl, loadPolicy, namesSensor, observe, originUrl, passHeaders, probeAnswer, secureUrl, trustedProxies, type Environment, type Io, type SensorRecord } from "scope-journeys";
 import type { NextFetchEvent, NextRequest } from "next/server.js";
 import { NextResponse } from "next/server.js";
 
@@ -110,22 +110,25 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
       const apiUrl = secureUrl(options.apiUrl ?? env.JOURNEYS_API_URL ?? DEFAULT_API_URL, "JOURNEYS_API_URL", (line) => log("warn", line));
       const cred = credentialOf(request, env);
       const policyUrl = options.policyUrl ?? env.JOURNEYS_POLICY_URL ?? (apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}/policy` : null);
+      const salt = env.JOURNEYS_SALT;
       if (!installId && !policyUrl) {
         if (!warnedNoInstall) {
           warnedNoInstall = true;
           log("warn", "journeys: JOURNEYS_INSTALL_ID is not set; passing every request to the app untouched, the probe aside (run `npx scope-journeys init`)");
         }
-        if (request.method === "GET" && url.pathname === PROBE_PATH) return new Response(null, { status: 204, headers: { [PROBE_HEADER]: "received", "cache-control": "no-store" } });
-        return passTo(request, event);
+        return probeAnswer(request.method, url.pathname, salt ? "received" : "no-salt") ?? passTo(request, event);
+      }
+      if (!salt) {
+        // Without a salt nothing can be hashed, so nothing is recorded: the app answers, the probe says why.
+        if (!warnedNoSalt) {
+          warnedNoSalt = true;
+          log("warn", "journeys: JOURNEYS_SALT is not set; recording nothing and passing every request to the app untouched (run `npx scope-journeys init`)");
+        }
+        return probeAnswer(request.method, url.pathname, "no-salt") ?? passTo(request, event);
       }
       const cache = memoryCache(now);
       const loaded = await loadPolicy({ url: policyUrl, installId, credential: cred, fetch: fetchFn, now: now(), cache, log: (line) => log("warn", line) });
-      const salt = env.JOURNEYS_SALT;
-      const policy = salt ? loaded.policy : (await loadPolicy({ url: null, installId: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
-      if (!salt && !warnedNoSalt) {
-        warnedNoSalt = true;
-        log("warn", "journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init`)");
-      }
+      const { policy } = loaded;
       const issuer = apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}` : null;
       const identity = { install: installId, name, environment: (loaded.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(env.JOURNEYS_ASSERTION_KEY, issuer) };
       const facts = platformFacts(request.headers, identity, counted);
@@ -140,7 +143,7 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
       const io: Io = {
         now,
         random: (bytes) => crypto.getRandomValues(new Uint8Array(bytes)),
-        hash: async (value) => hex(await crypto.subtle.digest("SHA-256", encoder.encode(`${salt ?? ""}:${value}`))).slice(0, 12),
+        hash: async (value) => hex(await crypto.subtle.digest("SHA-256", encoder.encode(`${salt}:${value}`))).slice(0, 12),
         forward: async (outbound) => {
           // The core forwards to the observed URL and fetches a signer's key directory by another:
           // the URL's host tells the two apart. The hop itself goes to the listen address.

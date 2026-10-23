@@ -489,20 +489,20 @@ test("a pattern that repeats a group holding a repeat, the shape that can take e
 
 test("a uri field names a whole query parameter, never a pattern", async () => {
   const policy = compilePolicy({ ...POLICY, forward: { headers: {} }, secrets: { ...(POLICY.secrets as object), uri_fields: { link: "c.de", other: "(", priced: "$&" } } });
-  const out = (await redact({ link: "https://acme.example/device?code=KEEP&xc.de=KEEP&c.de=SECRET", other: "https://acme.example/device?(=SECRET", priced: "$&=SECRET" }, policy, makeIo({ upstream: { status: 200, headers: {}, body: "" } }))) as Record<string, string>;
-  assert.match(out.link ?? "", /^https:\/\/acme\.example\/device\?code=KEEP&xc\.de=KEEP&c\.de=h:[0-9a-f]{12}$/);
+  const out = (await redact({ link: "https://acme.example/device?cade=KEEP&xc.de=KEEP&c.de=SECRET", other: "https://acme.example/device?(=SECRET", priced: "$&=SECRET" }, policy, makeIo({ upstream: { status: 200, headers: {}, body: "" } }), "request")) as Record<string, string>;
+  assert.match(out.link ?? "", /^https:\/\/acme\.example\/device\?cade=KEEP&xc\.de=KEEP&c\.de=h:[0-9a-f]{12}$/);
   assert.match(out.other ?? "", /^https:\/\/acme\.example\/device\?\(=h:[0-9a-f]{12}$/);
   assert.match(out.priced ?? "", /^\$&=h:[0-9a-f]{12}$/);
 });
 
 test("a uri field has every copy of its parameter hashed, and is redacted by shape like any other string", async () => {
   const policy = compilePolicy({ ...POLICY, forward: { headers: {} }, secrets: { ...(POLICY.secrets as object), uri_fields: { link: "code", plain: "code", marked: "code" } } });
-  const out = (await redact({ link: "https://acme.example/device?code=FIRST&code=SECOND&key=ah_abcdefghijklmnopqrstuvwx", plain: "https://acme.example/device?key=ah_abcdefghijklmnopqrstuvwx", marked: "https://acme.example/device?code=FIRST#code=SECOND" }, policy, makeIo({ upstream: { status: 200, headers: {}, body: "" } }))) as Record<string, string>;
-  assert.match(out.link ?? "", /^https:\/\/acme\.example\/device\?code=h:[0-9a-f]{12}&code=h:[0-9a-f]{12}&key=ah:h:[0-9a-f]{12}$/);
-  assert.match(out.plain ?? "", /^https:\/\/acme\.example\/device\?key=ah:h:[0-9a-f]{12}$/, "a field without the parameter is still redacted by shape");
+  const out = (await redact({ link: "https://acme.example/device?code=FIRST&code=SECOND&x=ah_abcdefghijklmnopqrstuvwx", plain: "https://acme.example/device?x=ah_abcdefghijklmnopqrstuvwx", marked: "https://acme.example/device?code=FIRST#code=SECOND" }, policy, makeIo({ upstream: { status: 200, headers: {}, body: "" } }), "request")) as Record<string, string>;
+  assert.match(out.link ?? "", /^https:\/\/acme\.example\/device\?code=h:[0-9a-f]{12}&code=h:[0-9a-f]{12}&x=ah:h:[0-9a-f]{12}$/);
+  assert.match(out.plain ?? "", /^https:\/\/acme\.example\/device\?x=ah:h:[0-9a-f]{12}$/, "a field without the parameter is still redacted by shape");
   assert.match(out.marked ?? "", /^https:\/\/acme\.example\/device\?code=h:[0-9a-f]{12}#code=h:[0-9a-f]{12}$/, "a value ends at the fragment, and the parameter in the fragment is hashed too");
   let hashes = 0;
   const counted = { ...makeIo({ upstream: { status: 200, headers: {}, body: "" } }), hash: async () => String((hashes += 1)) };
-  await redact(JSON.parse('{"__proto__": "to be or not to be", "constructor": "a plain value"}'), policy, counted);
+  await redact(JSON.parse('{"__proto__": "to be or not to be", "constructor": "a plain value"}'), policy, counted, "request");
   assert.equal(hashes, 0, "a body key named like a built-in property of an object is no uri field");
 });
