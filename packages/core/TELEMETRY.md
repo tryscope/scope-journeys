@@ -166,7 +166,7 @@ Present: on page reads and wherever a rule matched.
 | `scope.page.injected` | array of string | the labels of the inject rules that changed the page |
 | `scope.page.bytes` | integer |  |
 | `scope.reference_minted` | reference \| null | a reference minted into a non-page answer (an error link, a finder answer); a page's reference, the helpful 404's included, is scope.page.reference_minted |
-| `scope.decision` | array of decision | what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `assertion` (the assertion could not be signed) and `hop` (errored: the hop failed after the request may have left, answered 502, or 504 on a timeout, and not sent again; skipped: the request was handed on without the hop, because the hop never left or its Via already named this sensor without the marker, so the record holds the request side and no response) |
+| `scope.decision` | array of decision | what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `assertion` (the assertion could not be signed) and `hop` (errored: the hop failed after the request may have left, answered 502, or 504 on a timeout, and not sent again; skipped: the request was handed on without the hop, because the hop never left or its Via already named this sensor without the marker, so the record holds the request side, on a Node mount without the body it left unread for the app, and no response) |
 | `scope.gateway` | object \| null | on the MCP route: how many messages the gate answered and how many it forwarded |
 | `scope.gateway.declared` | integer |  |
 | `scope.gateway.forwarded` | integer |  |

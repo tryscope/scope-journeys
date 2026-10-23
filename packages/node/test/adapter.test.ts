@@ -890,7 +890,7 @@ test("a Host that is not a host name is passed on untouched and never observed: 
   }
 });
 
-test("on a mount, a request naming this sensor in Via without its marker, a hop from a process on another salt or a visitor's forgery, is recorded from its head and handed to the app once, body whole, without a second hop: Express and Fastify", async () => {
+test("on a mount, a request naming this sensor in Via without its marker, a hop from a process on another salt or a visitor's forgery, is recorded from its head and handed to the app once, body whole, without a second hop: Express, Fastify and Hono", async () => {
   const body = JSON.stringify({ hook: "orders" });
   const send = (port: number): Promise<Response> => fetch(`http://127.0.0.1:${port}/api/v1/hooks`, { method: "POST", headers: { ...agent, "content-type": "application/json", via: "1.1 scope-journeys", "x-journeys-inner": "a-marker-from-another-salt" }, body });
   const assertLooped = (w: World, seen: Seen[]): void => {
@@ -941,6 +941,30 @@ test("on a mount, a request naming this sensor in Via without its marker, a hop 
     assertLooped(fw, fseen);
   } finally {
     await fastify.close();
+  }
+
+  reset();
+  const hw = world();
+  const hseen: Seen[] = [];
+  const hono = new Hono();
+  hono.use(honoJourneys({ env, fetch: hw.fetch, log: () => undefined }));
+  hono.post("/api/v1/hooks", async (c) => {
+    hseen.push({ path: c.req.path, headers: Object.fromEntries(Object.entries(c.req.header())), body: await c.req.text() });
+    return c.body(null, 201);
+  });
+  const honoServer = serve({ fetch: hono.fetch, port: 0, hostname: "127.0.0.1" });
+  const honoPort = await new Promise<number>((resolve) => {
+    honoServer.once("listening", () => {
+      const bound = honoServer.address();
+      resolve(typeof bound === "object" && bound ? bound.port : 0);
+    });
+  });
+  try {
+    assert.equal((await send(honoPort)).status, 201);
+    await until(() => hw.shipped.length === 1, "the request is recorded");
+    assertLooped(hw, hseen);
+  } finally {
+    honoServer.close();
   }
 });
 

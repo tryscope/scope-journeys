@@ -104,7 +104,7 @@ export function honoJourneys(options: NodeOptions = {}): (c: HonoLikeContext, ne
         socket: incoming ? socketFacts(incoming, sensor.proxies) : { address: sensor.proxies === null ? null : forwardedClient(request.headers.get("x-forwarded-for"), sensor.proxies), peer: null, tls_protocol_version: null, network_protocol_version: null },
         localPort: incoming?.socket?.localPort ?? null,
         afterResponse: outgoing ? afterResponse(outgoing) : (work) => work(),
-        head: looped,
+        head: looped && request.method !== "GET" && request.method !== "HEAD",
       };
       const response = await sensor.sense(exchange);
       if (response) return response;

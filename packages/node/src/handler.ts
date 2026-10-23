@@ -266,7 +266,7 @@ export function createNodeHandler(options: NodeOptions = {}): NodeHandler {
     if (req.method === "TRACE") return send(res, new Response("Not Implemented", { status: 501, headers: { "content-type": "text/plain" } }));
     let exchange: Exchange;
     try {
-      const head = observed && loops(req);
+      const head = observed && loops(req) && req.method !== "GET" && req.method !== "HEAD";
       exchange = { request: toRequest(req, sensor.proxies !== null, sensor.forwardedHost, head), socket: socketFacts(req, sensor.proxies), localPort: req.socket?.localPort ?? null, afterResponse: afterResponse(res), head };
     } catch (error) {
       sensor.log("error", `journeys: the request could not be read: ${error instanceof Error ? error.message : String(error)}`);
