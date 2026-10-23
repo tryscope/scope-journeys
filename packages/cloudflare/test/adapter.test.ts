@@ -1,9 +1,11 @@
 // The Cloudflare form under the workerd pool: the platform facts from a synthetic request.cf, the
 // policy cache's states, delivery's batching and retry, the inner hop's headers on a request with a
-// body.
-import { expect, test, beforeEach } from "vitest";
+// body, and a hop that fails after the request left (never sent again).
+import { beforeAll, beforeEach, expect, test } from "vitest";
 
-import { DEFAULT_API_URL, loadPolicy, resetPolicyCache } from "scope-journeys";
+import { DEFAULT_API_URL, loadPolicy, resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
+
+import { policySignature, signedNotModified, signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
 
 import { createHandler, deliver, platformFacts, resetDelivery } from "../src/index.js";
 import type { RequestWithCf } from "../src/facts.js";
@@ -12,6 +14,9 @@ import fixtureRequest from "../../../fixtures/synthetic/22-intent-header/request
 import fixtureUpstream from "../../../fixtures/synthetic/22-intent-header/upstream.json" with { type: "json" };
 
 const identity = { install: "jin_test000000000000000000", name: "test-sensor", environment: "production" as const, saltEpoch: 1, dropped: 0, version: "0.0.0-test" };
+
+// A Worker may not make keys while its module loads, so the test key is made and trusted here.
+beforeAll(async () => trustPolicyKeyForTests(TEST_POLICY_KID, (await testPolicyKeys()).publicKey));
 
 beforeEach(() => {
   resetPolicyCache();
@@ -36,27 +41,29 @@ test("facts come from request.cf and cf-connecting-ip, nulls where the zone has 
   expect(bare.platform_bot).toBeNull();
 });
 
-test("the policy cache: a fresh fetch, a 304 on the second request, the last good document on a failure, the default on a cold failure", async () => {
+test("the policy cache: a fresh fetch, a 304 on the second request, the last good document on a failure, the default on a cold failure; the signature is checked in the Workers runtime", async () => {
   const calls: string[] = [];
+  const held = JSON.stringify(policyDocument);
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const ifNoneMatch = new Headers(init?.headers).get("if-none-match");
     calls.push(ifNoneMatch ?? "fresh");
-    if (calls.length === 1) return Response.json(policyDocument, { headers: { etag: '"v3"' } });
-    if (calls.length === 2) return new Response(null, { status: 304 });
+    if (calls.length === 1) return signedPolicy(policyDocument, { install: "jin_cf", issuedAt: 1, etag: '"v3"' });
+    if (calls.length === 2) return signedNotModified(held, { install: "jin_cf", issuedAt: 2 });
     throw new Error("network down");
   }) as typeof fetch;
   const log: string[] = [];
-  const one = await loadPolicy({ url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 0, cache: null, log: (l) => log.push(l) });
+  const one = await loadPolicy({ installId: "jin_cf", url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 0, cache: null, log: (l) => log.push(l) });
   expect(one.policy.version).toBe(3);
-  expect(one.etag).toBe('"v3"');
-  const two = await loadPolicy({ url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 61_000, cache: null, log: (l) => log.push(l) });
+  expect(one.signed?.etag).toBe('"v3"');
+  const two = await loadPolicy({ installId: "jin_cf", url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 61_000, cache: null, log: (l) => log.push(l) });
   expect(calls[1]).toBe('"v3"');
   expect(two.policy).toBe(one.policy);
-  const three = await loadPolicy({ url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 122_000, cache: null, log: (l) => log.push(l) });
+  expect(log, "the 304's signature over the held body holds").toEqual([]);
+  const three = await loadPolicy({ installId: "jin_cf", url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 122_000, cache: null, log: (l) => log.push(l) });
   expect(three.policy.version).toBe(3);
   expect(log.at(-1)).toMatch(/keeping the last good policy/);
   resetPolicyCache();
-  const cold = await loadPolicy({ url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 200_000, cache: null, log: (l) => log.push(l) });
+  const cold = await loadPolicy({ installId: "jin_cf", url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 200_000, cache: null, log: (l) => log.push(l) });
   expect(cold.policy.version).toBe(0);
   expect(cold.policy.rules).toEqual([]);
   expect(log.at(-1)).toMatch(/embedded default/);
@@ -83,7 +90,7 @@ test("the hop to the origin carries Via and the policy's headers, no accept-enco
   let seen: Request | null = null;
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (url.endsWith("/policy")) return Response.json(policyDocument, { headers: { etag: '"v3"' } });
+    if (url.endsWith("/policy")) return signedPolicy(policyDocument, { install: "jin_test000000000000000000", issuedAt: Math.floor(Date.now() / 1000), etag: '"v3"' });
     if (url.startsWith("https://origin.invalid")) {
       seen = new Request(url, init);
       return new Response(fixtureUpstream.body, { status: fixtureUpstream.status, headers: fixtureUpstream.headers });
@@ -107,12 +114,69 @@ test("the hop to the origin carries Via and the policy's headers, no accept-enco
   expect(response.headers.get("content-encoding")).toBeNull();
 });
 
+test("a hop that fails after the request left is never sent again: 504 on the hop's timeout, 502 on any other failure, one fetch to the origin, the record shipped with the status and the hop's step", async () => {
+  const cases: Array<[unknown, number, string]> = [
+    [new DOMException("The operation was aborted due to timeout", "TimeoutError"), 504, "TimeoutError: answered 504, not sent again"],
+    [new Error("Network connection lost."), 502, "Error: answered 502, not sent again"],
+  ];
+  for (const [failure, status, reason] of cases) {
+    let hops = 0;
+    const shipped: Array<Record<string, unknown>> = [];
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/policy")) return signedPolicy(policyDocument, { install: "jin_test000000000000000000", issuedAt: Math.floor(Date.now() / 1000), etag: '"v3"' });
+      if (url.startsWith("https://origin.invalid")) {
+        hops += 1;
+        throw failure;
+      }
+      const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
+      shipped.push(...(JSON.parse(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text()) as Array<Record<string, unknown>>));
+      return new Response(null, { status: 202 });
+    }) as typeof fetch;
+    const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "https://origin.invalid", JOURNEYS_API_URL: "https://api.invalid" } });
+    const pending: Promise<unknown>[] = [];
+    const checkout = new Request("https://acme.example/api/v1/actions/checkout", { method: "POST", headers: { "content-type": "application/json", "user-agent": "Claude-User (claude-code/2.1.0)" }, body: JSON.stringify({ amount: 100 }) });
+    const response = await handler.fetch(checkout, {}, { waitUntil: (p) => pending.push(p), passThroughOnException: () => undefined });
+    expect(response.status).toBe(status);
+    await response.text();
+    await Promise.all(pending);
+    expect(hops, "the origin is asked once").toBe(1);
+    const record = shipped.find((r) => r.schema === "scope.request/1");
+    expect(record?.["http.response.status_code"]).toBe(status);
+    expect((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "hop")).toEqual([{ rule: "hop", kind: "observe", mode: "live", outcome: "errored", reason }]);
+    expect(record?.["scope.observer.errors"]).toEqual([]);
+  }
+});
+
+test("an origin that is not an http or https URL is refused before the hop: the request is left to passThroughOnException, never answered 502", async () => {
+  let hops = 0;
+  const fetcher = (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (url.endsWith("/policy")) return signedPolicy(policyDocument, { install: "jin_test000000000000000000", issuedAt: Math.floor(Date.now() / 1000), etag: '"v3"' });
+    if (!url.startsWith("https://api.invalid")) hops += 1;
+    return new Response(null, { status: 202 });
+  }) as typeof fetch;
+  const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "origin.example.com", JOURNEYS_API_URL: "https://api.invalid" } });
+  await expect(handler.fetch(new Request("https://acme.example/docs/quickstart", { headers: { accept: "text/html" } }), {}, { waitUntil: () => undefined, passThroughOnException: () => undefined })).rejects.toThrow(/JOURNEYS_ORIGIN is not an http or https URL/);
+  // An origin with no host, checked alone: the visitor's path never names where the hop goes.
+  const hostless = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "https://", JOURNEYS_API_URL: "https://api.invalid" } });
+  await expect(hostless.fetch(new Request("https://acme.example/example.com/checkout", { headers: { accept: "text/html" } }), {}, { waitUntil: () => undefined, passThroughOnException: () => undefined })).rejects.toThrow(/JOURNEYS_ORIGIN is not an http or https URL/);
+  expect(hops).toBe(0);
+  // An empty value is unset: the hop goes to the request's own URL.
+  const unset = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "", JOURNEYS_API_URL: "https://api.invalid" } });
+  const pending: Promise<unknown>[] = [];
+  const response = await unset.fetch(new Request("https://acme.example/docs/quickstart", { headers: { accept: "text/html" } }), {}, { waitUntil: (p) => pending.push(p), passThroughOnException: () => undefined });
+  await response.text();
+  await Promise.all(pending);
+  expect(hops).toBe(1);
+});
+
 test("the policy never chooses where traffic or records go: the hop goes to JOURNEYS_ORIGIN and the records to Scope's production API by default, whatever the policy's origin and report say", async () => {
   const urls: string[] = [];
   const fetcher = (async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     urls.push(url);
-    if (url.endsWith("/policy")) return Response.json({ ...policyDocument, origin: "https://evil.example", report: { url: "https://evil.example/ingest" } }, { headers: { etag: '"v3"' } });
+    if (url.endsWith("/policy")) return signedPolicy({ ...policyDocument, origin: "https://evil.example", report: { url: "https://evil.example/ingest" } }, { install: "jin_test000000000000000000", issuedAt: Math.floor(Date.now() / 1000), etag: '"v3"' });
     if (url.startsWith("https://origin.invalid")) return new Response("<!doctype html><html><body><h1>Quickstart</h1></body></html>", { status: 200, headers: { "content-type": "text/html" } });
     return new Response(null, { status: 202 });
   }) as typeof fetch;
@@ -174,23 +238,24 @@ test("delivery on a 429: one retry after Retry-After (capped), then the batch is
   expect(droppedSoFar()).toBe(0);
 });
 
-test("the policy answer's environment and salt epoch: taken from the headers, kept from the last answer when a later one carries none, epoch 1 and no environment before any answer", async () => {
+test("the policy answer's environment and salt epoch: taken from the signed headers, an answer without them refused and the last one's kept, none before any answer", async () => {
   resetPolicyCache();
   let call = 0;
   const fetcher = (async () => {
     call += 1;
-    if (call === 1) return Response.json(policyDocument, { headers: { etag: '"v3"', "x-journeys-environment": "preview", "x-journeys-salt-epoch": "2" } });
-    return Response.json(policyDocument, { headers: { etag: '"v4"' } });
+    if (call === 1) return signedPolicy(policyDocument, { install: "jin_cf", issuedAt: 1, environment: "preview", saltEpoch: "2", etag: '"v3"' });
+    const body = JSON.stringify(policyDocument);
+    return new Response(body, { headers: { etag: '"v4"', "x-journeys-signature": await policySignature("jin_cf", "production", "1", 2, body) } });
   }) as typeof fetch;
-  const cold = await loadPolicy({ url: null, credential: null, fetch: fetcher, now: 0, cache: null, log: () => undefined });
+  const cold = await loadPolicy({ installId: null, url: null, credential: null, fetch: fetcher, now: 0, cache: null, log: () => undefined });
   expect(cold.saltEpoch).toBeNull();
   expect(cold.environment).toBeNull();
   resetPolicyCache();
-  const first = await loadPolicy({ url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 0, cache: null, log: () => undefined });
+  const first = await loadPolicy({ installId: "jin_cf", url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 0, cache: null, log: () => undefined });
   expect(first.environment).toBe("preview");
   expect(first.saltEpoch).toBe(2);
-  const second = await loadPolicy({ url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 61_000, cache: null, log: () => undefined });
-  expect(second.etag).toBe('"v4"');
+  const second = await loadPolicy({ installId: "jin_cf", url: "https://api.invalid/policy", credential: "k", fetch: fetcher, now: 61_000, cache: null, log: () => undefined });
+  expect(second.signed?.etag).toBe('"v3"');
   expect(second.environment).toBe("preview");
   expect(second.saltEpoch).toBe(2);
 });

@@ -24,7 +24,7 @@ Every install starts with every rule dry run, so the filter is written with `obs
 
 | name | secret | meaning |
 |---|---|---|
-| `JOURNEYS_INSTALL_ID` | no | your install, `jin_...` |
+| `JOURNEYS_INSTALL_ID` | no | your install, `jin_...`; the policy is signed for it, so without it the sensor runs the embedded default |
 | `JOURNEYS_INSTALL_KEY` | yes | the install key |
 | `JOURNEYS_SALT` | yes | 32 random bytes you generate; every hash is salted with it and Scope never receives it |
 | `JOURNEYS_ASSERTION_KEY` | yes | the ES256 key that signs `x-scope-assertion` on the hop |

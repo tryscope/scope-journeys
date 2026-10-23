@@ -177,7 +177,7 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
       warnedNoInstall = true;
       warn("journeys: JOURNEYS_INSTALL_ID is not set; forwarding every request untouched under the default policy (run `npx scope-journeys init --envoy`)");
     }
-    const state = await loadPolicy({ url: policyUrl, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
+    const state = await loadPolicy({ url: policyUrl, installId, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
     return { policy: state.policy, environment: (state.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: state.saltEpoch ?? 1 };
   };
 

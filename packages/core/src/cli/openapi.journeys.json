@@ -695,7 +695,7 @@
     },
     "/v1/installs/{install_id}/policy": {
       "get": {
-        "description": "### Use when\nYou are a sensor fetching the policy document: the install's pinned version, else the customer's current, else the embedded forward-only default as version 0.\n\n### Preconditions\n- The install's own key or OIDC token\n- If-None-Match with the ETag of the cached document\n\n### Durable effect\nNone, a read.\n\n### This response does not mean\n304 means the cached document is current for another minute; a sensor keeps its last good document on any failure.\n\n### Next endpoint\n`createRequests`\n\n### Common conflicts\n\n\n### Example\n`GET /v1/installs/{install_id}/policy`",
+        "description": "### Use when\nYou are a sensor fetching the policy document, signed by Scope: the install's pinned version, else the customer's current, else the embedded forward-only default as version 0.\n\n### Preconditions\n- The install's own key or OIDC token\n- If-None-Match with the ETag of the cached document\n\n### Durable effect\nNone, a read.\n\n### This response does not mean\n304 means the cached document is current for another minute; a sensor keeps its last good document on any failure, a 503 or a signature that does not verify included.\n\n### Next endpoint\n`createRequests`\n\n### Common conflicts\n\n\n### Example\n`GET /v1/installs/{install_id}/policy`",
         "operationId": "readInstallPolicy",
         "parameters": [
           {
@@ -735,7 +735,7 @@
                 }
               }
             },
-            "description": "The policy document; ETag is the quoted version, Cache-Control max-age=60. Version 0 is the embedded forward-only default. A request whose If-None-Match equals the ETag is answered 304 with no body."
+            "description": "The policy document; ETag is the quoted version, Cache-Control max-age=60. Version 0 is the embedded forward-only default. A request whose If-None-Match equals the ETag is answered 304 with no body. A 200 and a 304 both carry x-journeys-environment (the install's environment), x-journeys-salt-epoch (the customer's salt epoch) and x-journeys-signature: `<kid> <issued_at> <signature>`, an Ed25519 signature (base64url, no padding) over six lines joined by newlines: journeys-policy-signature/1, the install id, the environment, the salt epoch, issued_at in unix seconds, and the exact body (on a 304, the cached one). A sensor uses neither the document nor the headers until the signature verifies against a key it pins."
           },
           "400": {
             "content": {
@@ -796,6 +796,16 @@
               }
             },
             "description": "The service failed closed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The policy signing key is not configured; no unsigned document is served. Retry-After says when to ask again."
           }
         },
         "security": [
@@ -812,12 +822,12 @@
           "durable_effect": "None, a read.",
           "example": "GET /v1/installs/{install_id}/policy",
           "next_operation": "createRequests",
-          "not_complete": "304 means the cached document is current for another minute; a sensor keeps its last good document on any failure.",
+          "not_complete": "304 means the cached document is current for another minute; a sensor keeps its last good document on any failure, a 503 or a signature that does not verify included.",
           "preconditions": [
             "The install's own key or OIDC token",
             "If-None-Match with the ETag of the cached document"
           ],
-          "use_when": "You are a sensor fetching the policy document: the install's pinned version, else the customer's current, else the embedded forward-only default as version 0."
+          "use_when": "You are a sensor fetching the policy document, signed by Scope: the install's pinned version, else the customer's current, else the embedded forward-only default as version 0."
         }
       }
     },

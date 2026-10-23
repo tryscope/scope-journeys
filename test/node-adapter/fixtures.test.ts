@@ -12,17 +12,19 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { resetPolicyCache } from "scope-journeys";
+import { resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
 
 import { applyMask, canonical, maskResponse, maskText } from "../../scripts/canonical.mjs";
 import type { FixtureDirectory, FixtureFacts, FixtureRequest, FixtureUpstream } from "../../packages/core/test/harness.js";
 import { validateRecord } from "../../packages/core/src/validate.js";
 import { VERSION } from "../../packages/core/src/version.js";
 import { createNodeHandler, resetCache, resetDelivery } from "../../packages/node/src/index.js";
+import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../packages/core/test/signed.js";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
 const FIXTURES = join(ROOT, "fixtures", "synthetic");
 const INSTALL = "jin_fixture0000000000000000";
+trustPolicyKeyForTests(TEST_POLICY_KID, (await testPolicyKeys()).publicKey);
 const API = "https://api.fixture.example";
 
 // The hop's own framing, on the way to the origin and on the way back to the client: Node's, never the sensor's.
@@ -82,7 +84,7 @@ function toyOrigin(upstream: FixtureUpstream, forwarded: Captured[]): Server {
 function world(name: string, policy: unknown, facts: FixtureFacts, directory: FixtureDirectory | undefined, shipped: unknown[][], forwarded: Captured[]): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
-    if (url === `https://policy.fixture.example/${name}`) return Response.json(policy, { headers: { etag: `"${name}"`, "x-journeys-salt-epoch": String(facts.salt_epoch ?? 1), "x-journeys-environment": facts.environment ?? "production" } });
+    if (url === `https://policy.fixture.example/${name}`) return signedPolicy(policy, { install: INSTALL, issuedAt: Math.floor(Date.parse(facts.ts ?? "2026-10-10T12:00:00.000Z") / 1000), saltEpoch: String(facts.salt_epoch ?? 1), environment: facts.environment ?? "production", etag: `"${name}"` });
     if (url === `${API}/v1/requests`) {
       const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
       const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();

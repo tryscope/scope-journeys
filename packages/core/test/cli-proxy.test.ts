@@ -11,9 +11,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
+import { policySignature, testPolicyKeys } from "./signed.js";
+
 const CORE = new URL("../", import.meta.url).pathname;
 const ROOT = join(CORE, "..", "..");
 const BIN = join(CORE, "bin", "journeys.mjs");
+const TRUST = join(CORE, "test", "trust-policy-key.mjs");
 const built = existsSync(join(CORE, "dist", "cli", "proxy.js")) && existsSync(join(ROOT, "packages", "node", "dist", "index.js"));
 
 const listen = (server: Server): Promise<number> =>
@@ -37,12 +40,17 @@ test("journeys proxy: the standalone sensor in front of a toy origin; SIGTERM dr
   });
   const batches: unknown[][] = [];
   const policyFetches: Array<Record<string, string | string[] | undefined>> = [];
+  // The toy policy as the policy route signs it; the child trusts the test key through the TRUST preload.
+  const policyBody = JSON.stringify(JSON.parse(readFileSync(join(ROOT, "fixtures", "synthetic", "policy.json"), "utf8")));
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const signature = await policySignature("jin_test0000000000000000000000", "production", "1", issuedAt, policyBody);
+  const { x } = await crypto.subtle.exportKey("jwk", (await testPolicyKeys()).publicKey);
   // The ingest: the toy policy on the policy route, shipments accepted, anything else 404.
   const ingest = createServer((req, res) => {
     if (req.method === "GET" && req.url === "/policy") {
       policyFetches.push(req.headers);
-      res.writeHead(200, { "content-type": "application/json", etag: '"3"' });
-      res.end(readFileSync(join(ROOT, "fixtures", "synthetic", "policy.json")));
+      res.writeHead(200, { "content-type": "application/json", etag: '"3"', "x-journeys-environment": "production", "x-journeys-salt-epoch": "1", "x-journeys-signature": signature });
+      res.end(policyBody);
       return;
     }
     if (req.method !== "POST" || req.url !== "/v1/requests") {
@@ -65,7 +73,7 @@ test("journeys proxy: the standalone sensor in front of a toy origin; SIGTERM dr
   const ingestPort = await listen(ingest);
   const cwd = mkdtempSync(join(tmpdir(), "journeys-proxy-"));
   writeFileSync(join(cwd, ".env.local"), `JOURNEYS_INSTALL_ID=jin_test0000000000000000000000\nJOURNEYS_INSTALL_KEY=sjk_test_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nJOURNEYS_SALT=test-salt\nJOURNEYS_API_URL=http://127.0.0.1:${ingestPort}\nJOURNEYS_POLICY_URL=http://127.0.0.1:${ingestPort}/policy\n`);
-  const child = spawn(process.execPath, [BIN, "proxy", "--origin", `http://127.0.0.1:${originPort}`, "--listen", "127.0.0.1:0", "--json"], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, ["--import", TRUST, BIN, "proxy", "--origin", `http://127.0.0.1:${originPort}`, "--listen", "127.0.0.1:0", "--json"], { cwd, env: { ...process.env, TEST_POLICY_KEY_X: x }, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (c: Buffer) => (stdout += c.toString()));

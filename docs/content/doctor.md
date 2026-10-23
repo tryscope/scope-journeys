@@ -42,7 +42,7 @@ next        every host is fronted and reporting; open the claim URL to bind the 
 | the probe never reached the ingest | "no request carrying the probe's nonce reached the ingest within `<timeout>` s; check that `<host>` is one the install fronts and that the sensor can reach `JOURNEYS_API_URL`" |
 | `client.ja4` absent | Cloudflare: "Bot Management is not enabled on this zone; JA4 is optional"; Vercel: "the project is not on a plan that sends `x-vercel-ja4-digest`; optional" |
 | `client.asn` absent | "the platform did not send an AS number; optional" |
-| `observer.policy_version` is 0 | the sensor is on the embedded default: the policy fetch failed, its url is not https, or the document holds a value of the wrong type (the sensor's log and each record's `policy` decision name which); check `JOURNEYS_API_URL` and the key, then `doctor` again |
+| `observer.policy_version` is 0 | the sensor is on the embedded default: the policy fetch failed, its url is not https, `JOURNEYS_INSTALL_ID` is not set, the answer's signature did not check out, or the document holds a value of the wrong type (the sensor's log and each record's `policy` decision name which); check `JOURNEYS_API_URL` and the key, then `doctor` again |
 | the sensor is older than the CLI | "a newer sensor exists; `npm update` and redeploy" |
 
 ## Exit codes

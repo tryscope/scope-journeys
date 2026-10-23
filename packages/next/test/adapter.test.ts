@@ -2,7 +2,8 @@
 // the install's route with its environment header, the facts from Vercel's headers, the inner hop
 // to the app's own host marked as such, the records shipped after the response with the install
 // key or the OIDC token as the bearer, the pass-throughs (the inner hop, a host not observed, no
-// install id), and the shipper's 429 (one retry after Retry-After, capped, then a counted drop).
+// install id), a hop that fails after the request left (never sent again), and the shipper's 429
+// (one retry after Retry-After, capped, then a counted drop).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -10,13 +11,16 @@ import { test } from "node:test";
 import { NextRequest } from "next/server.js";
 
 import { droppedSoFar } from "../src/deliver.js";
-import { DEFAULT_API_URL, loadPolicy, resetPolicyCache } from "scope-journeys";
+import { DEFAULT_API_URL, resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
 
+import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
 import { INNER_HEADER, deliver, resetCache, resetDelivery, withJourneys } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const INSTALL = "jin_test0000000000000000000000";
 const API = "https://api.test.invalid";
+const NOW = Date.parse("2026-10-10T12:00:00.000Z");
+trustPolicyKeyForTests(TEST_POLICY_KID, (await testPolicyKeys()).publicKey);
 
 interface World {
   calls: Array<{ url: string; method: string; headers: Record<string, string>; body: string | null }>;
@@ -46,7 +50,7 @@ function world(options: { policyStatus?: number; ship?: Array<{ status: number; 
       if (url === `${api}/v1/installs/${INSTALL}/policy`) {
         w.calls.push({ url, method, headers, body: null });
         if (options.policyStatus && options.policyStatus !== 200) return new Response(null, { status: options.policyStatus });
-        return Response.json(POLICY, { headers: { etag: '"3"', "x-journeys-environment": "preview", "x-journeys-salt-epoch": "2" } });
+        return signedPolicy(POLICY, { install: INSTALL, issuedAt: NOW / 1000, environment: "preview", saltEpoch: "2", etag: '"3"' });
       }
       if (url === `${api}/v1/requests`) {
         const text = await gunzip(init?.body);
@@ -76,7 +80,7 @@ function reset(): void {
 test("a page read: the policy from the install's route, the inner hop marked and forwarded with Via, the response passed back, one record shipped with the install key, the facts from Vercel's headers", async () => {
   reset();
   const w = world();
-  const handler = withJourneys({ env, fetch: w.fetch, now: () => Date.parse("2026-10-10T12:00:00.000Z") });
+  const handler = withJourneys({ env, fetch: w.fetch, now: () => NOW });
   const response = await handler(request("https://acme.example/docs/quickstart"), w.event as never);
   assert.equal(response.status, 200);
   assert.match(await response.text(), /<h1>Quickstart<\/h1>/);
@@ -116,10 +120,12 @@ test("with no JOURNEYS_API_URL the policy and the records go to Scope's producti
   reset();
   const production = world({ api: DEFAULT_API_URL });
   const installed = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: env.JOURNEYS_INSTALL_KEY, JOURNEYS_SALT: env.JOURNEYS_SALT };
-  const handler = withJourneys({ env: installed, fetch: production.fetch });
+  const handler = withJourneys({ now: () => NOW, env: installed, fetch: production.fetch });
   await (await handler(request("https://acme.example/docs/quickstart"), production.event as never)).text();
   await Promise.all(production.pending);
   assert.deepEqual(production.calls.map((c) => c.url).filter((u) => u.startsWith(DEFAULT_API_URL)), [`${DEFAULT_API_URL}/v1/installs/${INSTALL}/policy`, `${DEFAULT_API_URL}/v1/requests`]);
+  const shipped = (production.shipped[0] as Array<Record<string, unknown>>).find((r) => r.schema === "scope.request/1");
+  assert.equal((shipped?.observer as { policy_version: number }).policy_version, 3, "the signed policy loaded");
 
   reset();
   const plain = world({ api: "http://api.test.invalid" });
@@ -154,7 +160,7 @@ test("the inner hop and a host the install does not observe go to the app's own 
     seen.push(`${r.headers.get("host") ?? new URL(r.url).host} ${r.headers.get(INNER_HEADER) ?? "-"}`);
     return new Response("mine", { status: 200 });
   };
-  const handler = withJourneys({ env: { ...env, JOURNEYS_HOST: "acme.example" }, fetch: w.fetch, next });
+  const handler = withJourneys({ now: () => NOW, env: { ...env, JOURNEYS_HOST: "acme.example" }, fetch: w.fetch, next });
   const inner = await handler(request("https://acme.example/docs/quickstart", { [INNER_HEADER]: "1" }), w.event as never);
   assert.equal(await inner.text(), "mine");
   assert.equal(w.calls.length, 0, "the inner pass fetches nothing: no policy, no hop");
@@ -164,6 +170,76 @@ test("the inner hop and a host the install does not observe go to the app's own 
   assert.deepEqual(seen, ["acme.example 1", "other.example -"]);
   assert.equal(w.calls.length, 0, "an unobserved host fetches nothing either");
   assert.equal(w.shipped.length, 0, "nothing observed, nothing shipped");
+});
+
+test("a hop that fails after the request left is never sent again: 502 when the connection dropped, 504 on the hop's timeout, the app's logic not run a second time, the record shipped with the status; a hop refused before it left still goes to the app's logic", async () => {
+  // The errors as Node's fetch raises them: a dropped connection and a refused one carry their code on the cause.
+  const cases: Array<[string, unknown, number, number, string | null]> = [
+    ["dropped", new TypeError("fetch failed", { cause: Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" }) }), 502, 0, "TypeError: answered 502, not sent again"],
+    ["timed out", new DOMException("The operation was aborted due to timeout", "TimeoutError"), 504, 0, "TimeoutError: answered 504, not sent again"],
+    ["refused", new TypeError("fetch failed", { cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:3000"), { code: "ECONNREFUSED" }) }), 200, 1, null],
+  ];
+  for (const [what, failure, status, appRuns, reason] of cases) {
+    reset();
+    const w = world();
+    let hops = 0;
+    let runs = 0;
+    const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input instanceof Request ? input.url : input).startsWith("https://acme.example/")) {
+        hops += 1;
+        throw failure;
+      }
+      return w.fetch(input, init);
+    }) as typeof fetch;
+    const next = (): Response => {
+      runs += 1;
+      return Response.json({ status: "success" });
+    };
+    const handler = withJourneys({ env, fetch: fetchFn, now: () => NOW, next });
+    const checkout = new NextRequest("https://acme.example/api/v1/actions/checkout", { method: "POST", headers: { "content-type": "application/json", "user-agent": "Claude-User (claude-code/2.1.0; +https://www.anthropic.com/claude-code)" }, body: JSON.stringify({ amount: 100 }) });
+    const response = await handler(checkout, w.event as never);
+    assert.equal(response.status, status, what);
+    await response.text();
+    await Promise.all(w.pending);
+    assert.equal(hops, 1, `${what}: one hop`);
+    assert.equal(runs, appRuns, `${what}: the app's logic runs only when the hop never left`);
+    const record = w.shipped.flat().find((r) => (r as { schema?: string }).schema === "scope.request/1") as Record<string, unknown> | undefined;
+    if (reason) {
+      assert.equal(record?.["http.response.status_code"], status, `${what}: the record carries the status`);
+      assert.deepEqual((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "hop"), [{ rule: "hop", kind: "observe", mode: "live", outcome: "errored", reason }], `${what}: and the hop's step`);
+    } else assert.equal(record, undefined, `${what}: nothing observed when the app answered`);
+  }
+});
+
+test("an origin that is not an http or https URL is refused before the hop: the request goes to the app's logic untouched", async () => {
+  reset();
+  const w = world();
+  let runs = 0;
+  const next = (): Response => {
+    runs += 1;
+    return new Response("mine");
+  };
+  const handler = withJourneys({ env: { ...env, JOURNEYS_ORIGIN: "localhost:3000" }, fetch: w.fetch, now: () => NOW, next });
+  const response = await handler(request("https://acme.example/docs/quickstart"), w.event as never);
+  assert.equal(await response.text(), "mine");
+  assert.equal(runs, 1);
+  assert.equal(w.calls.filter((c) => !c.url.startsWith(API)).length, 0, "no hop was attempted");
+  // fetch refuses a URL with credentials before it sends anything: refused here too, so it is never logged as a hop that left.
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (line: string) => logged.push(line);
+  try {
+    const withCredentials = withJourneys({ env: { ...env, JOURNEYS_ORIGIN: "http://user:s3cret@127.0.0.1:3000" }, fetch: w.fetch, now: () => NOW, next });
+    assert.equal(await (await withCredentials(request("https://acme.example/docs/quickstart"), w.event as never)).text(), "mine");
+  } finally {
+    console.error = original;
+  }
+  // An origin with no host, checked alone: the visitor's path never names where the hop goes.
+  const hostless = withJourneys({ env: { ...env, JOURNEYS_ORIGIN: "https://" }, fetch: w.fetch, now: () => NOW, next });
+  assert.equal(await (await hostless(request("https://acme.example/example.com/checkout"), w.event as never)).text(), "mine");
+  assert.equal(runs, 3);
+  assert.equal(w.calls.filter((c) => !c.url.startsWith(API)).length, 0, "no hop was attempted");
+  assert.ok(logged.every((l) => !l.includes("s3cret")), logged.join("\n"));
 });
 
 test("no install id and no policy URL: the probe is answered by the adapter itself, every other request goes to the app's own logic with no inner hop and no fetch, one warning", async () => {
@@ -288,7 +364,7 @@ test("the host observed is the one the agent spoke to: under next start the forw
     const spoken = headers.get("x-forwarded-host") ?? new URL(url).host;
     return new Response(`<!doctype html><html><body><h1>Quickstart</h1><a href="https://${spoken}/mcp">MCP</a></body></html>`, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
   }) as typeof fetch;
-  const handler = withJourneys({ env, fetch: app, now: () => Date.parse("2026-10-10T12:00:00.000Z") });
+  const handler = withJourneys({ env, fetch: app, now: () => NOW });
   const shapes: Array<{ name: string; url: string; headers: Record<string, string>; hop: string; host: string; proto: string | null }> = [
     { name: "next start behind a proxy", url: "http://localhost:3917/docs/quickstart", headers: { host: "docs.example", "x-forwarded-host": "docs.example", "x-forwarded-proto": "https" }, hop: "http://localhost:3917/docs/quickstart", host: "docs.example", proto: "https" },
     { name: "next start reached directly", url: "http://localhost:3917/docs/quickstart", headers: { host: "127.0.0.1:3917", "x-forwarded-host": "127.0.0.1:3917", "x-forwarded-proto": "http" }, hop: "http://localhost:3917/docs/quickstart", host: "127.0.0.1:3917", proto: "http" },
@@ -310,7 +386,7 @@ test("the host observed is the one the agent spoke to: under next start the forw
     assert.equal(record?.["scope.route"], "docs", shape.name);
   }
   const seen: string[] = [];
-  const only = withJourneys({ env: { ...env, JOURNEYS_HOST: "docs.example" }, fetch: app, next: async (r: NextRequest) => {
+  const only = withJourneys({ now: () => NOW, env: { ...env, JOURNEYS_HOST: "docs.example" }, fetch: app, next: async (r: NextRequest) => {
     seen.push(r.headers.get("x-forwarded-host") ?? "-");
     return new Response("mine", { status: 200 });
   } });
@@ -325,7 +401,7 @@ test("the host observed is the one the agent spoke to: under next start the forw
   assert.deepEqual(seen, ["other.example"], "JOURNEYS_HOST is matched against the forwarded host, not the listen address");
   // Behind a TLS-terminating proxy Next builds request.url as https://localhost:<port>, which is
   // not the listener: the hop goes where `next start` says its listener is.
-  const started = withJourneys({ env: { ...env, __NEXT_PRIVATE_ORIGIN: "http://127.0.0.1:3917" }, fetch: app, now: () => Date.parse("2026-10-10T12:00:00.000Z") });
+  const started = withJourneys({ env: { ...env, __NEXT_PRIVATE_ORIGIN: "http://127.0.0.1:3917" }, fetch: app, now: () => NOW });
   hops.length = 0;
   w.shipped.length = 0;
   const behindTls = await started(request("https://localhost:3917/docs/quickstart", { host: "docs.example", "x-forwarded-host": "docs.example", "x-forwarded-proto": "https" }), w.event as never);
@@ -350,7 +426,7 @@ test("a request already carrying this sensor's Via without the marker is its own
     warnings.push(line);
   };
   try {
-    const handler = withJourneys({ env, fetch: w.fetch, next });
+    const handler = withJourneys({ now: () => NOW, env, fetch: w.fetch, next });
     for (const via of ["1.1 scope-journeys", "1.1 cdn-edge, 1.1 scope-journeys", "1.1 scope-journeys, 1.1 cdn-edge"]) {
       const looped = await handler(request("https://acme.example/docs/quickstart", { via }), w.event as never);
       assert.equal(await looped.text(), "mine", via);
@@ -374,7 +450,7 @@ test("the OIDC form: the project's token is the bearer on the policy fetch and o
   reset();
   const w = world();
   const token = "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL29pZGMudmVyY2VsLmNvbSJ9.sig";
-  const handler = withJourneys({ env: { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_SALT: "s", JOURNEYS_API_URL: API }, fetch: w.fetch });
+  const handler = withJourneys({ now: () => NOW, env: { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_SALT: "s", JOURNEYS_API_URL: API }, fetch: w.fetch });
   // The record finishes when the response body has streamed through, so the body is read before the shipment is awaited.
   await (await handler(request("https://acme.example/docs/quickstart", { "x-vercel-oidc-token": token }), w.event as never)).text();
   await Promise.all(w.pending);
@@ -396,29 +472,12 @@ test("the shipper on a 429: one retry after Retry-After (capped), then the batch
   assert.deepEqual(log, ["journeys: shipment answered 429, retrying once in 5 ms", "journeys: shipment answered 429, dropping the batch"]);
   assert.equal(droppedSoFar(), 2);
   const w = world();
-  const handler = withJourneys({ env, fetch: w.fetch });
+  const handler = withJourneys({ now: () => NOW, env, fetch: w.fetch });
   await (await handler(request("https://acme.example/docs/quickstart"), w.event as never)).text();
   await Promise.all(w.pending);
   const record = (w.shipped[0] as Array<Record<string, unknown>>).find((r) => r.schema === "scope.request/1");
   assert.equal(record?.["scope.observer.dropped"], 2, "the next record carries the drop count");
   assert.equal(droppedSoFar(), 0, "a successful shipment clears it");
-});
-
-test("the policy answer's environment and salt epoch are kept from the last answer when a later one carries none", async () => {
-  reset();
-  let call = 0;
-  const fetcher = (async () => {
-    call += 1;
-    if (call === 1) return Response.json(POLICY, { headers: { etag: '"v3"', "x-journeys-environment": "preview", "x-journeys-salt-epoch": "2" } });
-    return Response.json(POLICY, { headers: { etag: '"v4"' } });
-  }) as typeof fetch;
-  const first = await loadPolicy({ url: `${API}/policy`, credential: "k", fetch: fetcher, now: 0, cache: null, log: () => undefined });
-  assert.equal(first.saltEpoch, 2);
-  assert.equal(first.environment, "preview");
-  const second = await loadPolicy({ url: `${API}/policy`, credential: "k", fetch: fetcher, now: 61_000, cache: null, log: () => undefined });
-  assert.equal(second.etag, '"v4"');
-  assert.equal(second.saltEpoch, 2, "the last epoch seen");
-  assert.equal(second.environment, "preview");
 });
 
 test("shipping follows no redirect: a redirected batch is dropped and counted", async () => {

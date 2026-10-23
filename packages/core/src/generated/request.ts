@@ -316,7 +316,7 @@ export interface ScopeRequest1 {
    */
   "scope.reference_minted"?: Reference | null;
   /**
-   * what every rule that matched did, in rule order; the pseudo-rule policy (errored, reason built-in default: <why>) marks a record made under the embedded default, and assertion one whose assertion key is missing
+   * what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `policy` (the embedded default ran: errored, reason `built-in default: <why>`), `assertion` (the assertion could not be signed) and `hop` (the hop failed after the request may have left: answered 502, or 504 on a timeout, and not sent again)
    */
   "scope.decision"?: Decision[];
   /**

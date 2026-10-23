@@ -1,5 +1,5 @@
 import { isTextFace, requestedFace, servedFace } from "./classify.js";
-import { passHeaders } from "./gateway.js";
+import { neverSent, passHeaders } from "./gateway.js";
 import type { SensorRecord } from "./io.js";
 import type { ScopeRequest1 } from "./generated/request.js";
 import { finish, hashedOrNull, type State } from "./observe.js";
@@ -72,6 +72,29 @@ export function observeResponse(upstream: Response, state: State): Responded {
     io.log("error", `journeys: observeResponse failed, passing the answer through: ${error instanceof Error ? error.message : String(error)}`);
     return { response: passthrough(upstream), records: finish(state) };
   }
+}
+
+/**
+ * The hop through the adapter's `io.forward`, then the response side. A hop that failed before the
+ * request left is thrown back, so the adapter passes the request on; one that may have reached the
+ * origin, which may have acted on it, is never sent again: 504 on a timeout, 502 otherwise.
+ */
+export async function forwardObserved(request: Request, state: State): Promise<Responded> {
+  let upstream: Response;
+  try {
+    upstream = await state.io.forward(request);
+  } catch (error) {
+    if (neverSent(error)) throw error;
+    const status = error instanceof Error && error.name === "TimeoutError" ? 504 : 502;
+    const cause = error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : "";
+    state.io.log("error", `journeys: the hop failed and the request may have reached the origin; answered ${status}, not sent again: ${error instanceof Error ? error.message : String(error)}${cause}`);
+    const response = new Response(status === 504 ? "Gateway Timeout" : "Bad Gateway", { status, headers: { "content-type": "text/plain" } });
+    if (state.passthrough) return { response, records: Promise.resolve([]) };
+    state.record["http.response.status_code"] = status;
+    state.decisions.push({ rule: "hop", kind: "observe", mode: "live", outcome: "errored", reason: `${error instanceof Error ? error.name : "Error"}: answered ${status}, not sent again` });
+    return { response, records: finish(state) };
+  }
+  return observeResponse(upstream, state);
 }
 
 function respondByKind(upstream: Response, state: State, resType: string): Responded {

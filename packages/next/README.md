@@ -56,7 +56,7 @@ export { onRequestError } from "scope-journeys-next/instrumentation"
 
 | name | secret | meaning |
 |---|---|---|
-| `JOURNEYS_INSTALL_ID` | no | your install, `jin_...` |
+| `JOURNEYS_INSTALL_ID` | no | your install, `jin_...`; the policy is signed for it, so without it the sensor runs the embedded default |
 | `JOURNEYS_INSTALL_KEY` | yes | the install key; not needed when the project's OIDC federation is on |
 | `JOURNEYS_SALT` | yes | 32 random bytes you generate; every hash is salted with it and Scope never receives it |
 | `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
@@ -76,6 +76,8 @@ The host on every record (`server.address`, the `{host}` the rules fill, the aut
 | failure | behaviour |
 |---|---|
 | the sensor throws | the request is handed to your app untouched; the record carries the error's class |
+| the hop to your app cannot connect | the request is handed to your app untouched; nothing is recorded; the log line names the cause |
+| the hop to your app fails after the request left: the connection drops, or no answer within 30 seconds | the request is never handed to your app a second time: the client gets a 502, or a 504 on the timeout; the record carries the status and the error's class |
 | no install id (and no policy URL) | one log line naming `journeys init`; every request goes to your logic with no inner hop, the probe is still answered |
 | no salt | one log line naming `journeys init`; nothing is recorded or sent, every request goes to your app untouched, and the probe answers `x-journeys-probe: no-salt` |
 | the policy fetch fails | the last good policy, or the embedded forward-only default, whose records say so (a `policy` decision with the reason) |
