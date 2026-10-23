@@ -1,5 +1,5 @@
 {
-  ".": "0.1.0",
+  ".": "1.0.0",
   "packages/core": "0.1.0",
   "packages/cloudflare": "0.1.0",
   "packages/next": "0.1.0",

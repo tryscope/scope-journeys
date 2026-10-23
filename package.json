@@ -1,7 +1,7 @@
 {
   "name": "journeys",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Scope Journeys: the sensor packages. One core on the fetch-handler contract, one adapter per platform.",
   "license": "Elastic-2.0",
   "repository": {
