@@ -3,7 +3,7 @@ import type { TLSSocket } from "node:tls";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, createShipper, forwardObserved, forwardedUrl, isHost, loadPolicy, observe, originUrl, passHeaders, secureUrl, type Environment, type LogLevel } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, createShipper, failedHop, forwardObserved, forwardedUrl, isHost, loadPolicy, observe, originUrl, passHeaders, probeAnswer, secureUrl, type Environment, type LogLevel } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { canonicalAddress, forwardedAddress, platformFacts, socketFacts, type SocketFacts } from "./facts.js";
@@ -115,20 +115,21 @@ export function createSensor(options: NodeOptions = {}): Sensor {
         warnedNoInstall = true;
         warn("journeys: JOURNEYS_INSTALL_ID is not set; forwarding every request untouched under the default policy (run `npx scope-journeys init --node`)");
       }
-      const loaded = await loadPolicy({ url: policyUrl, installId, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
-      let policy = loaded.policy;
       if (!salt) {
+        // Without a salt nothing can be hashed, so nothing is recorded: the request goes on untouched, the probe says why.
         if (!warnedNoSalt) {
           warnedNoSalt = true;
-          warn("journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init --node`)");
+          warn("journeys: JOURNEYS_SALT is not set; recording nothing and forwarding every request untouched (run `npx scope-journeys init --node`)");
         }
-        policy = (await loadPolicy({ url: null, installId: null, credential: null, fetch: fetchFn, now: now(), cache: null, log: () => undefined })).policy;
+        return probeAnswer(request.method, url.pathname, "no-salt") ?? this.untouched(exchange);
       }
+      const loaded = await loadPolicy({ url: policyUrl, installId, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
+      const { policy } = loaded;
       const target = targetFor(exchange);
       const identity = { install: installId, name, environment: (loaded.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, version: VERSION, assertion: await assertionFromEnv(env.JOURNEYS_ASSERTION_KEY, issuer) };
       const facts = platformFacts(socket, request.headers.get("x-request-id"), identity);
       // A mount's hop carries the Host as received (the forwarded host is the record's, not the app's view); the proxy's carries the origin's.
-      const io = createNodeIo({ salt: salt ?? "", host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, shipper, now, afterResponse: exchange.afterResponse, track, log });
+      const io = createNodeIo({ salt, host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, shipper, now, afterResponse: exchange.afterResponse, track, log });
       const observed = await observe(request, policy, facts, io);
       if (observed.kind === "answer") return observed.response;
       return (await forwardObserved(observed.request, observed.state)).response;
@@ -141,8 +142,17 @@ export function createSensor(options: NodeOptions = {}): Sensor {
       for (const [name, value] of Object.entries(hopHeaders(request))) headers.set(name, value);
       if (socket.peer) headers.append("x-forwarded-for", socket.peer);
       const bodyless = request.method === "GET" || request.method === "HEAD";
-      const upstream = await hop(new Request(request.url, { method: request.method, headers, body: bodyless ? null : request.body, redirect: "manual", ...(bodyless ? {} : { duplex: "half" }) } as RequestInit), { target, host: form === "proxy" ? target.host : (request.headers.get("host") ?? new URL(request.url).host), timeoutMs: 30_000 });
-      return new Response(upstream.body, { status: upstream.status, headers: passHeaders(upstream.headers) });
+      let upstream: Response;
+      try {
+        upstream = await hop(new Request(request.url, { method: request.method, headers, body: bodyless ? null : request.body, redirect: "manual", ...(bodyless ? {} : { duplex: "half" }) } as RequestInit), { target, host: form === "proxy" ? target.host : (request.headers.get("host") ?? new URL(request.url).host), timeoutMs: 30_000 });
+      } catch (error) {
+        return failedHop(error, log);
+      }
+      // This hop asks with the client's accept-encoding and hands the body on as encoded, so the encoding stays named.
+      const answered = passHeaders(upstream.headers);
+      const encoding = upstream.headers.get("content-encoding");
+      if (encoding) answered.set("content-encoding", encoding);
+      return new Response(upstream.body, { status: upstream.status, headers: answered });
     },
   };
 }

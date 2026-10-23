@@ -1,7 +1,7 @@
 /* Generated from schemas/*.json by scripts/types-from-schemas.mjs (ajv standalone, ESM). Do not edit. */
 "use strict";
 export const validateRequest = validate20;
-const schema31 = {"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://journeys.tryscope.com/schemas/journeys/1/request","title":"scope.request/1","description":"One per observed request: the sensor's record. Attribute names follow the OpenTelemetry semantic conventions where one exists (http.*, url.*, server.*, user_agent.original, network.*, tls.*, mcp.*); the rest live under scope.*. Exported as an OTLP log record with event_name scope.request. Additive changes stay in this major; a field's meaning never changes; removal is a new major.","$defs":{"hash12":{"type":"string","pattern":"^[0-9a-f]{12}$","description":"sha256(salt + ':' + value)[0:12]; a join key inside the salt epoch, nothing else"},"reference":{"type":"string","pattern":"^[0-9A-HJKMNP-TV-Z]{8}$","description":"eight base32 characters: three minting-minute characters, four random, one check"},"prefixedId":{"type":"string","pattern":"^(jin|jrn|vis|int|acc|pol|jds)_[A-Za-z0-9_-]{20,64}$","description":"a prefixed, opaque id minted by Scope; records themselves carry a UUIDv7 and no prefix"},"decision":{"type":"object","required":["rule","kind","mode","outcome"],"properties":{"rule":{"type":"string"},"kind":{"type":"string","enum":["observe","inject","gate","finder","notfound","error","face"]},"mode":{"type":"string","enum":["dry_run","live"]},"outcome":{"type":"string","enum":["applied","would_apply","skipped","errored"]},"reason":{"type":["string","null"]}},"additionalProperties":false}},"type":"object","required":["schema","id","ts","install","source","observer","http.request.method","server.address","url.path","scope.route","scope.client.address_hash","user_agent.original","scope.reader"],"properties":{"schema":{"const":"scope.request/1"},"id":{"type":"string","format":"uuid","description":"UUIDv7 minted by the sensor; the record's identity and its idempotency key at the ingest"},"ts":{"type":"string","format":"date-time","description":"when the request arrived at the sensor"},"observed_ts":{"type":"string","format":"date-time","description":"when the record was complete (after the response went out; at the end of a stream)"},"install":{"oneOf":[{"$ref":"#/$defs/prefixedId"},{"type":"null"}],"description":"the install this sensor runs as; null only on a sensor with no install id (a lab deployment)"},"source":{"type":"string","enum":["edge","inapp","node","ext_proc","drain"],"description":"the form of the sensor that recorded this"},"observer":{"type":"object","required":["package","version","adapter","policy_version","salt_epoch"],"properties":{"package":{"type":"string","description":"the npm package of the adapter"},"version":{"type":"string","description":"the package version (every package takes one version)"},"adapter":{"type":"string","description":"cloudflare, next, node, envoy, drain-vercel, drain-cloudflare"},"policy_version":{"type":"integer","description":"the policy version the sensor ran this request under; 0 is the embedded forward-only default"},"salt_epoch":{"type":"integer","description":"the customer's salt epoch the hashes were made in; hashes never join across epochs"},"name":{"type":"string","description":"the Via pseudonym"}},"additionalProperties":false},"request_id":{"type":["string","null"],"description":"the platform's own request id (cf-ray, x-vercel-id, x-amz-cf-id): the one key a connector's record and a sensor's record share"},"http.request.method":{"type":"string"},"server.address":{"type":"string","description":"the host the agent spoke to (the sensor's), which is also a signature's authority"},"url.path":{"type":"string","description":"redacted by shape: a value of the product's signed shape is replaced by its hash"},"url.query":{"type":["string","null"],"description":"the query string without the leading question mark, redacted by shape; references kept; null when the url has none"},"http.response.status_code":{"type":["integer","null"]},"scope.route":{"type":"string","enum":["docs","docs_root","download","api","mcp","oauth.register","oauth.authorize","oauth.token","oauth.approve","device.start","device.poll","device.approve","signup","hooks.create","hooks.catch","credentials","trial","finder","cli.init","cli.beacon","passthrough","other"],"description":"the surface role of the path, from the policy's surface map"},"http.request.header.content-type":{"type":["string","null"]},"http.response.header.content-type":{"type":["string","null"]},"scope.request.bytes":{"type":["integer","null"],"description":"the request body's size in bytes, when the body was read"},"scope.response.bytes":{"type":["integer","null"],"description":"the response body's size in bytes, when the body was read"},"scope.cache":{"type":["string","null"],"description":"cf-cache-status or x-vercel-cache as seen on the origin's answer"},"scope.timing":{"type":"object","properties":{"origin_ms":{"type":["integer","null"],"description":"the origin's answer time as seen from the sensor"},"total_ms":{"type":["integer","null"],"description":"from arrival to the record's completion"}},"additionalProperties":false},"scope.client.address_hash":{"$ref":"#/$defs/hash12","description":"a one-way hash of the client's address; the address itself never leaves"},"scope.client.address_family":{"type":["string","null"],"enum":["ipv4","ipv6",null],"description":"so that a dual-stack client seen on two hosts can be read as such"},"scope.client.asn":{"type":["integer","null"]},"scope.client.as_org":{"type":["string","null"]},"scope.client.country":{"type":["string","null"]},"scope.client.colo":{"type":["string","null"],"description":"the edge location that served the request"},"user_agent.original":{"type":"string"},"scope.client.accept":{"type":["string","null"]},"scope.client.fetch_metadata":{"type":"object","properties":{"sec_ch_ua":{"type":"boolean"},"sec_fetch_dest":{"type":["string","null"]},"sec_fetch_mode":{"type":["string","null"]},"upgrade_insecure":{"type":"boolean"}},"additionalProperties":false,"description":"the browser signals a fetcher does not send: how a browser is told from a tool"},"tls.protocol.version":{"type":["string","null"]},"network.protocol.version":{"type":["string","null"]},"scope.client.ja4":{"type":["string","null"],"description":"the TLS client fingerprint when the platform exposes it"},"scope.client.tls_ext_sha1":{"type":["string","null"]},"scope.client.tls_hello_len":{"type":["integer","null"]},"scope.signature":{"type":["object","null"],"required":["agent","valid","authority"],"properties":{"agent":{"type":"string","description":"the Signature-Agent header: the origin that publishes the signing key"},"keyid":{"type":["string","null"]},"valid":{"type":"boolean","description":"true only after the sensor verified the signature against the listed signer's key directory"},"reason":{"type":["string","null"],"description":"verified, expired, not_yet_valid, unknown_key, directory_unreachable, bad_signature, unsupported_alg, authority_mismatch, or unlisted_signer (a signer the policy's signers do not list; no directory is fetched)"},"authority":{"type":"string","description":"the host the signature covers and is verified against (the sensor's)"}},"additionalProperties":false},"scope.platform_bot":{"type":["object","null"],"properties":{"verified":{"type":"boolean"},"name":{"type":["string","null"]},"category":{"type":["string","null"]},"signed_agent":{"type":["string","null"]}},"additionalProperties":false,"description":"the platform's verified-bot match, when the zone has bot management"},"scope.reader":{"type":"string","enum":["claude-code","claude-ai","openai","exa","signed","cursor","vendor-client","browser","shell","unknown"],"description":"the reader family, from the signature, the agent string, Accept and the fetch metadata; vendor-client is the customer's own CLI or SDK by the policy's clients patterns"},"scope.key.credential":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed bearer of the Authorization header; the value never leaves"},"scope.key.install":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed install id the policy's install header carried"},"scope.key.device_code":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed device code of a device-flow start or poll, when bodies are recorded"},"scope.key.user_code":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed user code of a device-flow start or approval, when bodies are recorded"},"scope.key.oauth_client":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed OAuth client id of a registration, authorization, approval or token call, when bodies are recorded (the authorize query is read in every form)"},"mcp.session.id":{"type":["string","null"],"description":"the MCP session id the request carried; the one the answer assigned is in scope.response.headers"},"scope.key.hook":{"type":["string","null"],"description":"the id of a catch hook, from the catch path or the creation answer"},"scope.key.reference":{"oneOf":[{"$ref":"#/$defs/reference"},{"type":"null"}],"description":"the reference the request carried (query, setup header, body field named by the policy); only a value with the reference shape and check character counts, so another value in a reference parameter (a device user code in code= on a sign-in page) is not recorded here (the device door records it as scope.key.user_code)"},"scope.key.setup_header":{"type":["string","null"],"description":"the policy's setup header as sent, redacted by shape"},"scope.key.agent_header":{"type":["string","null"]},"scope.key.client_header":{"type":["string","null"]},"scope.key.intent_header":{"type":["string","null"],"description":"the policy's intent header as sent; a filled one is also a declaration"},"mcp.protocol.version":{"type":["string","null"]},"mcp.method.name":{"type":"array","items":{"type":"string"},"description":"the JSON-RPC methods of the request's messages, in order; kept in every form"},"scope.mcp.tools":{"type":"array","items":{"type":"string"},"description":"the tools the request called, in order; kept in every form"},"scope.mcp.client":{"type":["object","null"],"properties":{"name":{"type":"string"},"version":{"type":["string","null"]}},"additionalProperties":false,"description":"the client the MCP handshake named; kept in every form"},"scope.oauth":{"type":["object","null"],"properties":{"grant_type":{"type":["string","null"]},"client_name":{"type":["string","null"]},"client_id_url":{"type":["string","null"]},"resource":{"type":["string","null"]},"scope":{"type":["string","null"]}},"additionalProperties":false,"description":"what an OAuth call named about itself; kept in every form"},"scope.body.request":{"type":["object","array","null"],"description":"the request body on an observed route, parsed as JSON (an object, or an array for a JSON-RPC batch) or a form, redacted by field and by shape, capped at 64 KB; {bytes, type} for a text or HTML body; null in the no-bodies form"},"scope.body.response":{"type":["object","array","null"],"description":"the same for the origin's answer"},"scope.body.truncated":{"type":"boolean","description":"true when a body exceeded 64 KB and was cut before parsing"},"scope.response.headers":{"type":["object","null"],"description":"the answer headers the stitcher needs: content-type, mcp-session-id, www-authenticate, location (redacted), cache-control, x-vercel-cache, cf-cache-status"},"scope.page":{"type":["object","null"],"properties":{"canonical":{"type":"string","description":"the page's path without a face suffix"},"face":{"type":"string","enum":["html","md","txt","404-html","404-md"]},"reference_minted":{"oneOf":[{"$ref":"#/$defs/reference"},{"type":"null"}],"description":"the reference minted into this serve of the page, when an inject rule placed it"},"injected":{"type":"array","items":{"type":"string"},"description":"the labels of the inject rules that changed the page"},"bytes":{"type":"integer"}},"additionalProperties":false,"description":"present on a page read (a docs page, the root map, the helpful 404)"},"scope.reference_minted":{"oneOf":[{"$ref":"#/$defs/reference"},{"type":"null"}],"description":"a reference minted into a non-page answer (an error link, a finder answer); a page's reference, the helpful 404's included, is scope.page.reference_minted"},"scope.decision":{"type":"array","items":{"$ref":"#/$defs/decision"},"description":"what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `assertion` (the assertion could not be signed) and `hop` (the hop failed after the request may have left: answered 502, or 504 on a timeout, and not sent again)"},"scope.gateway":{"type":["object","null"],"properties":{"declared":{"type":"integer"},"forwarded":{"type":"integer"}},"additionalProperties":false,"description":"on the MCP route: how many messages the gate answered and how many it forwarded"},"scope.observer.errors":{"type":"array","items":{"type":"string"},"description":"the sensor's own errors on this request, by class; the request was forwarded untouched"},"scope.observer.dropped":{"type":"integer","description":"records the sensor dropped that no stored record has reported yet; only the first request record of each shipment carries the count, so the counts add up across records; records lost when a process stops are not counted"}},"additionalProperties":false};
+const schema31 = {"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://journeys.tryscope.com/schemas/journeys/1/request","title":"scope.request/1","description":"One per observed request: the sensor's record. Attribute names follow the OpenTelemetry semantic conventions where one exists (http.*, url.*, server.*, user_agent.original, network.*, tls.*, mcp.*); the rest live under scope.*. Exported as an OTLP log record with event_name scope.request. Additive changes stay in this major; a field's meaning never changes; removal is a new major.","$defs":{"hash12":{"type":"string","pattern":"^[0-9a-f]{12}$","description":"sha256(salt + ':' + value)[0:12]; a join key inside the salt epoch, nothing else"},"reference":{"type":"string","pattern":"^[0-9A-HJKMNP-TV-Z]{8}$","description":"eight base32 characters: three minting-minute characters, four random, one check"},"prefixedId":{"type":"string","pattern":"^(jin|jrn|vis|int|acc|pol|jds)_[A-Za-z0-9_-]{20,64}$","description":"a prefixed, opaque id minted by Scope; records themselves carry a UUIDv7 and no prefix"},"decision":{"type":"object","required":["rule","kind","mode","outcome"],"properties":{"rule":{"type":"string"},"kind":{"type":"string","enum":["observe","inject","gate","finder","notfound","error","face"]},"mode":{"type":"string","enum":["dry_run","live"]},"outcome":{"type":"string","enum":["applied","would_apply","skipped","errored"]},"reason":{"type":["string","null"]}},"additionalProperties":false}},"type":"object","required":["schema","id","ts","install","source","observer","http.request.method","server.address","url.path","scope.route","scope.client.address_hash","user_agent.original","scope.reader"],"properties":{"schema":{"const":"scope.request/1"},"id":{"type":"string","format":"uuid","description":"UUIDv7 minted by the sensor; the record's identity and its idempotency key at the ingest"},"ts":{"type":"string","format":"date-time","description":"when the request arrived at the sensor"},"observed_ts":{"type":"string","format":"date-time","description":"when the record was complete (after the response went out; at the end of a stream)"},"install":{"oneOf":[{"$ref":"#/$defs/prefixedId"},{"type":"null"}],"description":"the install this sensor runs as; null only on a sensor with no install id (a lab deployment)"},"source":{"type":"string","enum":["edge","inapp","node","ext_proc","drain"],"description":"the form of the sensor that recorded this"},"observer":{"type":"object","required":["package","version","adapter","policy_version","salt_epoch"],"properties":{"package":{"type":"string","description":"the npm package of the adapter"},"version":{"type":"string","description":"the package version (every package takes one version)"},"adapter":{"type":"string","description":"cloudflare, next, node, envoy, drain-vercel, drain-cloudflare"},"policy_version":{"type":"integer","description":"the policy version the sensor ran this request under; 0 is the embedded forward-only default"},"salt_epoch":{"type":"integer","description":"the customer's salt epoch the hashes were made in; hashes never join across epochs"},"name":{"type":"string","description":"the Via pseudonym"}},"additionalProperties":false},"request_id":{"type":["string","null"],"description":"the platform's own request id (cf-ray, x-vercel-id, x-amz-cf-id): the one key a connector's record and a sensor's record share"},"http.request.method":{"type":"string"},"server.address":{"type":"string","description":"the host the agent spoke to (the sensor's), which is also a signature's authority"},"url.path":{"type":"string","description":"redacted like url.query (a secret-named pair's value, and a segment holding an encoded pair from its start, become h:<hash>), then by shape: a value of the product's signed shape is replaced by its hash"},"url.query":{"type":["string","null"],"description":"the query string without the leading question mark; the value of a secret-named parameter (api_key, key, token, access_token, refresh_token, id_token, code, client_secret, password, secret, signature, sig, session_id, in any case or spelling, also percent-encoded, or a name whose last word is key, token, secret, password, signature or sig, also inside a URL another parameter carries) becomes h:<hash>, unless it is a valid reference code where the policy says a reference travels (headers.reference, a door's fields.reference); a value that carries an encoded parameter of its own, or is still encoded after four decodings, becomes h:<hash> from the start of the path segment that holds it; a string holding more than 64 such values is recorded as one hash; then redacted by shape; null when the url has none"},"http.response.status_code":{"type":["integer","null"]},"scope.route":{"type":"string","enum":["docs","docs_root","download","api","mcp","oauth.register","oauth.authorize","oauth.token","oauth.approve","device.start","device.poll","device.approve","signup","hooks.create","hooks.catch","credentials","trial","finder","cli.init","cli.beacon","passthrough","other"],"description":"the surface role of the path, from the policy's surface map"},"http.request.header.content-type":{"type":["string","null"]},"http.response.header.content-type":{"type":["string","null"]},"scope.request.bytes":{"type":["integer","null"],"description":"the request body's size in bytes, when the body was read"},"scope.response.bytes":{"type":["integer","null"],"description":"the response body's size, when the body was read or, for an event stream, counted as it passed (in bytes)"},"scope.cache":{"type":["string","null"],"description":"cf-cache-status or x-vercel-cache as seen on the origin's answer"},"scope.timing":{"type":"object","properties":{"origin_ms":{"type":["integer","null"],"description":"the origin's answer time as seen from the sensor"},"total_ms":{"type":["integer","null"],"description":"from arrival to the record's completion"}},"additionalProperties":false},"scope.client.address_hash":{"$ref":"#/$defs/hash12","description":"a one-way hash of the client's address; the address itself never leaves"},"scope.client.address_family":{"type":["string","null"],"enum":["ipv4","ipv6",null],"description":"so that a dual-stack client seen on two hosts can be read as such"},"scope.client.asn":{"type":["integer","null"]},"scope.client.as_org":{"type":["string","null"]},"scope.client.country":{"type":["string","null"]},"scope.client.colo":{"type":["string","null"],"description":"the edge location that served the request"},"user_agent.original":{"type":"string"},"scope.client.accept":{"type":["string","null"]},"scope.client.fetch_metadata":{"type":"object","properties":{"sec_ch_ua":{"type":"boolean"},"sec_fetch_dest":{"type":["string","null"]},"sec_fetch_mode":{"type":["string","null"]},"upgrade_insecure":{"type":"boolean"}},"additionalProperties":false,"description":"the browser signals a fetcher does not send: how a browser is told from a tool"},"tls.protocol.version":{"type":["string","null"]},"network.protocol.version":{"type":["string","null"]},"scope.client.ja4":{"type":["string","null"],"description":"the TLS client fingerprint when the platform exposes it"},"scope.client.tls_ext_sha1":{"type":["string","null"]},"scope.client.tls_hello_len":{"type":["integer","null"]},"scope.signature":{"type":["object","null"],"required":["agent","valid","authority"],"properties":{"agent":{"type":"string","description":"the Signature-Agent header: the origin that publishes the signing key"},"keyid":{"type":["string","null"]},"valid":{"type":"boolean","description":"true only after the sensor verified the signature against the listed signer's key directory"},"reason":{"type":["string","null"],"description":"verified, expired, not_yet_valid, unknown_key, directory_unreachable, bad_signature, unsupported_alg, authority_mismatch, or unlisted_signer (a signer the policy's signers do not list; no directory is fetched)"},"authority":{"type":"string","description":"the host the signature covers and is verified against (the sensor's)"}},"additionalProperties":false},"scope.platform_bot":{"type":["object","null"],"properties":{"verified":{"type":"boolean"},"name":{"type":["string","null"]},"category":{"type":["string","null"]},"signed_agent":{"type":["string","null"]}},"additionalProperties":false,"description":"the platform's verified-bot match, when the zone has bot management"},"scope.reader":{"type":"string","enum":["claude-code","claude-ai","openai","exa","signed","cursor","vendor-client","browser","shell","unknown"],"description":"the reader family, from the signature, the agent string, Accept and the fetch metadata; vendor-client is the customer's own CLI or SDK by the policy's clients patterns"},"scope.key.credential":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed bearer of the Authorization header; the value never leaves"},"scope.key.install":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed install id the policy's install header carried"},"scope.key.device_code":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed device code of a device-flow start or poll, when bodies are recorded"},"scope.key.user_code":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed user code of a device-flow start or approval, when bodies are recorded"},"scope.key.oauth_client":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed OAuth client id of a registration, authorization, approval or token call, when bodies are recorded (the authorize query is read in every form)"},"mcp.session.id":{"type":["string","null"],"description":"the hash of the MCP session id the request carried; the one the answer assigned is in scope.response.headers, hashed the same way"},"scope.key.hook":{"type":["string","null"],"description":"the id of a catch hook, from the catch path or the creation answer"},"scope.key.reference":{"oneOf":[{"$ref":"#/$defs/reference"},{"type":"null"}],"description":"the reference the request carried (query, setup header, body field named by the policy); only a value with the reference shape and check character counts, so another value in a reference parameter (a device user code in code= on a sign-in page) is not recorded here (the device door records it as scope.key.user_code)"},"scope.key.setup_header":{"type":["string","null"],"description":"the policy's setup header: a valid reference code as sent, any other value (the session id the gate hands out) hashed like mcp.session.id"},"scope.key.agent_header":{"type":["string","null"]},"scope.key.client_header":{"type":["string","null"]},"scope.key.intent_header":{"type":["string","null"],"description":"the policy's intent header, redacted like url.query and by shape; a filled one is also a declaration"},"mcp.protocol.version":{"type":["string","null"]},"mcp.method.name":{"type":"array","items":{"type":"string"},"description":"the JSON-RPC methods of the request's messages, in order; kept in every form"},"scope.mcp.tools":{"type":"array","items":{"type":"string"},"description":"the tools the request called, in order; kept in every form"},"scope.mcp.client":{"type":["object","null"],"properties":{"name":{"type":"string"},"version":{"type":["string","null"]}},"additionalProperties":false,"description":"the client the MCP handshake named; kept in every form"},"scope.oauth":{"type":["object","null"],"properties":{"grant_type":{"type":["string","null"]},"client_name":{"type":["string","null"]},"client_id_url":{"type":["string","null"]},"resource":{"type":["string","null"]},"scope":{"type":["string","null"]}},"additionalProperties":false,"description":"what an OAuth call named about itself; kept in every form"},"scope.body.request":{"type":["object","array","null"],"description":"the request body on an observed route, parsed as JSON or a form (capped at 64 KB), cut to the fields observe.bodies.allow_fields names at any depth, with the values of the policy's secret fields and of the secret names (as in url.query; code only in a request) and the shapes hashed; null when no allowed field remains and in the no-bodies form"},"scope.body.response":{"type":["object","array","null"],"description":"the same for the origin's answer, also on an error answer (400 or above) from any route the surface map does not pass through; an event stream's content is never recorded, only its size in scope.response.bytes"},"scope.body.truncated":{"type":"boolean","description":"true when a body exceeded 64 KB and was cut before parsing"},"scope.response.headers":{"type":["object","null"],"description":"the answer headers the stitcher needs: content-type, mcp-session-id (hashed), www-authenticate, location (redacted like url.query), cache-control, x-vercel-cache, cf-cache-status"},"scope.page":{"type":["object","null"],"properties":{"canonical":{"type":"string","description":"the page's path without a face suffix"},"face":{"type":"string","enum":["html","md","txt","404-html","404-md"]},"reference_minted":{"oneOf":[{"$ref":"#/$defs/reference"},{"type":"null"}],"description":"the reference minted into this serve of the page, when an inject rule placed it"},"injected":{"type":"array","items":{"type":"string"},"description":"the labels of the inject rules that changed the page"},"bytes":{"type":"integer"}},"additionalProperties":false,"description":"present on a page read (a docs page, the root map, the helpful 404)"},"scope.reference_minted":{"oneOf":[{"$ref":"#/$defs/reference"},{"type":"null"}],"description":"a reference minted into a non-page answer (an error link, a finder answer); a page's reference, the helpful 404's included, is scope.page.reference_minted"},"scope.decision":{"type":"array","items":{"$ref":"#/$defs/decision"},"description":"what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `policy` (the embedded default ran: errored, reason `built-in default: <why>`), `assertion` (the assertion could not be signed) and `hop` (the hop failed after the request may have left: answered 502, or 504 on a timeout, and not sent again)"},"scope.gateway":{"type":["object","null"],"properties":{"declared":{"type":"integer"},"forwarded":{"type":"integer"}},"additionalProperties":false,"description":"on the MCP route: how many messages the gate answered and how many it forwarded"},"scope.observer.errors":{"type":"array","items":{"type":"string"},"description":"the sensor's own errors on this request, by class; the request was forwarded untouched"},"scope.observer.dropped":{"type":"integer","description":"records the sensor dropped that no stored record has reported yet; only the first request record of each shipment carries the count, so the counts add up across records; records lost when a process stops are not counted"}},"additionalProperties":false};
 const schema32 = {"type":"string","pattern":"^(jin|jrn|vis|int|acc|pol|jds)_[A-Za-z0-9_-]{20,64}$","description":"a prefixed, opaque id minted by Scope; records themselves carry a UUIDv7 and no prefix"};
 const schema33 = {"type":"string","pattern":"^[0-9a-f]{12}$","description":"sha256(salt + ':' + value)[0:12]; a join key inside the salt epoch, nothing else"};
 const schema39 = {"type":"string","pattern":"^[0-9A-HJKMNP-TV-Z]{8}$","description":"eight base32 characters: three minting-minute characters, four random, one check"};
@@ -2555,7 +2555,7 @@ return errors === 0;
 validate20.evaluated = {"props":true,"dynamicProps":false,"dynamicItems":false};
 
 export const validateDeclaration = validate21;
-const schema43 = {"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://journeys.tryscope.com/schemas/journeys/1/declaration","title":"scope.declaration/1","description":"An intent the sensor collected: from the declaration tool in front of the MCP route (gate), from the intent header on an API call (header), from the docs finder (finder), from the SDK's intent option (sdk) or the CLI (cli). Exported as an OTLP log record with event_name scope.intent. Shipped as its own record beside the request it rode on.","$defs":{"hash12":{"type":"string","pattern":"^[0-9a-f]{12}$","description":"sha256(salt + ':' + value)[0:12]; a join key inside the salt epoch, nothing else"},"reference":{"type":"string","pattern":"^[0-9A-HJKMNP-TV-Z]{8}$","description":"eight base32 characters: three minting-minute characters, four random, one check"},"prefixedId":{"type":"string","pattern":"^(jin|jrn|vis|int|acc|pol|jds)_[A-Za-z0-9_-]{20,64}$","description":"a prefixed, opaque id minted by Scope; records themselves carry a UUIDv7 and no prefix"}},"type":"object","required":["schema","id","ts","install","source","text","scope.client.address_hash"],"properties":{"schema":{"const":"scope.declaration/1"},"id":{"type":"string","format":"uuid","description":"UUIDv7 minted by the sensor; the record's own identity and its idempotency key at the ingest"},"ts":{"type":"string","format":"date-time"},"install":{"oneOf":[{"$ref":"#/$defs/prefixedId"},{"type":"null"}],"description":"the install this sensor runs as; null only on a sensor with no install id (a lab deployment)"},"request":{"type":["string","null"],"format":"uuid","description":"the request record the declaration rode on, when one did"},"source":{"type":"string","enum":["gate","header","finder","sdk","cli"]},"text":{"type":"string","description":"the sentence the agent gave, verbatim"},"task":{"type":["string","null"],"description":"the task category the agent chose, when the declaration tool asked for one"},"found_via":{"type":["string","null"],"description":"how the agent says it found the product, when asked"},"agent":{"type":["string","null"],"description":"the agent's own name for itself, when it gave one"},"scope.client.address_hash":{"$ref":"#/$defs/hash12"},"scope.key.credential":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed bearer of the call that carried the declaration"},"mcp.session.id":{"type":["string","null"],"description":"the MCP session the declaration was made in"},"scope.key.reference":{"oneOf":[{"$ref":"#/$defs/reference"},{"type":"null"}],"description":"the page reference the call arrived with"},"scope.reference_minted":{"oneOf":[{"$ref":"#/$defs/reference"},{"type":"null"}],"description":"the reference minted into the finder's answer"}},"additionalProperties":false};
+const schema43 = {"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://journeys.tryscope.com/schemas/journeys/1/declaration","title":"scope.declaration/1","description":"An intent the sensor collected: from the declaration tool in front of the MCP route (gate), from the intent header on an API call (header), from the docs finder (finder), from the SDK's intent option (sdk) or the CLI (cli). Exported as an OTLP log record with event_name scope.intent. Shipped as its own record beside the request it rode on.","$defs":{"hash12":{"type":"string","pattern":"^[0-9a-f]{12}$","description":"sha256(salt + ':' + value)[0:12]; a join key inside the salt epoch, nothing else"},"reference":{"type":"string","pattern":"^[0-9A-HJKMNP-TV-Z]{8}$","description":"eight base32 characters: three minting-minute characters, four random, one check"},"prefixedId":{"type":"string","pattern":"^(jin|jrn|vis|int|acc|pol|jds)_[A-Za-z0-9_-]{20,64}$","description":"a prefixed, opaque id minted by Scope; records themselves carry a UUIDv7 and no prefix"}},"type":"object","required":["schema","id","ts","install","source","text","scope.client.address_hash"],"properties":{"schema":{"const":"scope.declaration/1"},"id":{"type":"string","format":"uuid","description":"UUIDv7 minted by the sensor; the record's own identity and its idempotency key at the ingest"},"ts":{"type":"string","format":"date-time"},"install":{"oneOf":[{"$ref":"#/$defs/prefixedId"},{"type":"null"}],"description":"the install this sensor runs as; null only on a sensor with no install id (a lab deployment)"},"request":{"type":["string","null"],"format":"uuid","description":"the request record the declaration rode on, when one did"},"source":{"type":"string","enum":["gate","header","finder","sdk","cli"]},"text":{"type":"string","description":"the sentence the agent gave, redacted like url.query and by shape (a declaration that is no sentence: its arguments as JSON, redacted like a body)"},"task":{"type":["string","null"],"description":"the task category the agent chose, when the declaration tool asked for one"},"found_via":{"type":["string","null"],"description":"how the agent says it found the product, when asked"},"agent":{"type":["string","null"],"description":"the agent's own name for itself, when it gave one"},"scope.client.address_hash":{"$ref":"#/$defs/hash12"},"scope.key.credential":{"oneOf":[{"$ref":"#/$defs/hash12"},{"type":"null"}],"description":"the hashed bearer of the call that carried the declaration"},"mcp.session.id":{"type":["string","null"],"description":"the hash of the MCP session id the declaration was made in"},"scope.key.reference":{"oneOf":[{"$ref":"#/$defs/reference"},{"type":"null"}],"description":"the page reference the call arrived with"},"scope.reference_minted":{"oneOf":[{"$ref":"#/$defs/reference"},{"type":"null"}],"description":"the reference minted into the finder's answer"}},"additionalProperties":false};
 const schema44 = {"type":"string","pattern":"^(jin|jrn|vis|int|acc|pol|jds)_[A-Za-z0-9_-]{20,64}$","description":"a prefixed, opaque id minted by Scope; records themselves carry a UUIDv7 and no prefix"};
 const schema45 = {"type":"string","pattern":"^[0-9a-f]{12}$","description":"sha256(salt + ':' + value)[0:12]; a join key inside the salt epoch, nothing else"};
 const schema47 = {"type":"string","pattern":"^[0-9A-HJKMNP-TV-Z]{8}$","description":"eight base32 characters: three minting-minute characters, four random, one check"};
@@ -3355,7 +3355,7 @@ return errors === 0;
 validate22.evaluated = {"props":true,"dynamicProps":false,"dynamicItems":false};
 
 export const validatePolicy = validate23;
-const schema50 = {"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://journeys.tryscope.com/schemas/journeys/1/policy","title":"scope.policy/1","description":"The configuration the sensor fetches. Immutable integer versions per customer; public to the customer; holds no secret (the sensor's validator refuses a secret-shaped value). A sensor that does not know a section ignores it; a rule kind it does not know runs as a skipped decision.","$defs":{"regex":{"type":"string","description":"a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document"},"regexList":{"type":"array","items":{"$ref":"#/$defs/regex"}},"route":{"type":"string","enum":["docs","docs_root","download","api","mcp","oauth.register","oauth.authorize","oauth.token","oauth.approve","device.start","device.poll","device.approve","signup","hooks.create","hooks.catch","credentials","trial","finder","cli.init","cli.beacon","passthrough","other"]},"faceRewrite":{"type":"object","required":["pattern","replacement"],"properties":{"pattern":{"type":"string","description":"a regular expression over the page body with {host} filled in; applied globally"},"replacement":{"type":"string","description":"the replacement with $1 to $9 groups and {host}, {prefix}, {token} filled in; plain text, every link on https://{host} or a path, and on the html face only whole tags from a, blockquote, body, code, h1, head, html, li, meta, p, pre, title, ul with an a's href and a meta's utf-8 charset; on the md and txt faces no www or mail address, character reference, control character or markup a renderer would act on; anything else runs the rule dry. Where the pattern lands it inside a tag, an inline script or style, a title or a text area, or joins it to the page's text inside a word on the md or txt face, it only extends a link to https://{host} with a link-safe code. A rule that would grow a page past twice its size and 64 KiB is left out of it"}},"additionalProperties":false},"fieldNames":{"type":"object","additionalProperties":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"}}]},"description":"the body field names a door's keys live in, by key kind; a sensor and the stitcher read the same names"},"bodyMatch":{"type":"object","required":["field","value"],"properties":{"field":{"type":"string"},"value":{}},"additionalProperties":false,"description":"a body field and the value that means success"},"door":{"oneOf":[{"$ref":"#/$defs/regex"},{"type":"object","required":["path"],"properties":{"path":{"$ref":"#/$defs/regex"},"fields":{"$ref":"#/$defs/fieldNames"}},"additionalProperties":false}],"description":"a door: its path pattern, or the pattern with the field names its keys live in"}},"type":"object","required":["schema","version","secrets","headers","forward","rules"],"anyOf":[{"required":["routes"]},{"required":["surfaces"]}],"properties":{"schema":{"const":"scope.policy/1"},"version":{"type":"integer","minimum":0,"description":"the customer's policy version; 0 is the embedded forward-only default"},"about":{"type":"string"},"origin":{"type":["string","null"],"description":"ignored by the sensor: where traffic goes comes only from its own configuration (JOURNEYS_ORIGIN)"},"report":{"type":"object","description":"ignored by the sensor: records go to JOURNEYS_API_URL in its own configuration, with the install key as Authorization: Bearer","required":["url"],"properties":{"url":{"type":"string"},"key_header":{"type":"string"},"kinds":{"type":"object","description":"reserved"}},"additionalProperties":false},"routes":{"type":"object","description":"the regular-expression form: four expressions over the path plus the text faces; a policy with surfaces ignores every key but run_prefix","properties":{"run_prefix":{"$ref":"#/$defs/regex","description":"a path prefix with two capture groups (the prefix, the rest): the path up to the rest group is stripped before classification and restored in rewritten links as {prefix}, whatever the first group captures"},"passthrough":{"$ref":"#/$defs/regex"},"not_content":{"$ref":"#/$defs/regex"},"observed":{"$ref":"#/$defs/regex"},"text_faces":{"$ref":"#/$defs/regex","description":"plain-text documents that are pages (a root map such as llms.txt)"}},"additionalProperties":false},"surfaces":{"type":"object","description":"the surface map: the roles of the product's paths, derived from the standards (MCP is one JSON-RPC endpoint carrying MCP-Session-Id and MCP-Protocol-Version; OAuth 2.1 names its registration (RFC 7591), authorization, token and device-authorization (RFC 8628) endpoints in its metadata documents (RFC 8414, RFC 9728); an API call carries a bearer) plus a short custom list. Classification precedence, first match wins: passthrough, custom (in order), finder, mcp, oauth.register, oauth.authorize, oauth.token, oauth.approve, device.start, device.poll, device.approve, hooks.create, hooks.catch, credentials, trial, cli.init, cli.beacon, signup, download, api, docs.llms and docs.root (docs_root), docs.paths (docs), else other.","properties":{"docs":{"type":"object","properties":{"paths":{"$ref":"#/$defs/regexList","description":"documentation pages: observed, content, references minted per serve"},"root":{"$ref":"#/$defs/regex","description":"the site root or docs root page"},"llms":{"$ref":"#/$defs/regex","description":"the root map (llms.txt), a plain-text page"},"faces":{"type":"object","properties":{"md":{"$ref":"#/$defs/regexList"},"txt":{"$ref":"#/$defs/regexList"}},"additionalProperties":false,"description":"paths whose face is markdown or text regardless of the answer's content type"}},"additionalProperties":false},"download":{"type":"object","properties":{"paths":{"$ref":"#/$defs/regexList"}},"additionalProperties":false,"description":"installer and package downloads: an opener of an install journey when the url carries a reference"},"api":{"type":"object","properties":{"paths":{"$ref":"#/$defs/regexList"},"credential_header":{"type":"string","default":"authorization"},"actions":{"$ref":"#/$defs/regexList","description":"the API paths that are actions (a step with an outcome) rather than reads"},"action_success":{"$ref":"#/$defs/bodyMatch","description":"what a successful action's answer says; absent means any 2xx"}},"additionalProperties":false},"mcp":{"type":"object","properties":{"path":{"$ref":"#/$defs/regex"}},"additionalProperties":false},"oauth":{"type":"object","properties":{"metadata":{"$ref":"#/$defs/regex","description":"RFC 8414 authorization-server metadata; classified as api"},"resource_metadata":{"$ref":"#/$defs/regex","description":"RFC 9728 protected-resource metadata; classified as api"},"register":{"$ref":"#/$defs/regex","description":"RFC 7591 dynamic client registration"},"authorize":{"$ref":"#/$defs/regex"},"token":{"$ref":"#/$defs/regex"},"approve":{"$ref":"#/$defs/regex","description":"the product's consent post"},"fields":{"$ref":"#/$defs/fieldNames","description":"client_id (default client_id), credential (default access_token)"}},"additionalProperties":false},"device":{"type":"object","properties":{"start":{"$ref":"#/$defs/regex","description":"RFC 8628 device authorization"},"poll":{"$ref":"#/$defs/regex"},"approve":{"$ref":"#/$defs/regex","description":"the person's approval post"},"poll_approved":{"$ref":"#/$defs/bodyMatch","description":"what the poll's answer says when the person approved; default {status: approved}"},"fields":{"$ref":"#/$defs/fieldNames","description":"device_code, user_code, approve_code (default code), credential (default api_key)"}},"additionalProperties":false},"signup":{"$ref":"#/$defs/door","description":"the sign-up form post; fields: reference (default via)"},"hooks":{"type":"object","properties":{"create":{"$ref":"#/$defs/regex"},"catch":{"$ref":"#/$defs/regex","description":"the first capture group is the hook id"},"fields":{"$ref":"#/$defs/fieldNames","description":"url (default url), id (default hook_id)"}},"additionalProperties":false},"credentials":{"$ref":"#/$defs/door","description":"client credentials issued; fields: client_id"},"trial":{"$ref":"#/$defs/door","description":"a trial key issued from code; fields: credential (default trial_key), install (default install_id)"},"cli":{"type":"object","properties":{"init":{"$ref":"#/$defs/regex","description":"the product's CLI registering a project or an install: an opener"},"beacon":{"$ref":"#/$defs/regex","description":"the CLI's telemetry ping: an opener"},"fields":{"$ref":"#/$defs/fieldNames","description":"reference (default ref, token), install (default install_id)"}},"additionalProperties":false},"clients":{"type":"object","properties":{"cli":{"type":"string","description":"a regular expression over the user agent that names the customer's own CLI"},"sdk":{"type":"string","description":"the same for the customer's SDK"}},"additionalProperties":false,"description":"how the reader family vendor-client is decided: the customer's own clients by pattern, never a hard-coded product string"},"finder":{"$ref":"#/$defs/regex","description":"the documentation-finder route the sensor answers"},"passthrough":{"$ref":"#/$defs/regexList","description":"never observed, never recorded"},"custom":{"type":"array","items":{"type":"object","required":["pattern","role"],"properties":{"pattern":{"$ref":"#/$defs/regex"},"role":{"$ref":"#/$defs/route"},"observed":{"type":"boolean","default":true}},"additionalProperties":false},"description":"the customer's overrides, in order; an entry beats every standard entry"}},"additionalProperties":false},"secrets":{"type":"object","properties":{"fields":{"type":"array","items":{"type":"string"},"description":"body fields hashed by name wherever they appear"},"shapes":{"type":"array","items":{"type":"string"},"description":"the product's signed-value shapes, hashed wherever they appear: path, query, body, Location"},"uri_fields":{"type":"object","additionalProperties":{"type":"string"},"description":"a body field holding a url whose named parameter, in the query or the fragment, is a code; only that parameter's value is hashed"}},"additionalProperties":false},"headers":{"type":"object","description":"the names of the headers the sensor reads; a name that is not a header name is ignored, and session, setup, agent, client and intent may not name one that carries a credential (a name with auth, cookie, token, secret, password, credential, key, jwt, assertion, oidc, signature, bypass, dpop, proof, hmac, csrf or xsrf in it, the credential header, surfaces.api.credential_header)","properties":{"credential":{"type":"string","default":"authorization"},"session":{"type":"string","default":"mcp-session-id"},"reference":{"type":"array","items":{"type":"string"},"description":"the query parameters that carry a reference"},"install":{"type":["string","null"]},"setup":{"type":["string","null"]},"agent":{"type":["string","null"]},"client":{"type":["string","null"]},"intent":{"type":["string","null"]},"signature":{"type":"string","default":"signature-agent"}},"additionalProperties":false},"forward":{"type":"object","properties":{"headers":{"type":"object","additionalProperties":{"type":"string"},"description":"the policy's own x- headers added on the hop to the origin, with {host} filled in; x-forwarded, x-forwarded-*, x-real-ip, x-client-ip, x-cluster-client-ip, x-originating-ip, x-host, x-original-*, x-rewrite-url, x-http-method, x-http-method-override, x-method-override, x-middleware-*, x-invoke-*, x-matched-path, x-prerender-*, x-vercel-*, x-nextjs-*, x-journeys-*, x-scope-*, x-envoy-*, a name that carries a credential, a value that is not one line of latin-1 or has a placeholder other than {host}, and any name not starting x- are ignored"},"key_header":{"type":["string","null"],"description":"ignored by the sensor: the install key never goes to the origin; the signed assertion proves the hop"}},"additionalProperties":false},"record_bodies":{"type":"boolean","default":false,"description":"false is the lightest form: bodies are read where a rule needs them and never leave; true records the bodies of the routes the surface map observes, every field but secrets.fields and secrets.shapes as sent"},"observe":{"type":"object","description":"reserved for the body allow list","properties":{"bodies":{"type":"object","properties":{"routes":{"type":"array"},"allow_fields":{"type":"array"},"max_bytes":{"type":"integer"},"json_rpc":{"type":"boolean"}}}}},"rules":{"type":"array","items":{"type":"object","required":["id","kind"],"properties":{"id":{"type":"string"},"kind":{"type":"string","enum":["inject","gate","finder","notfound","error","face"]},"mode":{"type":"string","enum":["dry_run","live"],"default":"dry_run","description":"dry_run computes what the rule would do, records it and changes nothing on the wire"},"environments":{"type":"array","items":{"type":"string","enum":["production","preview","development"]},"default":["production","preview","development"],"description":"where a live rule is live; elsewhere it runs dry"},"on_error":{"type":"string","enum":["open","closed"],"default":"open","description":"closed is honoured by a gate only: the declaration call is refused instead of forwarded"},"label":{"type":"string"},"faces":{"type":"object","description":"inject: a rewrite per face (html, md, txt); notfound: a page body per face, held to the same content as an inject replacement (with no html face, the md page is shown to a browser as escaped plain text)"},"route":{"type":"string","description":"finder and gate: the exact path; error: a regular expression over the path"},"form":{"type":"string","enum":["tool","instructions","descriptions"]},"tool":{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"inputSchema":{"type":"object"}}},"acknowledgement":{"type":"string"},"instructions":{"type":"string"},"description_suffix":{"type":"string"},"answers":{"type":"array","items":{"type":"object","required":["match","links"],"properties":{"match":{"type":"string"},"links":{"type":"array","items":{"type":"string"}}}}},"default_links":{"type":"array","items":{"type":"string"},"description":"finder: paths on the customer's site; anything else runs the rule dry"},"links":{"type":"object","additionalProperties":{"type":"string"},"description":"error: a path on the customer's site per status; anything else runs the rule dry"},"suffix":{"type":"string"}},"if":{"properties":{"kind":{"not":{"const":"gate"}}}},"then":{"properties":{"on_error":{"const":"open"}}}}},"assertion":{"type":"object","properties":{"enabled":{"type":"boolean","default":false},"audience":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"signers":{"type":"array","items":{"type":"string"},"default":["https://crawler.exa.ai","https://chatgpt.com"],"description":"the Web Bot Auth signers whose key directories the sensor fetches, each an exact https origin such as https://chatgpt.com (an entry that is not one is ignored and named in the notices); a signature from any other signer is recorded as unlisted_signer and causes no outbound request"},"destinations":{"type":"array","items":{"type":"object","properties":{"kind":{"type":"string","enum":["scope","otlp","webhook"]},"url":{"type":"string"},"headers":{"type":"object"},"events":{"type":"array"}}}},"retention_days":{"type":"integer","default":90,"minimum":30,"maximum":400},"salt_epoch":{"type":"integer","default":1,"minimum":1}}};
+const schema50 = {"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://journeys.tryscope.com/schemas/journeys/1/policy","title":"scope.policy/1","description":"The configuration the sensor fetches. Immutable integer versions per customer; public to the customer; holds no secret (the sensor's validator refuses a secret-shaped value). A sensor that does not know a section ignores it; a rule kind it does not know runs as a skipped decision.","$defs":{"regex":{"type":"string","description":"a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document"},"regexList":{"type":"array","items":{"$ref":"#/$defs/regex"}},"route":{"type":"string","enum":["docs","docs_root","download","api","mcp","oauth.register","oauth.authorize","oauth.token","oauth.approve","device.start","device.poll","device.approve","signup","hooks.create","hooks.catch","credentials","trial","finder","cli.init","cli.beacon","passthrough","other"]},"faceRewrite":{"type":"object","required":["pattern","replacement"],"properties":{"pattern":{"type":"string","description":"a regular expression over the page body with {host} filled in; applied globally"},"replacement":{"type":"string","description":"the replacement with $1 to $9 groups and {host}, {prefix}, {token} filled in; plain text, every link on https://{host} or a path, and on the html face only whole tags from a, blockquote, body, code, h1, head, html, li, meta, p, pre, title, ul with an a's href and a meta's utf-8 charset; on the md and txt faces no www or mail address, character reference, control character or markup a renderer would act on; anything else runs the rule dry. Where the pattern lands it inside a tag, an inline script or style, a title or a text area, or joins it to the page's text inside a word on the md or txt face, it only extends a link to https://{host} with a link-safe code. A rule that would grow a page past twice its size and 64 KiB is left out of it"}},"additionalProperties":false},"fieldNames":{"type":"object","additionalProperties":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"}}]},"description":"the body field names a door's keys live in, by key kind; a sensor and the stitcher read the same names"},"bodyMatch":{"type":"object","required":["field","value"],"properties":{"field":{"type":"string"},"value":{}},"additionalProperties":false,"description":"a body field and the value that means success"},"door":{"oneOf":[{"$ref":"#/$defs/regex"},{"type":"object","required":["path"],"properties":{"path":{"$ref":"#/$defs/regex"},"fields":{"$ref":"#/$defs/fieldNames"}},"additionalProperties":false}],"description":"a door: its path pattern, or the pattern with the field names its keys live in"}},"type":"object","required":["schema","version","secrets","headers","forward","rules"],"anyOf":[{"required":["routes"]},{"required":["surfaces"]}],"properties":{"schema":{"const":"scope.policy/1"},"version":{"type":"integer","minimum":0,"description":"the customer's policy version; 0 is the embedded forward-only default"},"about":{"type":"string"},"origin":{"type":["string","null"],"description":"ignored by the sensor: where traffic goes comes only from its own configuration (JOURNEYS_ORIGIN)"},"report":{"type":"object","description":"ignored by the sensor: records go to JOURNEYS_API_URL in its own configuration, with the install key as Authorization: Bearer","required":["url"],"properties":{"url":{"type":"string"},"key_header":{"type":"string"},"kinds":{"type":"object","description":"reserved"}},"additionalProperties":false},"routes":{"type":"object","description":"the regular-expression form: four expressions over the path plus the text faces; a policy with surfaces ignores every key but run_prefix","properties":{"run_prefix":{"$ref":"#/$defs/regex","description":"a path prefix with two capture groups (the prefix, the rest): the path up to the rest group is stripped before classification and restored in rewritten links as {prefix}, whatever the first group captures"},"passthrough":{"$ref":"#/$defs/regex"},"not_content":{"$ref":"#/$defs/regex"},"observed":{"$ref":"#/$defs/regex"},"text_faces":{"$ref":"#/$defs/regex","description":"plain-text documents that are pages (a root map such as llms.txt)"}},"additionalProperties":false},"surfaces":{"type":"object","description":"the surface map: the roles of the product's paths, derived from the standards (MCP is one JSON-RPC endpoint carrying MCP-Session-Id and MCP-Protocol-Version; OAuth 2.1 names its registration (RFC 7591), authorization, token and device-authorization (RFC 8628) endpoints in its metadata documents (RFC 8414, RFC 9728); an API call carries a bearer) plus a short custom list. Classification precedence, first match wins: passthrough, custom (in order), finder, mcp, oauth.register, oauth.authorize, oauth.token, oauth.approve, device.start, device.poll, device.approve, hooks.create, hooks.catch, credentials, trial, cli.init, cli.beacon, signup, download, api, docs.llms and docs.root (docs_root), docs.paths (docs), else other.","properties":{"docs":{"type":"object","properties":{"paths":{"$ref":"#/$defs/regexList","description":"documentation pages: observed, content, references minted per serve"},"root":{"$ref":"#/$defs/regex","description":"the site root or docs root page"},"llms":{"$ref":"#/$defs/regex","description":"the root map (llms.txt), a plain-text page"},"faces":{"type":"object","properties":{"md":{"$ref":"#/$defs/regexList"},"txt":{"$ref":"#/$defs/regexList"}},"additionalProperties":false,"description":"paths whose face is markdown or text regardless of the answer's content type"}},"additionalProperties":false},"download":{"type":"object","properties":{"paths":{"$ref":"#/$defs/regexList"}},"additionalProperties":false,"description":"installer and package downloads: an opener of an install journey when the url carries a reference"},"api":{"type":"object","properties":{"paths":{"$ref":"#/$defs/regexList"},"credential_header":{"type":"string","default":"authorization"},"actions":{"$ref":"#/$defs/regexList","description":"the API paths that are actions (a step with an outcome) rather than reads"},"action_success":{"$ref":"#/$defs/bodyMatch","description":"what a successful action's answer says; absent means any 2xx"}},"additionalProperties":false},"mcp":{"type":"object","properties":{"path":{"$ref":"#/$defs/regex"}},"additionalProperties":false},"oauth":{"type":"object","properties":{"metadata":{"$ref":"#/$defs/regex","description":"RFC 8414 authorization-server metadata; classified as api"},"resource_metadata":{"$ref":"#/$defs/regex","description":"RFC 9728 protected-resource metadata; classified as api"},"register":{"$ref":"#/$defs/regex","description":"RFC 7591 dynamic client registration"},"authorize":{"$ref":"#/$defs/regex"},"token":{"$ref":"#/$defs/regex"},"approve":{"$ref":"#/$defs/regex","description":"the product's consent post"},"fields":{"$ref":"#/$defs/fieldNames","description":"client_id (default client_id), credential (default access_token)"}},"additionalProperties":false},"device":{"type":"object","properties":{"start":{"$ref":"#/$defs/regex","description":"RFC 8628 device authorization"},"poll":{"$ref":"#/$defs/regex"},"approve":{"$ref":"#/$defs/regex","description":"the person's approval post"},"poll_approved":{"$ref":"#/$defs/bodyMatch","description":"what the poll's answer says when the person approved; default {status: approved}"},"fields":{"$ref":"#/$defs/fieldNames","description":"device_code, user_code, approve_code (default code), credential (default api_key)"}},"additionalProperties":false},"signup":{"$ref":"#/$defs/door","description":"the sign-up form post; fields: reference (default via)"},"hooks":{"type":"object","properties":{"create":{"$ref":"#/$defs/regex"},"catch":{"$ref":"#/$defs/regex","description":"the first capture group is the hook id"},"fields":{"$ref":"#/$defs/fieldNames","description":"url (default url), id (default hook_id)"}},"additionalProperties":false},"credentials":{"$ref":"#/$defs/door","description":"client credentials issued; fields: client_id"},"trial":{"$ref":"#/$defs/door","description":"a trial key issued from code; fields: credential (default trial_key), install (default install_id)"},"cli":{"type":"object","properties":{"init":{"$ref":"#/$defs/regex","description":"the product's CLI registering a project or an install: an opener"},"beacon":{"$ref":"#/$defs/regex","description":"the CLI's telemetry ping: an opener"},"fields":{"$ref":"#/$defs/fieldNames","description":"reference (default ref, token), install (default install_id)"}},"additionalProperties":false},"clients":{"type":"object","properties":{"cli":{"type":"string","description":"a regular expression over the user agent that names the customer's own CLI"},"sdk":{"type":"string","description":"the same for the customer's SDK"}},"additionalProperties":false,"description":"how the reader family vendor-client is decided: the customer's own clients by pattern, never a hard-coded product string"},"finder":{"$ref":"#/$defs/regex","description":"the documentation-finder route the sensor answers"},"passthrough":{"$ref":"#/$defs/regexList","description":"never observed, never recorded"},"custom":{"type":"array","items":{"type":"object","required":["pattern","role"],"properties":{"pattern":{"$ref":"#/$defs/regex"},"role":{"$ref":"#/$defs/route"},"observed":{"type":"boolean","default":true}},"additionalProperties":false},"description":"the customer's overrides, in order; an entry beats every standard entry"}},"additionalProperties":false},"secrets":{"type":"object","properties":{"fields":{"type":"array","items":{"type":"string"},"description":"body fields hashed by name wherever they appear, beside the names the sensor always hashes in bodies and URLs (api_key, key, token, access_token, refresh_token, id_token, code, client_secret, password, secret, signature, sig, session_id, in any case or spelling, or a name whose last word is key, token, secret, password, signature or sig; such a field's whole value is hashed unless it is true or false, except code in an answer's body (usually an error code); a valid reference code stays readable only where headers.reference or a door's fields.reference names the field)"},"shapes":{"type":"array","items":{"type":"string"},"description":"the product's signed-value shapes, hashed wherever they appear: path, query, body, Location"},"uri_fields":{"type":"object","additionalProperties":{"type":"string"},"description":"a body field holding a url whose named parameter, in the query or the fragment, is a code; only that parameter's value is hashed"}},"additionalProperties":false},"headers":{"type":"object","description":"the names of the headers the sensor reads; a name that is not a header name is ignored, and session, setup, agent, client and intent may not name one that carries a credential (a name with auth, cookie, token, secret, password, credential, key, jwt, assertion, oidc, signature, bypass, dpop, proof, hmac, csrf or xsrf in it, the credential header, surfaces.api.credential_header)","properties":{"credential":{"type":"string","default":"authorization"},"session":{"type":"string","default":"mcp-session-id"},"reference":{"type":"array","items":{"type":"string"},"description":"the query parameters that carry a reference"},"install":{"type":["string","null"]},"setup":{"type":["string","null"]},"agent":{"type":["string","null"]},"client":{"type":["string","null"]},"intent":{"type":["string","null"]},"signature":{"type":"string","default":"signature-agent"}},"additionalProperties":false},"forward":{"type":"object","properties":{"headers":{"type":"object","additionalProperties":{"type":"string"},"description":"the policy's own x- headers added on the hop to the origin, with {host} filled in; x-forwarded, x-forwarded-*, x-real-ip, x-client-ip, x-cluster-client-ip, x-originating-ip, x-host, x-original-*, x-rewrite-url, x-http-method, x-http-method-override, x-method-override, x-middleware-*, x-invoke-*, x-matched-path, x-prerender-*, x-vercel-*, x-nextjs-*, x-journeys-*, x-scope-*, x-envoy-*, a name that carries a credential, a value that is not one line of latin-1 or has a placeholder other than {host}, and any name not starting x- are ignored"},"key_header":{"type":["string","null"],"description":"ignored by the sensor: the install key never goes to the origin; the signed assertion proves the hop"}},"additionalProperties":false},"record_bodies":{"type":"boolean","default":false,"description":"false is the lightest form: bodies are read where a rule needs them and never leave; true records, on the routes the surface map observes and for an error answer (400 or above) on any route it does not pass through, only the fields observe.bodies.allow_fields names, with secret names and shapes hashed; true with no allowed field records no body"},"observe":{"type":"object","description":"the body allowlist; routes, max_bytes and json_rpc are reserved and not read","properties":{"bodies":{"type":"object","properties":{"routes":{"type":"array"},"allow_fields":{"type":"array","items":{"type":"string"},"description":"the body field names that may leave, at any depth: an allowed field keeps its whole value, any other is dropped; a body with no allowed field is recorded as null"},"max_bytes":{"type":"integer"},"json_rpc":{"type":"boolean"}}}}},"rules":{"type":"array","items":{"type":"object","required":["id","kind"],"properties":{"id":{"type":"string"},"kind":{"type":"string","enum":["inject","gate","finder","notfound","error","face"]},"mode":{"type":"string","enum":["dry_run","live"],"default":"dry_run","description":"dry_run computes what the rule would do, records it and changes nothing on the wire"},"environments":{"type":"array","items":{"type":"string","enum":["production","preview","development"]},"default":["production","preview","development"],"description":"where a live rule is live; elsewhere it runs dry"},"on_error":{"type":"string","enum":["open","closed"],"default":"open","description":"closed is honoured by a gate only: the declaration call is refused instead of forwarded"},"label":{"type":"string"},"faces":{"type":"object","description":"inject: a rewrite per face (html, md, txt); notfound: a page body per face, held to the same content as an inject replacement (with no html face, the md page is shown to a browser as escaped plain text)"},"route":{"type":"string","description":"finder and gate: the exact path; error: a regular expression over the path"},"form":{"type":"string","enum":["tool","instructions","descriptions"]},"tool":{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"description":{"type":"string"},"inputSchema":{"type":"object"}}},"acknowledgement":{"type":"string"},"instructions":{"type":"string"},"description_suffix":{"type":"string"},"answers":{"type":"array","items":{"type":"object","required":["match","links"],"properties":{"match":{"type":"string"},"links":{"type":"array","items":{"type":"string"}}}}},"default_links":{"type":"array","items":{"type":"string"},"description":"finder: paths on the customer's site; anything else runs the rule dry"},"links":{"type":"object","additionalProperties":{"type":"string"},"description":"error: a path on the customer's site per status; anything else runs the rule dry"},"suffix":{"type":"string"}},"if":{"properties":{"kind":{"not":{"const":"gate"}}}},"then":{"properties":{"on_error":{"const":"open"}}}}},"assertion":{"type":"object","properties":{"enabled":{"type":"boolean","default":false},"audience":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"signers":{"type":"array","items":{"type":"string"},"default":["https://crawler.exa.ai","https://chatgpt.com"],"description":"the Web Bot Auth signers whose key directories the sensor fetches, each an exact https origin such as https://chatgpt.com (an entry that is not one is ignored and named in the notices); a signature from any other signer is recorded as unlisted_signer and causes no outbound request"},"destinations":{"type":"array","items":{"type":"object","properties":{"kind":{"type":"string","enum":["scope","otlp","webhook"]},"url":{"type":"string"},"headers":{"type":"object"},"events":{"type":"array"}}}},"retention_days":{"type":"integer","default":90,"minimum":30,"maximum":400},"salt_epoch":{"type":"integer","default":1,"minimum":1}}};
 const schema51 = {"type":"string","description":"a JavaScript regular expression over the path; anchored at the start by the compiler when it does not begin with ^; one that repeats a group holding a repeat, such as (a+)+, refuses the whole document"};
 const schema60 = {"type":"object","required":["field","value"],"properties":{"field":{"type":"string"},"value":{}},"additionalProperties":false,"description":"a body field and the value that means success"};
 const schema68 = {"type":"object","additionalProperties":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"}}]},"description":"the body field names a door's keys live in, by key kind; a sensor and the stitcher read the same names"};
@@ -5532,8 +5532,12 @@ errors++;
 }
 }
 if(data100.allow_fields !== undefined){
-if(!(Array.isArray(data100.allow_fields))){
-const err135 = {instancePath:instancePath+"/observe/bodies/allow_fields",schemaPath:"#/properties/observe/properties/bodies/properties/allow_fields/type",keyword:"type",params:{type: "array"},message:"must be array"};
+let data102 = data100.allow_fields;
+if(Array.isArray(data102)){
+const len8 = data102.length;
+for(let i8=0; i8<len8; i8++){
+if(typeof data102[i8] !== "string"){
+const err135 = {instancePath:instancePath+"/observe/bodies/allow_fields/" + i8,schemaPath:"#/properties/observe/properties/bodies/properties/allow_fields/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err135];
 }
@@ -5543,10 +5547,9 @@ vErrors.push(err135);
 errors++;
 }
 }
-if(data100.max_bytes !== undefined){
-let data103 = data100.max_bytes;
-if(!(((typeof data103 == "number") && (!(data103 % 1) && !isNaN(data103))) && (isFinite(data103)))){
-const err136 = {instancePath:instancePath+"/observe/bodies/max_bytes",schemaPath:"#/properties/observe/properties/bodies/properties/max_bytes/type",keyword:"type",params:{type: "integer"},message:"must be integer"};
+}
+else {
+const err136 = {instancePath:instancePath+"/observe/bodies/allow_fields",schemaPath:"#/properties/observe/properties/bodies/properties/allow_fields/type",keyword:"type",params:{type: "array"},message:"must be array"};
 if(vErrors === null){
 vErrors = [err136];
 }
@@ -5556,9 +5559,10 @@ vErrors.push(err136);
 errors++;
 }
 }
-if(data100.json_rpc !== undefined){
-if(typeof data100.json_rpc !== "boolean"){
-const err137 = {instancePath:instancePath+"/observe/bodies/json_rpc",schemaPath:"#/properties/observe/properties/bodies/properties/json_rpc/type",keyword:"type",params:{type: "boolean"},message:"must be boolean"};
+if(data100.max_bytes !== undefined){
+let data104 = data100.max_bytes;
+if(!(((typeof data104 == "number") && (!(data104 % 1) && !isNaN(data104))) && (isFinite(data104)))){
+const err137 = {instancePath:instancePath+"/observe/bodies/max_bytes",schemaPath:"#/properties/observe/properties/bodies/properties/max_bytes/type",keyword:"type",params:{type: "integer"},message:"must be integer"};
 if(vErrors === null){
 vErrors = [err137];
 }
@@ -5568,9 +5572,9 @@ vErrors.push(err137);
 errors++;
 }
 }
-}
-else {
-const err138 = {instancePath:instancePath+"/observe/bodies",schemaPath:"#/properties/observe/properties/bodies/type",keyword:"type",params:{type: "object"},message:"must be object"};
+if(data100.json_rpc !== undefined){
+if(typeof data100.json_rpc !== "boolean"){
+const err138 = {instancePath:instancePath+"/observe/bodies/json_rpc",schemaPath:"#/properties/observe/properties/bodies/properties/json_rpc/type",keyword:"type",params:{type: "boolean"},message:"must be boolean"};
 if(vErrors === null){
 vErrors = [err138];
 }
@@ -5582,7 +5586,7 @@ errors++;
 }
 }
 else {
-const err139 = {instancePath:instancePath+"/observe",schemaPath:"#/properties/observe/type",keyword:"type",params:{type: "object"},message:"must be object"};
+const err139 = {instancePath:instancePath+"/observe/bodies",schemaPath:"#/properties/observe/properties/bodies/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err139];
 }
@@ -5592,21 +5596,9 @@ vErrors.push(err139);
 errors++;
 }
 }
-if(data.rules !== undefined){
-let data105 = data.rules;
-if(Array.isArray(data105)){
-const len8 = data105.length;
-for(let i8=0; i8<len8; i8++){
-let data106 = data105[i8];
-const _errs278 = errors;
-let valid81 = true;
-const _errs279 = errors;
-if(data106 && typeof data106 == "object" && !Array.isArray(data106)){
-if(data106.kind !== undefined){
-const _errs281 = errors;
-const _errs282 = errors;
-if("gate" !== data106.kind){
-const err140 = {};
+}
+else {
+const err140 = {instancePath:instancePath+"/observe",schemaPath:"#/properties/observe/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err140];
 }
@@ -5615,8 +5607,21 @@ vErrors.push(err140);
 }
 errors++;
 }
-var valid83 = _errs282 === errors;
-if(valid83){
+}
+if(data.rules !== undefined){
+let data106 = data.rules;
+if(Array.isArray(data106)){
+const len9 = data106.length;
+for(let i9=0; i9<len9; i9++){
+let data107 = data106[i9];
+const _errs280 = errors;
+let valid83 = true;
+const _errs281 = errors;
+if(data107 && typeof data107 == "object" && !Array.isArray(data107)){
+if(data107.kind !== undefined){
+const _errs283 = errors;
+const _errs284 = errors;
+if("gate" !== data107.kind){
 const err141 = {};
 if(vErrors === null){
 vErrors = [err141];
@@ -5626,35 +5631,9 @@ vErrors.push(err141);
 }
 errors++;
 }
-else {
-errors = _errs281;
-if(vErrors !== null){
-if(_errs281){
-vErrors.length = _errs281;
-}
-else {
-vErrors = null;
-}
-}
-}
-}
-}
-var _valid5 = _errs279 === errors;
-errors = _errs278;
-if(vErrors !== null){
-if(_errs278){
-vErrors.length = _errs278;
-}
-else {
-vErrors = null;
-}
-}
-if(_valid5){
-const _errs283 = errors;
-if(data106 && typeof data106 == "object" && !Array.isArray(data106)){
-if(data106.on_error !== undefined){
-if("open" !== data106.on_error){
-const err142 = {instancePath:instancePath+"/rules/" + i8+"/on_error",schemaPath:"#/properties/rules/items/then/properties/on_error/const",keyword:"const",params:{allowedValue: "open"},message:"must be equal to constant"};
+var valid85 = _errs284 === errors;
+if(valid85){
+const err142 = {};
 if(vErrors === null){
 vErrors = [err142];
 }
@@ -5663,18 +5642,35 @@ vErrors.push(err142);
 }
 errors++;
 }
+else {
+errors = _errs283;
+if(vErrors !== null){
+if(_errs283){
+vErrors.length = _errs283;
+}
+else {
+vErrors = null;
 }
 }
-var _valid5 = _errs283 === errors;
-valid81 = _valid5;
-if(valid81){
-var props3 = {};
-props3.on_error = true;
-props3.kind = true;
 }
 }
-if(!valid81){
-const err143 = {instancePath:instancePath+"/rules/" + i8,schemaPath:"#/properties/rules/items/if",keyword:"if",params:{failingKeyword: "then"},message:"must match \"then\" schema"};
+}
+var _valid5 = _errs281 === errors;
+errors = _errs280;
+if(vErrors !== null){
+if(_errs280){
+vErrors.length = _errs280;
+}
+else {
+vErrors = null;
+}
+}
+if(_valid5){
+const _errs285 = errors;
+if(data107 && typeof data107 == "object" && !Array.isArray(data107)){
+if(data107.on_error !== undefined){
+if("open" !== data107.on_error){
+const err143 = {instancePath:instancePath+"/rules/" + i9+"/on_error",schemaPath:"#/properties/rules/items/then/properties/on_error/const",keyword:"const",params:{allowedValue: "open"},message:"must be equal to constant"};
 if(vErrors === null){
 vErrors = [err143];
 }
@@ -5683,9 +5679,18 @@ vErrors.push(err143);
 }
 errors++;
 }
-if(data106 && typeof data106 == "object" && !Array.isArray(data106)){
-if(data106.id === undefined){
-const err144 = {instancePath:instancePath+"/rules/" + i8,schemaPath:"#/properties/rules/items/required",keyword:"required",params:{missingProperty: "id"},message:"must have required property '"+"id"+"'"};
+}
+}
+var _valid5 = _errs285 === errors;
+valid83 = _valid5;
+if(valid83){
+var props3 = {};
+props3.on_error = true;
+props3.kind = true;
+}
+}
+if(!valid83){
+const err144 = {instancePath:instancePath+"/rules/" + i9,schemaPath:"#/properties/rules/items/if",keyword:"if",params:{failingKeyword: "then"},message:"must match \"then\" schema"};
 if(vErrors === null){
 vErrors = [err144];
 }
@@ -5694,13 +5699,24 @@ vErrors.push(err144);
 }
 errors++;
 }
-if(data106.kind === undefined){
-const err145 = {instancePath:instancePath+"/rules/" + i8,schemaPath:"#/properties/rules/items/required",keyword:"required",params:{missingProperty: "kind"},message:"must have required property '"+"kind"+"'"};
+if(data107 && typeof data107 == "object" && !Array.isArray(data107)){
+if(data107.id === undefined){
+const err145 = {instancePath:instancePath+"/rules/" + i9,schemaPath:"#/properties/rules/items/required",keyword:"required",params:{missingProperty: "id"},message:"must have required property '"+"id"+"'"};
 if(vErrors === null){
 vErrors = [err145];
 }
 else {
 vErrors.push(err145);
+}
+errors++;
+}
+if(data107.kind === undefined){
+const err146 = {instancePath:instancePath+"/rules/" + i9,schemaPath:"#/properties/rules/items/required",keyword:"required",params:{missingProperty: "kind"},message:"must have required property '"+"kind"+"'"};
+if(vErrors === null){
+vErrors = [err146];
+}
+else {
+vErrors.push(err146);
 }
 errors++;
 }
@@ -5724,22 +5740,9 @@ props3.default_links = true;
 props3.links = true;
 props3.suffix = true;
 }
-if(data106.id !== undefined){
-if(typeof data106.id !== "string"){
-const err146 = {instancePath:instancePath+"/rules/" + i8+"/id",schemaPath:"#/properties/rules/items/properties/id/type",keyword:"type",params:{type: "string"},message:"must be string"};
-if(vErrors === null){
-vErrors = [err146];
-}
-else {
-vErrors.push(err146);
-}
-errors++;
-}
-}
-if(data106.kind !== undefined){
-let data110 = data106.kind;
-if(typeof data110 !== "string"){
-const err147 = {instancePath:instancePath+"/rules/" + i8+"/kind",schemaPath:"#/properties/rules/items/properties/kind/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(data107.id !== undefined){
+if(typeof data107.id !== "string"){
+const err147 = {instancePath:instancePath+"/rules/" + i9+"/id",schemaPath:"#/properties/rules/items/properties/id/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err147];
 }
@@ -5748,8 +5751,11 @@ vErrors.push(err147);
 }
 errors++;
 }
-if(!((((((data110 === "inject") || (data110 === "gate")) || (data110 === "finder")) || (data110 === "notfound")) || (data110 === "error")) || (data110 === "face"))){
-const err148 = {instancePath:instancePath+"/rules/" + i8+"/kind",schemaPath:"#/properties/rules/items/properties/kind/enum",keyword:"enum",params:{allowedValues: schema50.properties.rules.items.properties.kind.enum},message:"must be equal to one of the allowed values"};
+}
+if(data107.kind !== undefined){
+let data111 = data107.kind;
+if(typeof data111 !== "string"){
+const err148 = {instancePath:instancePath+"/rules/" + i9+"/kind",schemaPath:"#/properties/rules/items/properties/kind/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err148];
 }
@@ -5758,11 +5764,8 @@ vErrors.push(err148);
 }
 errors++;
 }
-}
-if(data106.mode !== undefined){
-let data111 = data106.mode;
-if(typeof data111 !== "string"){
-const err149 = {instancePath:instancePath+"/rules/" + i8+"/mode",schemaPath:"#/properties/rules/items/properties/mode/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(!((((((data111 === "inject") || (data111 === "gate")) || (data111 === "finder")) || (data111 === "notfound")) || (data111 === "error")) || (data111 === "face"))){
+const err149 = {instancePath:instancePath+"/rules/" + i9+"/kind",schemaPath:"#/properties/rules/items/properties/kind/enum",keyword:"enum",params:{allowedValues: schema50.properties.rules.items.properties.kind.enum},message:"must be equal to one of the allowed values"};
 if(vErrors === null){
 vErrors = [err149];
 }
@@ -5771,8 +5774,11 @@ vErrors.push(err149);
 }
 errors++;
 }
-if(!((data111 === "dry_run") || (data111 === "live"))){
-const err150 = {instancePath:instancePath+"/rules/" + i8+"/mode",schemaPath:"#/properties/rules/items/properties/mode/enum",keyword:"enum",params:{allowedValues: schema50.properties.rules.items.properties.mode.enum},message:"must be equal to one of the allowed values"};
+}
+if(data107.mode !== undefined){
+let data112 = data107.mode;
+if(typeof data112 !== "string"){
+const err150 = {instancePath:instancePath+"/rules/" + i9+"/mode",schemaPath:"#/properties/rules/items/properties/mode/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err150];
 }
@@ -5781,15 +5787,8 @@ vErrors.push(err150);
 }
 errors++;
 }
-}
-if(data106.environments !== undefined){
-let data112 = data106.environments;
-if(Array.isArray(data112)){
-const len9 = data112.length;
-for(let i9=0; i9<len9; i9++){
-let data113 = data112[i9];
-if(typeof data113 !== "string"){
-const err151 = {instancePath:instancePath+"/rules/" + i8+"/environments/" + i9,schemaPath:"#/properties/rules/items/properties/environments/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(!((data112 === "dry_run") || (data112 === "live"))){
+const err151 = {instancePath:instancePath+"/rules/" + i9+"/mode",schemaPath:"#/properties/rules/items/properties/mode/enum",keyword:"enum",params:{allowedValues: schema50.properties.rules.items.properties.mode.enum},message:"must be equal to one of the allowed values"};
 if(vErrors === null){
 vErrors = [err151];
 }
@@ -5798,8 +5797,15 @@ vErrors.push(err151);
 }
 errors++;
 }
-if(!(((data113 === "production") || (data113 === "preview")) || (data113 === "development"))){
-const err152 = {instancePath:instancePath+"/rules/" + i8+"/environments/" + i9,schemaPath:"#/properties/rules/items/properties/environments/items/enum",keyword:"enum",params:{allowedValues: schema50.properties.rules.items.properties.environments.items.enum},message:"must be equal to one of the allowed values"};
+}
+if(data107.environments !== undefined){
+let data113 = data107.environments;
+if(Array.isArray(data113)){
+const len10 = data113.length;
+for(let i10=0; i10<len10; i10++){
+let data114 = data113[i10];
+if(typeof data114 !== "string"){
+const err152 = {instancePath:instancePath+"/rules/" + i9+"/environments/" + i10,schemaPath:"#/properties/rules/items/properties/environments/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err152];
 }
@@ -5808,10 +5814,8 @@ vErrors.push(err152);
 }
 errors++;
 }
-}
-}
-else {
-const err153 = {instancePath:instancePath+"/rules/" + i8+"/environments",schemaPath:"#/properties/rules/items/properties/environments/type",keyword:"type",params:{type: "array"},message:"must be array"};
+if(!(((data114 === "production") || (data114 === "preview")) || (data114 === "development"))){
+const err153 = {instancePath:instancePath+"/rules/" + i9+"/environments/" + i10,schemaPath:"#/properties/rules/items/properties/environments/items/enum",keyword:"enum",params:{allowedValues: schema50.properties.rules.items.properties.environments.items.enum},message:"must be equal to one of the allowed values"};
 if(vErrors === null){
 vErrors = [err153];
 }
@@ -5821,10 +5825,9 @@ vErrors.push(err153);
 errors++;
 }
 }
-if(data106.on_error !== undefined){
-let data114 = data106.on_error;
-if(typeof data114 !== "string"){
-const err154 = {instancePath:instancePath+"/rules/" + i8+"/on_error",schemaPath:"#/properties/rules/items/properties/on_error/type",keyword:"type",params:{type: "string"},message:"must be string"};
+}
+else {
+const err154 = {instancePath:instancePath+"/rules/" + i9+"/environments",schemaPath:"#/properties/rules/items/properties/environments/type",keyword:"type",params:{type: "array"},message:"must be array"};
 if(vErrors === null){
 vErrors = [err154];
 }
@@ -5833,8 +5836,11 @@ vErrors.push(err154);
 }
 errors++;
 }
-if(!((data114 === "open") || (data114 === "closed"))){
-const err155 = {instancePath:instancePath+"/rules/" + i8+"/on_error",schemaPath:"#/properties/rules/items/properties/on_error/enum",keyword:"enum",params:{allowedValues: schema50.properties.rules.items.properties.on_error.enum},message:"must be equal to one of the allowed values"};
+}
+if(data107.on_error !== undefined){
+let data115 = data107.on_error;
+if(typeof data115 !== "string"){
+const err155 = {instancePath:instancePath+"/rules/" + i9+"/on_error",schemaPath:"#/properties/rules/items/properties/on_error/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err155];
 }
@@ -5843,10 +5849,8 @@ vErrors.push(err155);
 }
 errors++;
 }
-}
-if(data106.label !== undefined){
-if(typeof data106.label !== "string"){
-const err156 = {instancePath:instancePath+"/rules/" + i8+"/label",schemaPath:"#/properties/rules/items/properties/label/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(!((data115 === "open") || (data115 === "closed"))){
+const err156 = {instancePath:instancePath+"/rules/" + i9+"/on_error",schemaPath:"#/properties/rules/items/properties/on_error/enum",keyword:"enum",params:{allowedValues: schema50.properties.rules.items.properties.on_error.enum},message:"must be equal to one of the allowed values"};
 if(vErrors === null){
 vErrors = [err156];
 }
@@ -5856,10 +5860,9 @@ vErrors.push(err156);
 errors++;
 }
 }
-if(data106.faces !== undefined){
-let data116 = data106.faces;
-if(!(data116 && typeof data116 == "object" && !Array.isArray(data116))){
-const err157 = {instancePath:instancePath+"/rules/" + i8+"/faces",schemaPath:"#/properties/rules/items/properties/faces/type",keyword:"type",params:{type: "object"},message:"must be object"};
+if(data107.label !== undefined){
+if(typeof data107.label !== "string"){
+const err157 = {instancePath:instancePath+"/rules/" + i9+"/label",schemaPath:"#/properties/rules/items/properties/label/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err157];
 }
@@ -5869,9 +5872,10 @@ vErrors.push(err157);
 errors++;
 }
 }
-if(data106.route !== undefined){
-if(typeof data106.route !== "string"){
-const err158 = {instancePath:instancePath+"/rules/" + i8+"/route",schemaPath:"#/properties/rules/items/properties/route/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(data107.faces !== undefined){
+let data117 = data107.faces;
+if(!(data117 && typeof data117 == "object" && !Array.isArray(data117))){
+const err158 = {instancePath:instancePath+"/rules/" + i9+"/faces",schemaPath:"#/properties/rules/items/properties/faces/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err158];
 }
@@ -5881,10 +5885,9 @@ vErrors.push(err158);
 errors++;
 }
 }
-if(data106.form !== undefined){
-let data118 = data106.form;
-if(typeof data118 !== "string"){
-const err159 = {instancePath:instancePath+"/rules/" + i8+"/form",schemaPath:"#/properties/rules/items/properties/form/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(data107.route !== undefined){
+if(typeof data107.route !== "string"){
+const err159 = {instancePath:instancePath+"/rules/" + i9+"/route",schemaPath:"#/properties/rules/items/properties/route/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err159];
 }
@@ -5893,8 +5896,11 @@ vErrors.push(err159);
 }
 errors++;
 }
-if(!(((data118 === "tool") || (data118 === "instructions")) || (data118 === "descriptions"))){
-const err160 = {instancePath:instancePath+"/rules/" + i8+"/form",schemaPath:"#/properties/rules/items/properties/form/enum",keyword:"enum",params:{allowedValues: schema50.properties.rules.items.properties.form.enum},message:"must be equal to one of the allowed values"};
+}
+if(data107.form !== undefined){
+let data119 = data107.form;
+if(typeof data119 !== "string"){
+const err160 = {instancePath:instancePath+"/rules/" + i9+"/form",schemaPath:"#/properties/rules/items/properties/form/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err160];
 }
@@ -5903,12 +5909,8 @@ vErrors.push(err160);
 }
 errors++;
 }
-}
-if(data106.tool !== undefined){
-let data119 = data106.tool;
-if(data119 && typeof data119 == "object" && !Array.isArray(data119)){
-if(data119.name === undefined){
-const err161 = {instancePath:instancePath+"/rules/" + i8+"/tool",schemaPath:"#/properties/rules/items/properties/tool/required",keyword:"required",params:{missingProperty: "name"},message:"must have required property '"+"name"+"'"};
+if(!(((data119 === "tool") || (data119 === "instructions")) || (data119 === "descriptions"))){
+const err161 = {instancePath:instancePath+"/rules/" + i9+"/form",schemaPath:"#/properties/rules/items/properties/form/enum",keyword:"enum",params:{allowedValues: schema50.properties.rules.items.properties.form.enum},message:"must be equal to one of the allowed values"};
 if(vErrors === null){
 vErrors = [err161];
 }
@@ -5917,9 +5919,12 @@ vErrors.push(err161);
 }
 errors++;
 }
-if(data119.name !== undefined){
-if(typeof data119.name !== "string"){
-const err162 = {instancePath:instancePath+"/rules/" + i8+"/tool/name",schemaPath:"#/properties/rules/items/properties/tool/properties/name/type",keyword:"type",params:{type: "string"},message:"must be string"};
+}
+if(data107.tool !== undefined){
+let data120 = data107.tool;
+if(data120 && typeof data120 == "object" && !Array.isArray(data120)){
+if(data120.name === undefined){
+const err162 = {instancePath:instancePath+"/rules/" + i9+"/tool",schemaPath:"#/properties/rules/items/properties/tool/required",keyword:"required",params:{missingProperty: "name"},message:"must have required property '"+"name"+"'"};
 if(vErrors === null){
 vErrors = [err162];
 }
@@ -5928,10 +5933,9 @@ vErrors.push(err162);
 }
 errors++;
 }
-}
-if(data119.description !== undefined){
-if(typeof data119.description !== "string"){
-const err163 = {instancePath:instancePath+"/rules/" + i8+"/tool/description",schemaPath:"#/properties/rules/items/properties/tool/properties/description/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(data120.name !== undefined){
+if(typeof data120.name !== "string"){
+const err163 = {instancePath:instancePath+"/rules/" + i9+"/tool/name",schemaPath:"#/properties/rules/items/properties/tool/properties/name/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err163];
 }
@@ -5941,10 +5945,9 @@ vErrors.push(err163);
 errors++;
 }
 }
-if(data119.inputSchema !== undefined){
-let data122 = data119.inputSchema;
-if(!(data122 && typeof data122 == "object" && !Array.isArray(data122))){
-const err164 = {instancePath:instancePath+"/rules/" + i8+"/tool/inputSchema",schemaPath:"#/properties/rules/items/properties/tool/properties/inputSchema/type",keyword:"type",params:{type: "object"},message:"must be object"};
+if(data120.description !== undefined){
+if(typeof data120.description !== "string"){
+const err164 = {instancePath:instancePath+"/rules/" + i9+"/tool/description",schemaPath:"#/properties/rules/items/properties/tool/properties/description/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err164];
 }
@@ -5954,9 +5957,10 @@ vErrors.push(err164);
 errors++;
 }
 }
-}
-else {
-const err165 = {instancePath:instancePath+"/rules/" + i8+"/tool",schemaPath:"#/properties/rules/items/properties/tool/type",keyword:"type",params:{type: "object"},message:"must be object"};
+if(data120.inputSchema !== undefined){
+let data123 = data120.inputSchema;
+if(!(data123 && typeof data123 == "object" && !Array.isArray(data123))){
+const err165 = {instancePath:instancePath+"/rules/" + i9+"/tool/inputSchema",schemaPath:"#/properties/rules/items/properties/tool/properties/inputSchema/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err165];
 }
@@ -5966,9 +5970,9 @@ vErrors.push(err165);
 errors++;
 }
 }
-if(data106.acknowledgement !== undefined){
-if(typeof data106.acknowledgement !== "string"){
-const err166 = {instancePath:instancePath+"/rules/" + i8+"/acknowledgement",schemaPath:"#/properties/rules/items/properties/acknowledgement/type",keyword:"type",params:{type: "string"},message:"must be string"};
+}
+else {
+const err166 = {instancePath:instancePath+"/rules/" + i9+"/tool",schemaPath:"#/properties/rules/items/properties/tool/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err166];
 }
@@ -5978,9 +5982,9 @@ vErrors.push(err166);
 errors++;
 }
 }
-if(data106.instructions !== undefined){
-if(typeof data106.instructions !== "string"){
-const err167 = {instancePath:instancePath+"/rules/" + i8+"/instructions",schemaPath:"#/properties/rules/items/properties/instructions/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(data107.acknowledgement !== undefined){
+if(typeof data107.acknowledgement !== "string"){
+const err167 = {instancePath:instancePath+"/rules/" + i9+"/acknowledgement",schemaPath:"#/properties/rules/items/properties/acknowledgement/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err167];
 }
@@ -5990,9 +5994,9 @@ vErrors.push(err167);
 errors++;
 }
 }
-if(data106.description_suffix !== undefined){
-if(typeof data106.description_suffix !== "string"){
-const err168 = {instancePath:instancePath+"/rules/" + i8+"/description_suffix",schemaPath:"#/properties/rules/items/properties/description_suffix/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(data107.instructions !== undefined){
+if(typeof data107.instructions !== "string"){
+const err168 = {instancePath:instancePath+"/rules/" + i9+"/instructions",schemaPath:"#/properties/rules/items/properties/instructions/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err168];
 }
@@ -6002,15 +6006,9 @@ vErrors.push(err168);
 errors++;
 }
 }
-if(data106.answers !== undefined){
-let data126 = data106.answers;
-if(Array.isArray(data126)){
-const len10 = data126.length;
-for(let i10=0; i10<len10; i10++){
-let data127 = data126[i10];
-if(data127 && typeof data127 == "object" && !Array.isArray(data127)){
-if(data127.match === undefined){
-const err169 = {instancePath:instancePath+"/rules/" + i8+"/answers/" + i10,schemaPath:"#/properties/rules/items/properties/answers/items/required",keyword:"required",params:{missingProperty: "match"},message:"must have required property '"+"match"+"'"};
+if(data107.description_suffix !== undefined){
+if(typeof data107.description_suffix !== "string"){
+const err169 = {instancePath:instancePath+"/rules/" + i9+"/description_suffix",schemaPath:"#/properties/rules/items/properties/description_suffix/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err169];
 }
@@ -6019,8 +6017,16 @@ vErrors.push(err169);
 }
 errors++;
 }
-if(data127.links === undefined){
-const err170 = {instancePath:instancePath+"/rules/" + i8+"/answers/" + i10,schemaPath:"#/properties/rules/items/properties/answers/items/required",keyword:"required",params:{missingProperty: "links"},message:"must have required property '"+"links"+"'"};
+}
+if(data107.answers !== undefined){
+let data127 = data107.answers;
+if(Array.isArray(data127)){
+const len11 = data127.length;
+for(let i11=0; i11<len11; i11++){
+let data128 = data127[i11];
+if(data128 && typeof data128 == "object" && !Array.isArray(data128)){
+if(data128.match === undefined){
+const err170 = {instancePath:instancePath+"/rules/" + i9+"/answers/" + i11,schemaPath:"#/properties/rules/items/properties/answers/items/required",keyword:"required",params:{missingProperty: "match"},message:"must have required property '"+"match"+"'"};
 if(vErrors === null){
 vErrors = [err170];
 }
@@ -6029,9 +6035,8 @@ vErrors.push(err170);
 }
 errors++;
 }
-if(data127.match !== undefined){
-if(typeof data127.match !== "string"){
-const err171 = {instancePath:instancePath+"/rules/" + i8+"/answers/" + i10+"/match",schemaPath:"#/properties/rules/items/properties/answers/items/properties/match/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(data128.links === undefined){
+const err171 = {instancePath:instancePath+"/rules/" + i9+"/answers/" + i11,schemaPath:"#/properties/rules/items/properties/answers/items/required",keyword:"required",params:{missingProperty: "links"},message:"must have required property '"+"links"+"'"};
 if(vErrors === null){
 vErrors = [err171];
 }
@@ -6040,14 +6045,9 @@ vErrors.push(err171);
 }
 errors++;
 }
-}
-if(data127.links !== undefined){
-let data129 = data127.links;
-if(Array.isArray(data129)){
-const len11 = data129.length;
-for(let i11=0; i11<len11; i11++){
-if(typeof data129[i11] !== "string"){
-const err172 = {instancePath:instancePath+"/rules/" + i8+"/answers/" + i10+"/links/" + i11,schemaPath:"#/properties/rules/items/properties/answers/items/properties/links/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(data128.match !== undefined){
+if(typeof data128.match !== "string"){
+const err172 = {instancePath:instancePath+"/rules/" + i9+"/answers/" + i11+"/match",schemaPath:"#/properties/rules/items/properties/answers/items/properties/match/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err172];
 }
@@ -6057,9 +6057,13 @@ vErrors.push(err172);
 errors++;
 }
 }
-}
-else {
-const err173 = {instancePath:instancePath+"/rules/" + i8+"/answers/" + i10+"/links",schemaPath:"#/properties/rules/items/properties/answers/items/properties/links/type",keyword:"type",params:{type: "array"},message:"must be array"};
+if(data128.links !== undefined){
+let data130 = data128.links;
+if(Array.isArray(data130)){
+const len12 = data130.length;
+for(let i12=0; i12<len12; i12++){
+if(typeof data130[i12] !== "string"){
+const err173 = {instancePath:instancePath+"/rules/" + i9+"/answers/" + i11+"/links/" + i12,schemaPath:"#/properties/rules/items/properties/answers/items/properties/links/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err173];
 }
@@ -6071,7 +6075,7 @@ errors++;
 }
 }
 else {
-const err174 = {instancePath:instancePath+"/rules/" + i8+"/answers/" + i10,schemaPath:"#/properties/rules/items/properties/answers/items/type",keyword:"type",params:{type: "object"},message:"must be object"};
+const err174 = {instancePath:instancePath+"/rules/" + i9+"/answers/" + i11+"/links",schemaPath:"#/properties/rules/items/properties/answers/items/properties/links/type",keyword:"type",params:{type: "array"},message:"must be array"};
 if(vErrors === null){
 vErrors = [err174];
 }
@@ -6083,7 +6087,7 @@ errors++;
 }
 }
 else {
-const err175 = {instancePath:instancePath+"/rules/" + i8+"/answers",schemaPath:"#/properties/rules/items/properties/answers/type",keyword:"type",params:{type: "array"},message:"must be array"};
+const err175 = {instancePath:instancePath+"/rules/" + i9+"/answers/" + i11,schemaPath:"#/properties/rules/items/properties/answers/items/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err175];
 }
@@ -6093,13 +6097,9 @@ vErrors.push(err175);
 errors++;
 }
 }
-if(data106.default_links !== undefined){
-let data131 = data106.default_links;
-if(Array.isArray(data131)){
-const len12 = data131.length;
-for(let i12=0; i12<len12; i12++){
-if(typeof data131[i12] !== "string"){
-const err176 = {instancePath:instancePath+"/rules/" + i8+"/default_links/" + i12,schemaPath:"#/properties/rules/items/properties/default_links/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
+}
+else {
+const err176 = {instancePath:instancePath+"/rules/" + i9+"/answers",schemaPath:"#/properties/rules/items/properties/answers/type",keyword:"type",params:{type: "array"},message:"must be array"};
 if(vErrors === null){
 vErrors = [err176];
 }
@@ -6109,9 +6109,13 @@ vErrors.push(err176);
 errors++;
 }
 }
-}
-else {
-const err177 = {instancePath:instancePath+"/rules/" + i8+"/default_links",schemaPath:"#/properties/rules/items/properties/default_links/type",keyword:"type",params:{type: "array"},message:"must be array"};
+if(data107.default_links !== undefined){
+let data132 = data107.default_links;
+if(Array.isArray(data132)){
+const len13 = data132.length;
+for(let i13=0; i13<len13; i13++){
+if(typeof data132[i13] !== "string"){
+const err177 = {instancePath:instancePath+"/rules/" + i9+"/default_links/" + i13,schemaPath:"#/properties/rules/items/properties/default_links/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err177];
 }
@@ -6121,12 +6125,9 @@ vErrors.push(err177);
 errors++;
 }
 }
-if(data106.links !== undefined){
-let data133 = data106.links;
-if(data133 && typeof data133 == "object" && !Array.isArray(data133)){
-for(const key25 in data133){
-if(typeof data133[key25] !== "string"){
-const err178 = {instancePath:instancePath+"/rules/" + i8+"/links/" + key25.replace(/~/g, "~0").replace(/\//g, "~1"),schemaPath:"#/properties/rules/items/properties/links/additionalProperties/type",keyword:"type",params:{type: "string"},message:"must be string"};
+}
+else {
+const err178 = {instancePath:instancePath+"/rules/" + i9+"/default_links",schemaPath:"#/properties/rules/items/properties/default_links/type",keyword:"type",params:{type: "array"},message:"must be array"};
 if(vErrors === null){
 vErrors = [err178];
 }
@@ -6136,9 +6137,12 @@ vErrors.push(err178);
 errors++;
 }
 }
-}
-else {
-const err179 = {instancePath:instancePath+"/rules/" + i8+"/links",schemaPath:"#/properties/rules/items/properties/links/type",keyword:"type",params:{type: "object"},message:"must be object"};
+if(data107.links !== undefined){
+let data134 = data107.links;
+if(data134 && typeof data134 == "object" && !Array.isArray(data134)){
+for(const key25 in data134){
+if(typeof data134[key25] !== "string"){
+const err179 = {instancePath:instancePath+"/rules/" + i9+"/links/" + key25.replace(/~/g, "~0").replace(/\//g, "~1"),schemaPath:"#/properties/rules/items/properties/links/additionalProperties/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err179];
 }
@@ -6148,9 +6152,9 @@ vErrors.push(err179);
 errors++;
 }
 }
-if(data106.suffix !== undefined){
-if(typeof data106.suffix !== "string"){
-const err180 = {instancePath:instancePath+"/rules/" + i8+"/suffix",schemaPath:"#/properties/rules/items/properties/suffix/type",keyword:"type",params:{type: "string"},message:"must be string"};
+}
+else {
+const err180 = {instancePath:instancePath+"/rules/" + i9+"/links",schemaPath:"#/properties/rules/items/properties/links/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err180];
 }
@@ -6160,9 +6164,9 @@ vErrors.push(err180);
 errors++;
 }
 }
-}
-else {
-const err181 = {instancePath:instancePath+"/rules/" + i8,schemaPath:"#/properties/rules/items/type",keyword:"type",params:{type: "object"},message:"must be object"};
+if(data107.suffix !== undefined){
+if(typeof data107.suffix !== "string"){
+const err181 = {instancePath:instancePath+"/rules/" + i9+"/suffix",schemaPath:"#/properties/rules/items/properties/suffix/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err181];
 }
@@ -6174,7 +6178,7 @@ errors++;
 }
 }
 else {
-const err182 = {instancePath:instancePath+"/rules",schemaPath:"#/properties/rules/type",keyword:"type",params:{type: "array"},message:"must be array"};
+const err182 = {instancePath:instancePath+"/rules/" + i9,schemaPath:"#/properties/rules/items/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err182];
 }
@@ -6184,12 +6188,9 @@ vErrors.push(err182);
 errors++;
 }
 }
-if(data.assertion !== undefined){
-let data136 = data.assertion;
-if(data136 && typeof data136 == "object" && !Array.isArray(data136)){
-for(const key26 in data136){
-if(!((key26 === "enabled") || (key26 === "audience"))){
-const err183 = {instancePath:instancePath+"/assertion",schemaPath:"#/properties/assertion/additionalProperties",keyword:"additionalProperties",params:{additionalProperty: key26},message:"must NOT have additional properties"};
+}
+else {
+const err183 = {instancePath:instancePath+"/rules",schemaPath:"#/properties/rules/type",keyword:"type",params:{type: "array"},message:"must be array"};
 if(vErrors === null){
 vErrors = [err183];
 }
@@ -6199,9 +6200,12 @@ vErrors.push(err183);
 errors++;
 }
 }
-if(data136.enabled !== undefined){
-if(typeof data136.enabled !== "boolean"){
-const err184 = {instancePath:instancePath+"/assertion/enabled",schemaPath:"#/properties/assertion/properties/enabled/type",keyword:"type",params:{type: "boolean"},message:"must be boolean"};
+if(data.assertion !== undefined){
+let data137 = data.assertion;
+if(data137 && typeof data137 == "object" && !Array.isArray(data137)){
+for(const key26 in data137){
+if(!((key26 === "enabled") || (key26 === "audience"))){
+const err184 = {instancePath:instancePath+"/assertion",schemaPath:"#/properties/assertion/additionalProperties",keyword:"additionalProperties",params:{additionalProperty: key26},message:"must NOT have additional properties"};
 if(vErrors === null){
 vErrors = [err184];
 }
@@ -6211,13 +6215,9 @@ vErrors.push(err184);
 errors++;
 }
 }
-if(data136.audience !== undefined){
-let data138 = data136.audience;
-if(Array.isArray(data138)){
-const len13 = data138.length;
-for(let i13=0; i13<len13; i13++){
-if(typeof data138[i13] !== "string"){
-const err185 = {instancePath:instancePath+"/assertion/audience/" + i13,schemaPath:"#/properties/assertion/properties/audience/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(data137.enabled !== undefined){
+if(typeof data137.enabled !== "boolean"){
+const err185 = {instancePath:instancePath+"/assertion/enabled",schemaPath:"#/properties/assertion/properties/enabled/type",keyword:"type",params:{type: "boolean"},message:"must be boolean"};
 if(vErrors === null){
 vErrors = [err185];
 }
@@ -6227,9 +6227,13 @@ vErrors.push(err185);
 errors++;
 }
 }
-}
-else {
-const err186 = {instancePath:instancePath+"/assertion/audience",schemaPath:"#/properties/assertion/properties/audience/type",keyword:"type",params:{type: "array"},message:"must be array"};
+if(data137.audience !== undefined){
+let data139 = data137.audience;
+if(Array.isArray(data139)){
+const len14 = data139.length;
+for(let i14=0; i14<len14; i14++){
+if(typeof data139[i14] !== "string"){
+const err186 = {instancePath:instancePath+"/assertion/audience/" + i14,schemaPath:"#/properties/assertion/properties/audience/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err186];
 }
@@ -6241,7 +6245,7 @@ errors++;
 }
 }
 else {
-const err187 = {instancePath:instancePath+"/assertion",schemaPath:"#/properties/assertion/type",keyword:"type",params:{type: "object"},message:"must be object"};
+const err187 = {instancePath:instancePath+"/assertion/audience",schemaPath:"#/properties/assertion/properties/audience/type",keyword:"type",params:{type: "array"},message:"must be array"};
 if(vErrors === null){
 vErrors = [err187];
 }
@@ -6251,13 +6255,9 @@ vErrors.push(err187);
 errors++;
 }
 }
-if(data.signers !== undefined){
-let data140 = data.signers;
-if(Array.isArray(data140)){
-const len14 = data140.length;
-for(let i14=0; i14<len14; i14++){
-if(typeof data140[i14] !== "string"){
-const err188 = {instancePath:instancePath+"/signers/" + i14,schemaPath:"#/properties/signers/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
+}
+else {
+const err188 = {instancePath:instancePath+"/assertion",schemaPath:"#/properties/assertion/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err188];
 }
@@ -6267,9 +6267,13 @@ vErrors.push(err188);
 errors++;
 }
 }
-}
-else {
-const err189 = {instancePath:instancePath+"/signers",schemaPath:"#/properties/signers/type",keyword:"type",params:{type: "array"},message:"must be array"};
+if(data.signers !== undefined){
+let data141 = data.signers;
+if(Array.isArray(data141)){
+const len15 = data141.length;
+for(let i15=0; i15<len15; i15++){
+if(typeof data141[i15] !== "string"){
+const err189 = {instancePath:instancePath+"/signers/" + i15,schemaPath:"#/properties/signers/items/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err189];
 }
@@ -6279,17 +6283,9 @@ vErrors.push(err189);
 errors++;
 }
 }
-if(data.destinations !== undefined){
-let data142 = data.destinations;
-if(Array.isArray(data142)){
-const len15 = data142.length;
-for(let i15=0; i15<len15; i15++){
-let data143 = data142[i15];
-if(data143 && typeof data143 == "object" && !Array.isArray(data143)){
-if(data143.kind !== undefined){
-let data144 = data143.kind;
-if(typeof data144 !== "string"){
-const err190 = {instancePath:instancePath+"/destinations/" + i15+"/kind",schemaPath:"#/properties/destinations/items/properties/kind/type",keyword:"type",params:{type: "string"},message:"must be string"};
+}
+else {
+const err190 = {instancePath:instancePath+"/signers",schemaPath:"#/properties/signers/type",keyword:"type",params:{type: "array"},message:"must be array"};
 if(vErrors === null){
 vErrors = [err190];
 }
@@ -6298,8 +6294,18 @@ vErrors.push(err190);
 }
 errors++;
 }
-if(!(((data144 === "scope") || (data144 === "otlp")) || (data144 === "webhook"))){
-const err191 = {instancePath:instancePath+"/destinations/" + i15+"/kind",schemaPath:"#/properties/destinations/items/properties/kind/enum",keyword:"enum",params:{allowedValues: schema50.properties.destinations.items.properties.kind.enum},message:"must be equal to one of the allowed values"};
+}
+if(data.destinations !== undefined){
+let data143 = data.destinations;
+if(Array.isArray(data143)){
+const len16 = data143.length;
+for(let i16=0; i16<len16; i16++){
+let data144 = data143[i16];
+if(data144 && typeof data144 == "object" && !Array.isArray(data144)){
+if(data144.kind !== undefined){
+let data145 = data144.kind;
+if(typeof data145 !== "string"){
+const err191 = {instancePath:instancePath+"/destinations/" + i16+"/kind",schemaPath:"#/properties/destinations/items/properties/kind/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err191];
 }
@@ -6308,10 +6314,8 @@ vErrors.push(err191);
 }
 errors++;
 }
-}
-if(data143.url !== undefined){
-if(typeof data143.url !== "string"){
-const err192 = {instancePath:instancePath+"/destinations/" + i15+"/url",schemaPath:"#/properties/destinations/items/properties/url/type",keyword:"type",params:{type: "string"},message:"must be string"};
+if(!(((data145 === "scope") || (data145 === "otlp")) || (data145 === "webhook"))){
+const err192 = {instancePath:instancePath+"/destinations/" + i16+"/kind",schemaPath:"#/properties/destinations/items/properties/kind/enum",keyword:"enum",params:{allowedValues: schema50.properties.destinations.items.properties.kind.enum},message:"must be equal to one of the allowed values"};
 if(vErrors === null){
 vErrors = [err192];
 }
@@ -6321,10 +6325,9 @@ vErrors.push(err192);
 errors++;
 }
 }
-if(data143.headers !== undefined){
-let data146 = data143.headers;
-if(!(data146 && typeof data146 == "object" && !Array.isArray(data146))){
-const err193 = {instancePath:instancePath+"/destinations/" + i15+"/headers",schemaPath:"#/properties/destinations/items/properties/headers/type",keyword:"type",params:{type: "object"},message:"must be object"};
+if(data144.url !== undefined){
+if(typeof data144.url !== "string"){
+const err193 = {instancePath:instancePath+"/destinations/" + i16+"/url",schemaPath:"#/properties/destinations/items/properties/url/type",keyword:"type",params:{type: "string"},message:"must be string"};
 if(vErrors === null){
 vErrors = [err193];
 }
@@ -6334,9 +6337,10 @@ vErrors.push(err193);
 errors++;
 }
 }
-if(data143.events !== undefined){
-if(!(Array.isArray(data143.events))){
-const err194 = {instancePath:instancePath+"/destinations/" + i15+"/events",schemaPath:"#/properties/destinations/items/properties/events/type",keyword:"type",params:{type: "array"},message:"must be array"};
+if(data144.headers !== undefined){
+let data147 = data144.headers;
+if(!(data147 && typeof data147 == "object" && !Array.isArray(data147))){
+const err194 = {instancePath:instancePath+"/destinations/" + i16+"/headers",schemaPath:"#/properties/destinations/items/properties/headers/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err194];
 }
@@ -6346,9 +6350,9 @@ vErrors.push(err194);
 errors++;
 }
 }
-}
-else {
-const err195 = {instancePath:instancePath+"/destinations/" + i15,schemaPath:"#/properties/destinations/items/type",keyword:"type",params:{type: "object"},message:"must be object"};
+if(data144.events !== undefined){
+if(!(Array.isArray(data144.events))){
+const err195 = {instancePath:instancePath+"/destinations/" + i16+"/events",schemaPath:"#/properties/destinations/items/properties/events/type",keyword:"type",params:{type: "array"},message:"must be array"};
 if(vErrors === null){
 vErrors = [err195];
 }
@@ -6360,7 +6364,7 @@ errors++;
 }
 }
 else {
-const err196 = {instancePath:instancePath+"/destinations",schemaPath:"#/properties/destinations/type",keyword:"type",params:{type: "array"},message:"must be array"};
+const err196 = {instancePath:instancePath+"/destinations/" + i16,schemaPath:"#/properties/destinations/items/type",keyword:"type",params:{type: "object"},message:"must be object"};
 if(vErrors === null){
 vErrors = [err196];
 }
@@ -6370,10 +6374,9 @@ vErrors.push(err196);
 errors++;
 }
 }
-if(data.retention_days !== undefined){
-let data148 = data.retention_days;
-if(!(((typeof data148 == "number") && (!(data148 % 1) && !isNaN(data148))) && (isFinite(data148)))){
-const err197 = {instancePath:instancePath+"/retention_days",schemaPath:"#/properties/retention_days/type",keyword:"type",params:{type: "integer"},message:"must be integer"};
+}
+else {
+const err197 = {instancePath:instancePath+"/destinations",schemaPath:"#/properties/destinations/type",keyword:"type",params:{type: "array"},message:"must be array"};
 if(vErrors === null){
 vErrors = [err197];
 }
@@ -6382,9 +6385,11 @@ vErrors.push(err197);
 }
 errors++;
 }
-if((typeof data148 == "number") && (isFinite(data148))){
-if(data148 > 400 || isNaN(data148)){
-const err198 = {instancePath:instancePath+"/retention_days",schemaPath:"#/properties/retention_days/maximum",keyword:"maximum",params:{comparison: "<=", limit: 400},message:"must be <= 400"};
+}
+if(data.retention_days !== undefined){
+let data149 = data.retention_days;
+if(!(((typeof data149 == "number") && (!(data149 % 1) && !isNaN(data149))) && (isFinite(data149)))){
+const err198 = {instancePath:instancePath+"/retention_days",schemaPath:"#/properties/retention_days/type",keyword:"type",params:{type: "integer"},message:"must be integer"};
 if(vErrors === null){
 vErrors = [err198];
 }
@@ -6393,8 +6398,9 @@ vErrors.push(err198);
 }
 errors++;
 }
-if(data148 < 30 || isNaN(data148)){
-const err199 = {instancePath:instancePath+"/retention_days",schemaPath:"#/properties/retention_days/minimum",keyword:"minimum",params:{comparison: ">=", limit: 30},message:"must be >= 30"};
+if((typeof data149 == "number") && (isFinite(data149))){
+if(data149 > 400 || isNaN(data149)){
+const err199 = {instancePath:instancePath+"/retention_days",schemaPath:"#/properties/retention_days/maximum",keyword:"maximum",params:{comparison: "<=", limit: 400},message:"must be <= 400"};
 if(vErrors === null){
 vErrors = [err199];
 }
@@ -6403,12 +6409,8 @@ vErrors.push(err199);
 }
 errors++;
 }
-}
-}
-if(data.salt_epoch !== undefined){
-let data149 = data.salt_epoch;
-if(!(((typeof data149 == "number") && (!(data149 % 1) && !isNaN(data149))) && (isFinite(data149)))){
-const err200 = {instancePath:instancePath+"/salt_epoch",schemaPath:"#/properties/salt_epoch/type",keyword:"type",params:{type: "integer"},message:"must be integer"};
+if(data149 < 30 || isNaN(data149)){
+const err200 = {instancePath:instancePath+"/retention_days",schemaPath:"#/properties/retention_days/minimum",keyword:"minimum",params:{comparison: ">=", limit: 30},message:"must be >= 30"};
 if(vErrors === null){
 vErrors = [err200];
 }
@@ -6417,9 +6419,12 @@ vErrors.push(err200);
 }
 errors++;
 }
-if((typeof data149 == "number") && (isFinite(data149))){
-if(data149 < 1 || isNaN(data149)){
-const err201 = {instancePath:instancePath+"/salt_epoch",schemaPath:"#/properties/salt_epoch/minimum",keyword:"minimum",params:{comparison: ">=", limit: 1},message:"must be >= 1"};
+}
+}
+if(data.salt_epoch !== undefined){
+let data150 = data.salt_epoch;
+if(!(((typeof data150 == "number") && (!(data150 % 1) && !isNaN(data150))) && (isFinite(data150)))){
+const err201 = {instancePath:instancePath+"/salt_epoch",schemaPath:"#/properties/salt_epoch/type",keyword:"type",params:{type: "integer"},message:"must be integer"};
 if(vErrors === null){
 vErrors = [err201];
 }
@@ -6428,16 +6433,27 @@ vErrors.push(err201);
 }
 errors++;
 }
-}
-}
-}
-else {
-const err202 = {instancePath,schemaPath:"#/type",keyword:"type",params:{type: "object"},message:"must be object"};
+if((typeof data150 == "number") && (isFinite(data150))){
+if(data150 < 1 || isNaN(data150)){
+const err202 = {instancePath:instancePath+"/salt_epoch",schemaPath:"#/properties/salt_epoch/minimum",keyword:"minimum",params:{comparison: ">=", limit: 1},message:"must be >= 1"};
 if(vErrors === null){
 vErrors = [err202];
 }
 else {
 vErrors.push(err202);
+}
+errors++;
+}
+}
+}
+}
+else {
+const err203 = {instancePath,schemaPath:"#/type",keyword:"type",params:{type: "object"},message:"must be object"};
+if(vErrors === null){
+vErrors = [err203];
+}
+else {
+vErrors.push(err203);
 }
 errors++;
 }

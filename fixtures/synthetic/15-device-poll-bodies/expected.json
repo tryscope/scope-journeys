@@ -95,8 +95,7 @@
       "scope.body.response": {
         "status": "approved",
         "api_key": "h:8280e138fd70",
-        "install_id": "ins_1",
-        "verification_uri_complete": "https://acme.example/device?code=h:4c172c41d7a6"
+        "install_id": "ins_1"
       },
       "scope.body.truncated": false,
       "scope.response.headers": {

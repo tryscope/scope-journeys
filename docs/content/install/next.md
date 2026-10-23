@@ -109,8 +109,8 @@ registers a new public key, writes the new private key where `init` wrote the fi
 | the hop to your app cannot connect | the request is handed to your app untouched; nothing is recorded; the log line names the cause |
 | the hop to your app fails after the request left: the connection drops, or no answer within 30 seconds | the request is never handed to your app a second time: the client gets a 502, or a 504 on the timeout; the record carries the status and the error's class |
 | no install id (and no policy URL) | one log line naming `journeys init`; every request goes to your logic with no inner hop, the probe is still answered |
-| no salt | one log line naming `journeys init`; every request passes through under the forward-only default |
-| the policy fetch fails | the last good policy, or the embedded forward-only default |
+| no salt | one log line naming `journeys init`; nothing is recorded or sent, every request goes to your app untouched, and the probe answers `x-journeys-probe: no-salt` |
+| the policy fetch fails | the last good policy, or the embedded forward-only default, whose records say so (a `policy` decision with the reason) |
 | Scope's ingest is down, slow, or answers 429 | records wait in a queue of at most 32 MB and are sent again with growing waits, honouring `Retry-After`, for up to 15 minutes; past that, or when the queue is full, the oldest are dropped and counted, and a shipment Scope refuses (a revoked key) is dropped and counted at once; nothing waits in the request path, and a function stays up at most 10 seconds after its response for its records |
 
 ## Remove it

@@ -64,7 +64,7 @@
       "scope.key.device_code": null,
       "scope.key.user_code": null,
       "scope.key.oauth_client": null,
-      "mcp.session.id": "sess-fixture-04",
+      "mcp.session.id": "d7cb7389a352",
       "scope.key.hook": null,
       "scope.key.reference": "5Z4KJ7N9",
       "scope.key.setup_header": null,
@@ -81,15 +81,9 @@
       "scope.mcp.client": null,
       "scope.oauth": null,
       "scope.body.request": {
-        "jsonrpc": "2.0",
         "id": 3,
-        "method": "tools/call",
         "params": {
-          "name": "declare_intent",
           "arguments": {
-            "intent": "Post to Slack when an order is added",
-            "task": "notification",
-            "found_via": "user",
             "agent": "codex"
           }
         }
@@ -128,7 +122,7 @@
       "agent": "codex",
       "scope.client.address_hash": "f8d68a8e6b22",
       "scope.key.credential": "8280e138fd70",
-      "mcp.session.id": "sess-fixture-04",
+      "mcp.session.id": "d7cb7389a352",
       "scope.key.reference": "5Z4KJ7N9",
       "scope.reference_minted": null
     }

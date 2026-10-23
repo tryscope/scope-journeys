@@ -74,11 +74,11 @@ export interface ScopeRequest1 {
    */
   "server.address": string;
   /**
-   * redacted by shape: a value of the product's signed shape is replaced by its hash
+   * redacted like url.query (a secret-named pair's value, and a segment holding an encoded pair from its start, become h:<hash>), then by shape: a value of the product's signed shape is replaced by its hash
    */
   "url.path": string;
   /**
-   * the query string without the leading question mark, redacted by shape; references kept; null when the url has none
+   * the query string without the leading question mark; the value of a secret-named parameter (api_key, key, token, access_token, refresh_token, id_token, code, client_secret, password, secret, signature, sig, session_id, in any case or spelling, also percent-encoded, or a name whose last word is key, token, secret, password, signature or sig, also inside a URL another parameter carries) becomes h:<hash>, unless it is a valid reference code where the policy says a reference travels (headers.reference, a door's fields.reference); a value that carries an encoded parameter of its own, or is still encoded after four decodings, becomes h:<hash> from the start of the path segment that holds it; a string holding more than 64 such values is recorded as one hash; then redacted by shape; null when the url has none
    */
   "url.query"?: string | null;
   "http.response.status_code"?: number | null;
@@ -115,7 +115,7 @@ export interface ScopeRequest1 {
    */
   "scope.request.bytes"?: number | null;
   /**
-   * the response body's size in bytes, when the body was read
+   * the response body's size, when the body was read or, for an event stream, counted as it passed (in bytes)
    */
   "scope.response.bytes"?: number | null;
   /**
@@ -229,7 +229,7 @@ export interface ScopeRequest1 {
    */
   "scope.key.oauth_client"?: Hash12 | null;
   /**
-   * the MCP session id the request carried; the one the answer assigned is in scope.response.headers
+   * the hash of the MCP session id the request carried; the one the answer assigned is in scope.response.headers, hashed the same way
    */
   "mcp.session.id"?: string | null;
   /**
@@ -241,13 +241,13 @@ export interface ScopeRequest1 {
    */
   "scope.key.reference"?: Reference | null;
   /**
-   * the policy's setup header as sent, redacted by shape
+   * the policy's setup header: a valid reference code as sent, any other value (the session id the gate hands out) hashed like mcp.session.id
    */
   "scope.key.setup_header"?: string | null;
   "scope.key.agent_header"?: string | null;
   "scope.key.client_header"?: string | null;
   /**
-   * the policy's intent header as sent; a filled one is also a declaration
+   * the policy's intent header, redacted like url.query and by shape; a filled one is also a declaration
    */
   "scope.key.intent_header"?: string | null;
   "mcp.protocol.version"?: string | null;
@@ -277,11 +277,11 @@ export interface ScopeRequest1 {
     scope?: string | null;
   } | null;
   /**
-   * the request body on an observed route, parsed as JSON (an object, or an array for a JSON-RPC batch) or a form, redacted by field and by shape, capped at 64 KB; {bytes, type} for a text or HTML body; null in the no-bodies form
+   * the request body on an observed route, parsed as JSON or a form (capped at 64 KB), cut to the fields observe.bodies.allow_fields names at any depth, with the values of the policy's secret fields and of the secret names (as in url.query; code only in a request) and the shapes hashed; null when no allowed field remains and in the no-bodies form
    */
   "scope.body.request"?: {} | unknown[] | null;
   /**
-   * the same for the origin's answer
+   * the same for the origin's answer, also on an error answer (400 or above) from any route the surface map does not pass through; an event stream's content is never recorded, only its size in scope.response.bytes
    */
   "scope.body.response"?: {} | unknown[] | null;
   /**
@@ -289,7 +289,7 @@ export interface ScopeRequest1 {
    */
   "scope.body.truncated"?: boolean;
   /**
-   * the answer headers the stitcher needs: content-type, mcp-session-id, www-authenticate, location (redacted), cache-control, x-vercel-cache, cf-cache-status
+   * the answer headers the stitcher needs: content-type, mcp-session-id (hashed), www-authenticate, location (redacted like url.query), cache-control, x-vercel-cache, cf-cache-status
    */
   "scope.response.headers"?: {} | null;
   /**
@@ -316,7 +316,7 @@ export interface ScopeRequest1 {
    */
   "scope.reference_minted"?: Reference | null;
   /**
-   * what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `assertion` (the assertion could not be signed) and `hop` (the hop failed after the request may have left: answered 502, or 504 on a timeout, and not sent again)
+   * what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `policy` (the embedded default ran: errored, reason `built-in default: <why>`), `assertion` (the assertion could not be signed) and `hop` (the hop failed after the request may have left: answered 502, or 504 on a timeout, and not sent again)
    */
   "scope.decision"?: Decision[];
   /**

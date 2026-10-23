@@ -1,8 +1,8 @@
 import { isTextFace, requestedFace, servedFace } from "./classify.js";
 import { neverSent, passHeaders } from "./gateway.js";
-import type { SensorRecord } from "./io.js";
+import type { Io, SensorRecord } from "./io.js";
 import type { ScopeRequest1 } from "./generated/request.js";
-import { finish, type State } from "./observe.js";
+import { finish, hashedOrNull, type State } from "./observe.js";
 import { readBody } from "./record.js";
 import { redactString } from "./redact.js";
 import { mintReference } from "./references.js";
@@ -12,7 +12,7 @@ import { gateResponse } from "./rules/gate.js";
 import { rewritePage } from "./rules/inject.js";
 import { notfoundPage } from "./rules/notfound.js";
 import { decide, errored, isLive } from "./rules/runner.js";
-import { gateStream, teeHead } from "./stream.js";
+import { countBytes, gateStream } from "./stream.js";
 
 export interface Responded {
   response: Response;
@@ -75,23 +75,28 @@ export function observeResponse(upstream: Response, state: State): Responded {
 }
 
 /**
- * The hop through the adapter's `io.forward`, then the response side. A hop that failed before the
- * request left is thrown back, so the adapter passes the request on; one that may have reached the
- * origin, which may have acted on it, is never sent again: 504 on a timeout, 502 otherwise.
+ * The answer to a hop that failed. One that failed before the request left is thrown back, so the
+ * adapter passes the request on; one that may have reached the origin, which may have acted on it,
+ * is never sent again: 504 on a timeout, 502 otherwise.
  */
+export function failedHop(error: unknown, log: Io["log"]): Response {
+  if (neverSent(error)) throw error;
+  const status = error instanceof Error && error.name === "TimeoutError" ? 504 : 502;
+  const cause = error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : "";
+  log("error", `journeys: the hop failed and the request may have reached the origin; answered ${status}, not sent again: ${error instanceof Error ? error.message : String(error)}${cause}`);
+  return new Response(status === 504 ? "Gateway Timeout" : "Bad Gateway", { status, headers: { "content-type": "text/plain" } });
+}
+
+/** The hop through the adapter's `io.forward`, then the response side; a failed hop is answered as `failedHop` says, and recorded. */
 export async function forwardObserved(request: Request, state: State): Promise<Responded> {
   let upstream: Response;
   try {
     upstream = await state.io.forward(request);
   } catch (error) {
-    if (neverSent(error)) throw error;
-    const status = error instanceof Error && error.name === "TimeoutError" ? 504 : 502;
-    const cause = error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : "";
-    state.io.log("error", `journeys: the hop failed and the request may have reached the origin; answered ${status}, not sent again: ${error instanceof Error ? error.message : String(error)}${cause}`);
-    const response = new Response(status === 504 ? "Gateway Timeout" : "Bad Gateway", { status, headers: { "content-type": "text/plain" } });
+    const response = failedHop(error, state.io.log);
     if (state.passthrough) return { response, records: Promise.resolve([]) };
-    state.record["http.response.status_code"] = status;
-    state.decisions.push({ rule: "hop", kind: "observe", mode: "live", outcome: "errored", reason: `${error instanceof Error ? error.name : "Error"}: answered ${status}, not sent again` });
+    state.record["http.response.status_code"] = response.status;
+    state.decisions.push({ rule: "hop", kind: "observe", mode: "live", outcome: "errored", reason: `${error instanceof Error ? error.name : "Error"}: answered ${response.status}, not sent again` });
     return { response, records: finish(state) };
   }
   return observeResponse(upstream, state);
@@ -105,7 +110,7 @@ function respondByKind(upstream: Response, state: State, resType: string): Respo
   const responseHeaders = async (): Promise<void> => {
     record["scope.response.headers"] = {
       "content-type": resType,
-      [H.session]: upstream.headers.get(H.session),
+      [H.session]: await hashedOrNull(upstream.headers.get(H.session), io),
       "www-authenticate": upstream.headers.get("www-authenticate"),
       location: (await redactString(upstream.headers.get("location") ?? "", policy, io)) || null,
       "cache-control": upstream.headers.get("cache-control"),
@@ -118,10 +123,10 @@ function respondByKind(upstream: Response, state: State, resType: string): Respo
     let settle: (records: SensorRecord[]) => void = () => undefined;
     const records = new Promise<SensorRecord[]>((resolve) => (settle = resolve));
     if (state.gate && upstream.status === 200) {
-      const body = gateStream(upstream.body, state.gate, state.locals, state.gateLive, (seen, changed) => {
+      const body = gateStream(upstream.body, state.gate, state.locals, state.gateLive, (bytes, changed) => {
         void (async () => {
           await responseHeaders();
-          record["scope.body.response"] = { sse: seen };
+          record["scope.response.bytes"] = bytes;
           state.gateReasons.push("stream through gate");
           if (changed) state.gateReasons.push("tools/list amended");
           settle(await finish(state));
@@ -129,10 +134,10 @@ function respondByKind(upstream: Response, state: State, resType: string): Respo
       });
       return { response: new Response(body, { status: 200, headers: passHeaders(upstream.headers) }), records };
     }
-    const body = teeHead(upstream.body, (seen) => {
+    const body = countBytes(upstream.body, (bytes) => {
       void (async () => {
         await responseHeaders();
-        record["scope.body.response"] = { sse: seen };
+        record["scope.response.bytes"] = bytes;
         settle(await finish(state));
       })();
     });
@@ -211,7 +216,7 @@ function respondByKind(upstream: Response, state: State, resType: string): Respo
       await responseHeaders();
       const bytes = new Uint8Array(await upstream.arrayBuffer());
       const text = new TextDecoder().decode(bytes);
-      const read = await readBody(text, resType, policy, io);
+      const read = await readBody(text, resType, policy, io, "answer");
       record["scope.body.response"] = read.parsed as ScopeRequest1["scope.body.response"];
       record["scope.response.bytes"] = read.bytes;
       if (read.truncated) record["scope.body.truncated"] = true;

@@ -276,6 +276,38 @@ test("no install id and no policy URL: the probe is answered by the adapter itse
   assert.equal(warnings.filter((l) => /JOURNEYS_INSTALL_ID is not set/.test(l)).length, 1, warnings.join("\n"));
 });
 
+test("without JOURNEYS_SALT nothing is fetched or recorded: every request goes to the app's own logic, the probe answers no-salt, one warning", async () => {
+  reset();
+  const w = world();
+  const seen: string[] = [];
+  const next = async (r: NextRequest): Promise<Response> => {
+    seen.push(`${new URL(r.url).pathname} ${r.headers.get(INNER_HEADER) ?? "-"}`);
+    return new Response("mine", { status: 200 });
+  };
+  const warnings: string[] = [];
+  const realWarn = console.warn;
+  console.warn = (line: string) => {
+    warnings.push(line);
+  };
+  try {
+    const { JOURNEYS_SALT: _salt, ...unsalted } = env;
+    const bare = await withJourneys({ env: {}, fetch: w.fetch, next })(request("https://acme.example/.well-known/journeys-probe?journeys_probe=c21va2U"), w.event as never);
+    assert.equal(bare.headers.get("x-journeys-probe"), "no-salt", "no install and no salt: the probe names the salt");
+    const handler = withJourneys({ env: unsalted, fetch: w.fetch, next });
+    for (let i = 0; i < 2; i += 1) assert.equal(await (await handler(request("https://acme.example/docs/quickstart"), w.event as never)).text(), "mine");
+    const probe = await handler(request("https://acme.example/.well-known/journeys-probe?journeys_probe=c21va2U"), w.event as never);
+    assert.equal(probe.status, 204);
+    assert.equal(probe.headers.get("x-journeys-probe"), "no-salt");
+    assert.equal(probe.headers.get("cache-control"), "no-store");
+  } finally {
+    console.warn = realWarn;
+  }
+  await Promise.all(w.pending);
+  assert.deepEqual(seen, ["/docs/quickstart -", "/docs/quickstart -"]);
+  assert.equal(w.calls.length, 0, "no settings fetch, no hop, no shipment without a salt");
+  assert.equal(warnings.filter((l) => /JOURNEYS_SALT is not set/.test(l)).length, 1, warnings.join("\n"));
+});
+
 test("the proxy's own URL names the listen address, not the host the client named: the hop goes to the listen address with the marker, and the re-entered proxy hands it to the app without a second hop", async () => {
   // `next start -H 127.0.0.1 -p 3917` builds request.url on localhost:3917 while Host and
   // x-forwarded-host say 127.0.0.1:3917; the server receiving the hop runs the proxy again with

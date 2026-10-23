@@ -81,7 +81,7 @@
       "scope.key.device_code": null,
       "scope.key.user_code": null,
       "scope.key.oauth_client": null,
-      "mcp.session.id": "sess-fixture-04",
+      "mcp.session.id": "d7cb7389a352",
       "scope.key.hook": null,
       "scope.key.reference": "5Z4KJ7N9",
       "scope.key.setup_header": null,
@@ -98,30 +98,15 @@
       "scope.mcp.client": null,
       "scope.oauth": null,
       "scope.body.request": {
-        "jsonrpc": "2.0",
-        "id": 4,
-        "method": "tools/call",
-        "params": {
-          "name": "list_hooks",
-          "arguments": {}
-        }
+        "id": 4
       },
       "scope.body.response": {
-        "jsonrpc": "2.0",
-        "id": 4,
-        "result": {
-          "content": [
-            {
-              "type": "text",
-              "text": "2 hooks: orders, invoices"
-            }
-          ]
-        }
+        "id": 4
       },
       "scope.body.truncated": false,
       "scope.response.headers": {
         "content-type": "application/json",
-        "mcp-session-id": "sess-fixture-04",
+        "mcp-session-id": "d7cb7389a352",
         "www-authenticate": null,
         "location": null,
         "cache-control": null,

@@ -45,7 +45,7 @@
       "http.request.method": "GET",
       "server.address": "acme.example",
       "url.path": "/device",
-      "url.query": "code=ABCD-EFGH",
+      "url.query": "code=h:4c172c41d7a6",
       "http.response.status_code": 200,
       "scope.route": "other",
       "http.request.header.content-type": null,

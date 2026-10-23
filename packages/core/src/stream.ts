@@ -5,14 +5,14 @@ import { gateResponse } from "./rules/gate.js";
  * Server-sent events through the gate, forwarded as they arrive: every line of every frame is
  * kept (id, retry, event names, comments); only a data payload that carries a tools list or the
  * server information is re-serialised after the gate's change; local answers close the stream.
- * `onDone` receives the origin's first 4,000 characters as they arrived (the record keeps the
- * origin's frames, not the rewritten ones) and the rewritten flag.
+ * `onDone` receives the bytes the origin sent and the rewritten flag, once, also when the client
+ * leaves or the origin fails; the record keeps no content.
  */
-export function gateStream(body: ReadableStream<Uint8Array>, rule: CompiledRule, locals: unknown[], live: boolean, onDone: (seen: string, changed: boolean) => void): ReadableStream<Uint8Array> {
+export function gateStream(body: ReadableStream<Uint8Array>, rule: CompiledRule, locals: unknown[], live: boolean, onDone: (bytes: number, changed: boolean) => void): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let pending = "";
-  let seen = "";
+  let bytes = 0;
   let changed = false;
   const rewriteFrame = (frame: string): string => {
     const lines = frame.split(/\r\n|\r|\n/);
@@ -39,30 +39,59 @@ export function gateStream(body: ReadableStream<Uint8Array>, rule: CompiledRule,
     return out.join("\n");
   };
   const emit = (controller: TransformStreamDefaultController<Uint8Array>, text: string): void => controller.enqueue(encoder.encode(text));
-  return body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        const text = decoder.decode(chunk, { stream: true });
-        seen += text;
-        pending += text;
-        let boundary: RegExpExecArray | null;
-        while ((boundary = /\r\n\r\n|\n\n|\r\r/.exec(pending))) {
-          emit(controller, rewriteFrame(pending.slice(0, boundary.index)) + boundary[0]);
-          pending = pending.slice(boundary.index + boundary[0].length);
-        }
-      },
-      flush(controller) {
-        if (pending) emit(controller, rewriteFrame(pending));
-        if (live) for (const local of locals) emit(controller, `event: message\ndata: ${JSON.stringify(local)}\n\n`);
-        onDone(seen.slice(0, 4000), changed);
-      },
-    }),
+  return countBytes(
+    body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          bytes += chunk.byteLength;
+          pending += decoder.decode(chunk, { stream: true });
+          let boundary: RegExpExecArray | null;
+          while ((boundary = /\r\n\r\n|\n\n|\r\r/.exec(pending))) {
+            emit(controller, rewriteFrame(pending.slice(0, boundary.index)) + boundary[0]);
+            pending = pending.slice(boundary.index + boundary[0].length);
+          }
+        },
+        flush(controller) {
+          if (pending) emit(controller, rewriteFrame(pending));
+          if (live) for (const local of locals) emit(controller, `event: message\ndata: ${JSON.stringify(local)}\n\n`);
+        },
+      }),
+    ),
+    () => onDone(bytes, changed),
   );
 }
 
-/** A stream without a gate: teed, the first 4,000 characters kept for the record once it ends. */
-export function teeHead(body: ReadableStream<Uint8Array>, onDone: (seen: string) => void): ReadableStream<Uint8Array> {
-  const [a, b] = body.tee();
-  void new Response(b).text().then((text) => onDone(text.slice(0, 4000)));
-  return a;
+/**
+ * A stream without a gate, passed on chunk by chunk with its bytes counted: `onDone` runs once, when
+ * the origin ends the stream or the client leaves, and a client that leaves cancels the origin's.
+ */
+export function countBytes(body: ReadableStream<Uint8Array>, onDone: (bytes: number) => void): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  let bytes = 0;
+  let done = false;
+  const finish = (): void => {
+    if (done) return;
+    done = true;
+    onDone(bytes);
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const next = await reader.read();
+        if (next.done) {
+          controller.close();
+          return finish();
+        }
+        bytes += next.value.byteLength;
+        controller.enqueue(next.value);
+      } catch (error) {
+        controller.error(error);
+        finish();
+      }
+    },
+    async cancel(reason) {
+      finish();
+      await reader.cancel(reason);
+    },
+  });
 }

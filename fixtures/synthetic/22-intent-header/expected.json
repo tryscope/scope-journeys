@@ -94,12 +94,9 @@
       "scope.mcp.tools": [],
       "scope.mcp.client": null,
       "scope.oauth": null,
-      "scope.body.request": {
-        "hook": "orders"
-      },
+      "scope.body.request": null,
       "scope.body.response": {
         "id": "hk_1",
-        "hook": "orders",
         "url": "https://acme.example/hooks/catch/hk_1",
         "token": "h:86fc52b74eac"
       },

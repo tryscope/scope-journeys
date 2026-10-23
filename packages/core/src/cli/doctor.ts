@@ -186,12 +186,14 @@ export interface DoctorReport {
 export const REQUIRED_FACTS = ["address_hash", "user_agent", "route", "observer.policy_version"] as const;
 
 /** The fixes the CLI raises itself; the ingest's own `missing[]` lines are printed as it worded them. */
-export function fixFor(fact: "docs_host" | "fronted" | "client.ja4" | "observer.version", form: InstallForm | null, host: string): string {
+export function fixFor(fact: "docs_host" | "fronted" | "salt" | "client.ja4" | "observer.version", form: InstallForm | null, host: string): string {
   switch (fact) {
     case "docs_host":
       return `no documentation host is fronted: add ${host} to the install (journeys init --docs-host ${host}) and front it, or every journey starts at the install instead of at the read`;
     case "fronted":
       return form === "cloudflare" ? `no route for ${host}: add "${host}/*" to wrangler.toml and deploy, or the DNS record for ${host} is not proxied` : `the proxy file does not run for ${host}; check config.matcher and JOURNEYS_HOST`;
+    case "salt":
+      return form === "cloudflare" ? `the Worker for ${host} has no JOURNEYS_SALT, so it records nothing: run journeys init again, or set the secret (npx wrangler secret put JOURNEYS_SALT) and deploy` : `the sensor for ${host} has no JOURNEYS_SALT, so it records nothing: run journeys init again, or set JOURNEYS_SALT where the sensor runs and redeploy`;
     case "client.ja4":
       return form === "cloudflare" ? "Bot Management is not enabled on this zone; JA4 is optional" : "the project is not on a plan that sends x-vercel-ja4-digest; optional";
     case "observer.version":
@@ -200,7 +202,7 @@ export function fixFor(fact: "docs_host" | "fronted" | "client.ja4" | "observer.
 }
 
 // The order the fixes are printed in: the docs host, the host itself, then the facts.
-const RANK = ["docs_host", "fronted", "request", "client.ja4", "client.asn", "route", "observer.policy_version", "observer.version"];
+const RANK = ["docs_host", "fronted", "salt", "request", "client.ja4", "client.asn", "route", "observer.policy_version", "observer.version"];
 const rank = (fact: string): number => (RANK.includes(fact) ? RANK.indexOf(fact) : RANK.length);
 const OPTIONAL = new Set(["client.ja4", "client.asn"]);
 
@@ -273,15 +275,18 @@ export async function doctor(options: DoctorOptions, deps: DoctorDeps): Promise<
   for (const host of hosts) {
     const nonce = Buffer.from(deps.random(12)).toString("base64url");
     const sentAt = deps.now();
-    let fronted = false;
+    let answer: string | null;
     try {
       const response = await deps.fetch(`https://${host}${PROBE_PATH}?journeys_probe=${nonce}`, { headers: { "user-agent": `scope-journeys-doctor/${VERSION}` }, redirect: "manual", signal: AbortSignal.timeout(10_000) });
-      fronted = response.status === 204 && response.headers.get(PROBE_HEADER) === "received";
+      answer = response.status === 204 ? response.headers.get(PROBE_HEADER) : null;
     } catch {
-      fronted = false;
+      answer = null;
     }
+    // A sensor without a salt answers the probe itself and records nothing, so it is not waited for.
+    const fronted = answer === "received" || answer === "no-salt";
     const report: HostReport = { host, fronted, found: false, round_trip_ms: null, facts: {}, missing: [] };
-    if (fronted) {
+    if (answer === "no-salt") report.missing.push({ fact: "salt", fix: fixFor("salt", form, host) });
+    else if (fronted) {
       const deadline = sentAt + options.timeoutSeconds * 1000;
       let probe: InstallProbeRead;
       for (;;) {
@@ -301,7 +306,7 @@ export async function doctor(options: DoctorOptions, deps: DoctorDeps): Promise<
         if (probe.facts["client.ja4"] === false && !report.missing.some((m) => m.fact === "client.ja4")) report.missing.push({ fact: "client.ja4", fix: fixFor("client.ja4", form, host) });
       } else report.missing.push({ fact: "request", fix: `no request carrying the probe's nonce reached the ingest within ${options.timeoutSeconds} s; check that ${host} is one the install fronts and that the sensor can reach JOURNEYS_API_URL` });
     } else report.missing.push({ fact: "fronted", fix: fixFor("fronted", form, host) });
-    if (docsHost === host && !report.found) report.missing.unshift({ fact: "docs_host", fix: fixFor("docs_host", form, host) });
+    if (docsHost === host && !report.found && answer !== "no-salt") report.missing.unshift({ fact: "docs_host", fix: fixFor("docs_host", form, host) });
     report.missing.sort((a, b) => rank(a.fact) - rank(b.fact));
     reports.push(report);
   }
@@ -319,7 +324,8 @@ export function renderDoctorReport(report: DoctorReport): string[] {
   lines.push(`install     ${report.install_id ?? "?"}${report.form ? ` (${report.form})` : ""}`);
   if (report.sensor) lines.push(`sensor      ${report.sensor.package}@${report.sensor.version} (${report.sensor.adapter}), policy ${report.sensor.policy_version ?? "none"}, salt epoch ${report.sensor.salt_epoch}, ${report.sensor.state}`);
   for (const h of report.hosts) {
-    lines.push(`host        ${h.host}: ${h.fronted ? "fronted" : "NOT fronted"}${h.found ? `, probe found${h.round_trip_ms !== null ? ` in ${h.round_trip_ms} ms` : ""}` : h.fronted ? ", probe not found" : ""}`);
+    const unsalted = h.missing.some((m) => m.fact === "salt");
+    lines.push(`host        ${h.host}: ${h.fronted ? "fronted" : "NOT fronted"}${h.found ? `, probe found${h.round_trip_ms !== null ? ` in ${h.round_trip_ms} ms` : ""}` : unsalted ? ", records nothing (no salt)" : h.fronted ? ", probe not found" : ""}`);
     for (const [fact, value] of Object.entries(h.facts)) lines.push(`  ${fact.padEnd(24)} ${value === true ? "present" : value === false ? "absent" : String(value)}`);
     for (const m of h.missing) lines.push(`  fix         ${m.fix}`);
   }

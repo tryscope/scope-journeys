@@ -58,8 +58,9 @@ The AS number, the organisation, the country, the colo, the JA4 digest and the T
 |---|---|
 | the sensor throws, or the hop cannot connect (the origin refuses it, or its host does not resolve) | a mount hands the request to your routes untouched; the proxy forwards untouched, or answers 502 when the origin is unreachable |
 | the hop fails after the request left: the connection drops, or the origin stays silent for 30 seconds | the request is not sent again: the client gets a 502, or a 504 when the origin stayed silent; the record carries the status and the error's class. A GET, HEAD, OPTIONS, PUT or DELETE whose kept-alive connection was reset before any answer goes once more on a fresh connection |
-| no install id or no salt | one log line naming `journeys init --node`; every request passes through under the forward-only default |
-| the policy fetch fails | the last good policy, or the embedded forward-only default |
+| no install id | one log line naming `journeys init --node`; every request passes through under the forward-only default |
+| no salt | one log line naming `journeys init --node`; nothing is recorded or sent, every request goes on untouched, and the probe answers `x-journeys-probe: no-salt` |
+| the policy fetch fails | the last good policy, or the embedded forward-only default, whose records say so (a `policy` decision with the reason) |
 | Scope's ingest is down, slow, or answers 429 | records wait in a queue of at most 32 MB and are sent again with growing waits, honouring `Retry-After`, for up to 15 minutes; past that, or when the queue is full, the oldest are dropped and counted, and a shipment Scope refuses (a revoked key) is dropped and counted at once; nothing waits in the request path |
 
 What it records is in `TELEMETRY.md` of `scope-journeys`; the data-handling statement is `SECURITY.md`. The guide: https://journeys.tryscope.com/install/node.
