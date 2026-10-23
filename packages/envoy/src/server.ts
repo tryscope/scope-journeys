@@ -2,7 +2,7 @@ import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import { createHash, randomBytes } from "node:crypto";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, loadPolicy, secureUrl, classifyRoute, effectiveMode, isTextFace, observe, observeResponse, type CompiledPolicy, type Environment, type Io, type LogLevel, type Observation, type Responded, type ScopeDecision1, type SensorRecord, type State } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, loadPolicy, secureUrl, trustedProxies, classifyRoute, effectiveMode, isTextFace, observe, observeResponse, type CompiledPolicy, type Environment, type Io, type LogLevel, type Observation, type Responded, type ScopeDecision1, type SensorRecord, type State } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { deliver, droppedSoFar } from "./deliver.js";
@@ -157,6 +157,10 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
   const apiUrl = secureUrl(options.apiUrl ?? env.JOURNEYS_API_URL ?? DEFAULT_API_URL, "JOURNEYS_API_URL", (line) => log("warn", line));
   const key = env.JOURNEYS_INSTALL_KEY ?? null;
   const salt = env.JOURNEYS_SALT ?? null;
+  // The processor never sees a socket: the client's address is always a forwarded one, behind one proxy unless JOURNEYS_TRUST_PROXY counts more.
+  const counted = trustedProxies(env.JOURNEYS_TRUST_PROXY);
+  if (env.JOURNEYS_TRUST_PROXY && counted === null) log("warn", `journeys: JOURNEYS_TRUST_PROXY=${env.JOURNEYS_TRUST_PROXY} is not a number of proxies; counting one (2 for a CDN in front of a load balancer)`);
+  const proxies = counted ?? 1;
   const policyUrl = options.policyUrl ?? env.JOURNEYS_POLICY_URL ?? (apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}/policy` : null);
   const issuer = apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}` : null;
   const cache = memoryCache(now);
@@ -199,7 +203,7 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
 
   return {
     process(call) {
-      const exchange = new Exchange({ load, io, name, installId, issuer, env, log, write: (response) => call.write(response) });
+      const exchange = new Exchange({ load, io, name, installId, issuer, proxies, env, log, write: (response) => call.write(response) });
       call.on("data", (message: ProcessingRequest) => exchange.push(message));
       call.on("end", () => {
         void exchange.settled().then(() => call.end());
@@ -218,6 +222,7 @@ interface ExchangeDeps {
   name: string;
   installId: string | null;
   issuer: string | null;
+  proxies: number;
   env: Record<string, string | undefined>;
   log: (level: LogLevel, line: string) => void;
   write: (response: ProcessingResponse) => void;
@@ -317,7 +322,7 @@ class Exchange {
     const policy = loaded.policy;
     const io = this.deps.io(url.host);
     const identity = { install: this.deps.installId, name: this.deps.name, environment: loaded.environment, saltEpoch: loaded.saltEpoch, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(this.deps.env.JOURNEYS_ASSERTION_KEY, this.deps.issuer) };
-    const facts = platformFacts(this.requestHeaders, identity);
+    const facts = platformFacts(this.requestHeaders, identity, this.deps.proxies);
     const request = new Request(url, { method: this.method, headers: this.requestHeaders, body: body && !bodyless(this.method) ? new Uint8Array(body) : null, redirect: "manual" });
     const observed: Observation = await observe(request, policy, facts, io);
     this.state = observed.state;

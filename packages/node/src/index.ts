@@ -6,15 +6,15 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { forwardedUrl, isHost } from "scope-journeys";
+import { forwardedClient, forwardedUrl, isHost } from "scope-journeys";
 
 import { afterResponse, createNodeHandler, createSensor, requestHost, toRequest, type Exchange, type NodeOptions } from "./handler.js";
-import { forwardedAddress, socketFacts } from "./facts.js";
+import { socketFacts } from "./facts.js";
 
 export { createNodeHandler, createSensor, toRequest, requestHost, send, afterResponse, INNER_HEADER, type NodeOptions, type NodeHandler, type Sensor, type Exchange } from "./handler.js";
 export { createNodeIo, type NodeIoOptions } from "./io.js";
 export { hop, headersOf, HOP_BY_HOP, type HopOptions } from "./hop.js";
-export { platformFacts, socketFacts, canonicalAddress, forwardedAddress, type Identity, type SocketFacts } from "./facts.js";
+export { platformFacts, socketFacts, canonicalAddress, type Identity, type SocketFacts } from "./facts.js";
 export { memoryCache, resetCache } from "./cache.js";
 export { deliver, droppedSoFar, resetDelivery, type DeliveryOptions } from "./deliver.js";
 export { serveProxy, parseListen, type ProxyOptions, type RunningProxy } from "./proxy.js";
@@ -93,8 +93,8 @@ export function honoJourneys(options: NodeOptions = {}): (c: HonoLikeContext, ne
     }
     try {
       const exchange: Exchange = {
-        request: incoming ? toRequest(incoming, sensor.trustProxy, sensor.forwardedHost) : url.href === request.url ? request : new Request(url, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit),
-        socket: incoming ? socketFacts(incoming, sensor.trustProxy) : { address: sensor.trustProxy ? forwardedAddress(request.headers.get("x-forwarded-for") ?? undefined) : null, peer: null, tls_protocol_version: null, network_protocol_version: null },
+        request: incoming ? toRequest(incoming, sensor.proxies !== null, sensor.forwardedHost) : url.href === request.url ? request : new Request(url, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit),
+        socket: incoming ? socketFacts(incoming, sensor.proxies) : { address: sensor.proxies === null ? null : forwardedClient(request.headers.get("x-forwarded-for"), sensor.proxies), peer: null, tls_protocol_version: null, network_protocol_version: null },
         localPort: incoming?.socket?.localPort ?? null,
         afterResponse: outgoing ? afterResponse(outgoing) : (work) => work(),
       };

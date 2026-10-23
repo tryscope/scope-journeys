@@ -1,13 +1,14 @@
+import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { TLSSocket } from "node:tls";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardObserved, forwardedUrl, isHost, loadPolicy, observe, originUrl, passHeaders, secureUrl, type Environment, type LogLevel } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, finishUnsent, forwardObserved, forwardedUrl, isHost, loadPolicy, observe, originUrl, passHeaders, secureUrl, trustedProxies, type Environment, type LogLevel } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { droppedSoFar } from "./deliver.js";
-import { canonicalAddress, forwardedAddress, platformFacts, socketFacts, type SocketFacts } from "./facts.js";
+import { canonicalAddress, platformFacts, socketFacts, type SocketFacts } from "./facts.js";
 import { HOP_BY_HOP, headersOf, hop } from "./hop.js";
 import { createNodeIo } from "./io.js";
 
@@ -25,8 +26,8 @@ export interface NodeOptions {
   policyUrl?: string;
   installId?: string;
   environment?: Environment;
-  /** `true` reads the client's address and scheme from x-forwarded-for and x-forwarded-proto, and on a mount the host from x-forwarded-host (JOURNEYS_TRUST_PROXY=1); the socket's and the Host header's otherwise. */
-  trustProxy?: boolean;
+  /** How many proxies in front append to x-forwarded-for (JOURNEYS_TRUST_PROXY): the client's address is the entry they count to, the scheme x-forwarded-proto's, and on a mount the host x-forwarded-host's; unset, the socket's and the Host header's. */
+  trustProxy?: number;
   /**
    * `mount` (the default) sits inside the app: the hop returns to the app's own listener with the
    * inner marker and the request's own Host. `proxy` fronts another server: the hop carries the
@@ -53,7 +54,8 @@ export interface Exchange {
 
 export interface Sensor {
   form: "mount" | "proxy";
-  trustProxy: boolean;
+  /** How many proxies in front append to x-forwarded-for; null trusts none. */
+  proxies: number | null;
   /** Whether x-forwarded-host names the request: a mount behind a trusted proxy. The standalone proxy is a gateway and names the host it serves, the Host it receives. */
   forwardedHost: boolean;
   /** Whether the request is the sensor's to observe: not the inner pass, and a host, the observed one. */
@@ -77,13 +79,18 @@ export function createSensor(options: NodeOptions = {}): Sensor {
   const log = options.log ?? stderr;
   const track = options.track ?? (() => undefined);
   const form = options.form ?? "mount";
-  const trustProxy = options.trustProxy ?? env.JOURNEYS_TRUST_PROXY === "1";
+  // The option is read as the variable is: a caller's `false`, `0` or `true` is not a count and trusts none.
+  const trustSetting = options.trustProxy === undefined ? env.JOURNEYS_TRUST_PROXY : String(options.trustProxy);
+  const proxies = trustedProxies(trustSetting);
+  if (trustSetting && proxies === null) log("warn", `journeys: the trusted proxy count ${JSON.stringify(trustSetting)} (trustProxy or JOURNEYS_TRUST_PROXY) is not a number of proxies; x-forwarded-for is not trusted (1 for a load balancer or a CDN, 2 for a CDN in front of a load balancer)`);
   const observeHost = options.host ?? env.JOURNEYS_HOST ?? null;
   const name = options.name ?? env.JOURNEYS_NAME ?? "scope-journeys";
   const installId = options.installId ?? env.JOURNEYS_INSTALL_ID ?? null;
   const apiUrl = secureUrl(options.apiUrl ?? env.JOURNEYS_API_URL ?? DEFAULT_API_URL, "JOURNEYS_API_URL", (line) => log("warn", line));
   const key = env.JOURNEYS_INSTALL_KEY ?? null;
   const salt = env.JOURNEYS_SALT ?? null;
+  // The inner hop's marker, derived from the salt: a visitor's own x-journeys-inner is observed like any request.
+  const innerMarker = createHash("sha256").update(`${salt ?? ""}:journeys-inner`).digest("hex");
   const origin = options.origin ?? env.JOURNEYS_ORIGIN ?? null;
   const hopOrigin = origin ? originUrl(origin) : null;
   if (form === "proxy" && !hopOrigin) throw new Error("journeys: the proxy needs an http or https origin with no credentials to forward to (--origin or JOURNEYS_ORIGIN)");
@@ -99,14 +106,14 @@ export function createSensor(options: NodeOptions = {}): Sensor {
     if (form === "proxy" || exchange.localPort === null) throw new Error("journeys: no origin to forward to (set JOURNEYS_ORIGIN)");
     return new URL(`http://127.0.0.1:${exchange.localPort}`);
   };
-  const hopHeaders = (request: Request): Record<string, string> => (form === "mount" ? { [INNER_HEADER]: "1", "x-forwarded-proto": new URL(request.url).protocol.slice(0, -1) } : {});
+  const hopHeaders = (request: Request): Record<string, string> => (form === "mount" ? { [INNER_HEADER]: innerMarker, "x-forwarded-proto": new URL(request.url).protocol.slice(0, -1) } : {});
 
   return {
     form,
-    trustProxy,
-    forwardedHost: trustProxy && form === "mount",
+    proxies,
+    forwardedHost: proxies !== null && form === "mount",
     log,
-    observes: (inner, host) => !inner && host !== null && (!observeHost || host === observeHost),
+    observes: (inner, host) => inner !== innerMarker && host !== null && (!observeHost || host === observeHost),
     async sense(exchange) {
       const { request, socket } = exchange;
       const url = new URL(request.url);
@@ -131,7 +138,13 @@ export function createSensor(options: NodeOptions = {}): Sensor {
       const io = createNodeIo({ salt: salt ?? "", host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, now, afterResponse: exchange.afterResponse, track, log });
       const observed = await observe(request, policy, facts, io);
       if (observed.kind === "answer") return observed.response;
-      return (await forwardObserved(observed.request, observed.state)).response;
+      try {
+        return (await forwardObserved(observed.request, observed.state)).response;
+      } catch (error) {
+        // The hop never left: the caller hands the request on, and the record keeps its request side.
+        finishUnsent(observed.state, error).catch((recordError: unknown) => log("warn", `journeys: the record of a request handed on could not be finished (${recordError instanceof Error ? recordError.message : String(recordError)})`));
+        throw error;
+      }
     },
     async untouched(exchange) {
       const { request, socket } = exchange;
@@ -233,7 +246,7 @@ export function createNodeHandler(options: NodeOptions = {}): NodeHandler {
     if (req.method === "TRACE") return send(res, new Response("Not Implemented", { status: 501, headers: { "content-type": "text/plain" } }));
     let exchange: Exchange;
     try {
-      exchange = { request: toRequest(req, sensor.trustProxy, sensor.forwardedHost), socket: socketFacts(req, sensor.trustProxy), localPort: req.socket?.localPort ?? null, afterResponse: afterResponse(res) };
+      exchange = { request: toRequest(req, sensor.proxies !== null, sensor.forwardedHost), socket: socketFacts(req, sensor.proxies), localPort: req.socket?.localPort ?? null, afterResponse: afterResponse(res) };
     } catch (error) {
       sensor.log("error", `journeys: the request could not be read: ${error instanceof Error ? error.message : String(error)}`);
       if (next) return next();
@@ -261,4 +274,4 @@ export function createNodeHandler(options: NodeOptions = {}): NodeHandler {
   return Object.assign(handler, { observes });
 }
 
-export { canonicalAddress, forwardedAddress };
+export { canonicalAddress };

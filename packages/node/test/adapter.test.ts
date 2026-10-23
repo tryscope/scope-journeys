@@ -18,7 +18,7 @@ import { DEFAULT_API_URL, resetPolicyCache, trustPolicyKeyForTests } from "scope
 
 import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
 
-import { canonicalAddress, createNodeHandler, deliver, droppedSoFar, fastifyJourneys, honoJourneys, hop, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler, type RunningProxy } from "../src/index.js";
+import { canonicalAddress, createNodeHandler, createSensor, deliver, droppedSoFar, fastifyJourneys, honoJourneys, hop, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler, type RunningProxy } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const INSTALL = "jin_test0000000000000000000000";
@@ -78,7 +78,8 @@ interface Seen {
 const headersOf = (req: IncomingMessage): Record<string, string> => Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : (v ?? "")]));
 
 const assertHop = (seen: Seen, host: string): void => {
-  assert.equal(seen.headers["x-journeys-inner"], "1", "the hop is marked as the inner pass");
+  // sha256("fixture-salt:journeys-inner"), the value the Next form's test expects too.
+  assert.equal(seen.headers["x-journeys-inner"], "002943804e8e893d384fd7e2bb8795ade0b9d960fc29a190b2b25526c3aacece", "the hop is marked as the inner pass, with the value derived from the salt");
   assert.equal(seen.headers.host, host, "the hop keeps the request's own Host");
   assert.equal(seen.headers.via, "1.1 scope-journeys");
   assert.equal(seen.headers["x-acme-edge"], "journeys", "the policy's forward header");
@@ -122,12 +123,13 @@ const listen = (server: Server): Promise<number> =>
 
 const agent = { "user-agent": "Claude-User (claude-code/2.1.0; +https://www.anthropic.com/claude-code)", accept: "text/html" };
 
-test("the socket's facts: the peer by default, the first x-forwarded-for when trusted, the dual-stack prefix dropped, the family from the address", () => {
-  const req = { headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.1" }, socket: { remoteAddress: "::ffff:10.0.0.9" }, httpVersion: "1.1" } as unknown as IncomingMessage;
-  const untrusted = socketFacts(req, false);
+test("the socket's facts: the peer by default, the x-forwarded-for entry the trusted proxies count to, the dual-stack prefix dropped, the family from the address", () => {
+  // The visitor wrote 1.2.3.4; the load balancer appended the address it got the request from.
+  const req = { headers: { "x-forwarded-for": "1.2.3.4, 203.0.113.7" }, socket: { remoteAddress: "::ffff:10.0.0.9" }, httpVersion: "1.1" } as unknown as IncomingMessage;
+  const untrusted = socketFacts(req, null);
   assert.deepEqual(untrusted, { address: "10.0.0.9", peer: "10.0.0.9", tls_protocol_version: null, network_protocol_version: "HTTP/1.1" });
-  const trusted = socketFacts(req, true);
-  assert.deepEqual(trusted, { address: "203.0.113.7", peer: "10.0.0.9", tls_protocol_version: null, network_protocol_version: "HTTP/1.1" });
+  assert.deepEqual(socketFacts(req, 1), { address: "203.0.113.7", peer: "10.0.0.9", tls_protocol_version: null, network_protocol_version: "HTTP/1.1" }, "one proxy: the entry it appended, never the visitor's");
+  assert.equal(socketFacts(req, 2).address, "1.2.3.4", "two proxies: the entry the outer one appended");
   assert.equal(canonicalAddress("::ffff:203.0.113.7"), "203.0.113.7");
   assert.equal(canonicalAddress("2001:db8::1"), "2001:db8::1");
   assert.equal(canonicalAddress(null), null);
@@ -141,6 +143,19 @@ test("the socket's facts: the peer by default, the first x-forwarded-for when tr
   assert.equal(v6.asn, null);
   assert.equal(v6.ja4, null);
   assert.equal(platformFacts({ address: null, peer: null, tls_protocol_version: null, network_protocol_version: null }, null, identity).family, null);
+});
+
+test("JOURNEYS_TRUST_PROXY and the trustProxy option are a number of proxies: 2 counts two, a value that is not a count trusts none and says so once", () => {
+  assert.equal(createSensor({ env: { ...env, JOURNEYS_TRUST_PROXY: "2" }, log: () => undefined }).proxies, 2);
+  assert.equal(createSensor({ env, log: () => undefined }).proxies, null, "unset: none");
+  const logs: string[] = [];
+  const sensor = createSensor({ env: { ...env, JOURNEYS_TRUST_PROXY: "true" }, log: (_level, line) => logs.push(line) });
+  assert.equal(sensor.proxies, null);
+  assert.equal(sensor.forwardedHost, false);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0] ?? "", /"true" \(trustProxy or JOURNEYS_TRUST_PROXY\) is not a number of proxies/);
+  assert.equal(createSensor({ env, trustProxy: 2, log: () => undefined }).proxies, 2, "the option counts as the variable does");
+  for (const value of [0, false, true]) assert.equal(createSensor({ env, trustProxy: value as unknown as number, log: () => undefined }).proxies, null, `the option ${String(value)} is not a count`);
 });
 
 test("behind a trusted proxy the record names the forwarded host and scheme, JOURNEYS_HOST is matched against that host, and the hop keeps the Host as received", async () => {
@@ -163,7 +178,7 @@ test("behind a trusted proxy the record names the forwarded host and scheme, JOU
     await page.text();
     await until(() => w.shipped.length === 1, "the record shipped after the response");
     assert.equal(seen.length, 1, "the observed host went through the hop once");
-    assert.equal(seen[0]?.headers["x-journeys-inner"], "1");
+    assert.match(seen[0]?.headers["x-journeys-inner"] ?? "", /^[0-9a-f]{64}$/);
     assert.equal(seen[0]?.headers.host, host, "the hop keeps the Host as received, not the forwarded host");
     assert.equal(seen[0]?.headers["x-forwarded-host"], "docs.example");
     assert.equal(seen[0]?.headers["x-forwarded-proto"], "https", "the hop names the scheme the agent used");
@@ -226,12 +241,18 @@ test("Express 5: app.use(journeys()) first; a page read goes through the hop to 
     assert.equal(record?.["scope.route"], "api");
     assert.equal(record?.["http.response.status_code"], 201);
 
-    const inner = await fetch(`http://${host}/docs/quickstart`, { headers: { ...agent, "x-journeys-inner": "1" } });
+    const inner = await fetch(`http://${host}/docs/quickstart`, { headers: { ...agent, "x-journeys-inner": seen[0]?.headers["x-journeys-inner"] ?? "" } });
     assert.equal(inner.status, 200);
     await inner.text();
     assert.equal(seen.length, 3);
     assert.equal(seen[2]?.headers.via, undefined, "the inner pass is handed to the app untouched");
     assert.equal(w.shipped.length, 2, "nothing observed on the inner pass");
+
+    const visitor = await fetch(`http://${host}/docs/quickstart`, { headers: { ...agent, "x-journeys-inner": "1" } });
+    assert.equal(visitor.status, 200);
+    await visitor.text();
+    await until(() => w.shipped.length === 3, "a visitor's own x-journeys-inner is observed like any request");
+    assert.equal(seen[3]?.headers.via, "1.1 scope-journeys", "and goes through the hop");
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
@@ -279,6 +300,11 @@ test("Express 5: app.use(journeys()) first; a page read goes through the hop to 
     assert.equal(seen3.length, 1);
     assert.equal(seen3[0]?.headers.via, undefined, "the failed hop hands the request to the app untouched");
     assert.ok(logs.some((l) => /the sensor failed, passing the request on untouched/.test(l)), logs.join("\n"));
+    await until(() => broken.shipped.length === 1, "the request side is recorded although the hop never left");
+    const record = (broken.shipped[0] ?? []).find((r) => r.schema === "scope.request/1");
+    assert.equal(record?.["http.response.status_code"], null, "with no response the sensor saw");
+    // node:http's refused connection is a plain Error with the code ECONNREFUSED.
+    assert.deepEqual((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "hop"), [{ rule: "hop", kind: "observe", mode: "live", outcome: "skipped", reason: "Error: the hop never left; handed on untouched" }]);
   } finally {
     server3.closeAllConnections();
     await new Promise((resolve) => server3.close(resolve));
@@ -306,7 +332,7 @@ test("Fastify 5: register(fastifyJourneys) hijacks the reply for an observed req
     assert.equal(seen.length, 1);
     assertHop(seen[0] as Seen, host);
     assertRecord(w, host);
-    const inner = await fetch(`http://${host}/docs/quickstart`, { headers: { ...agent, "x-journeys-inner": "1" } });
+    const inner = await fetch(`http://${host}/docs/quickstart`, { headers: { ...agent, "x-journeys-inner": seen[0]?.headers["x-journeys-inner"] ?? "" } });
     assert.equal(inner.status, 200);
     await inner.text();
     assert.equal(seen.length, 2);
@@ -343,7 +369,7 @@ test("Hono 4 on @hono/node-server: app.use(honoJourneys()) returns the core's Re
     assert.equal(seen.length, 1);
     assertHop(seen[0] as Seen, host);
     assertRecord(w, host);
-    const inner = await fetch(`http://${host}/docs/quickstart`, { headers: { ...agent, "x-journeys-inner": "1" } });
+    const inner = await fetch(`http://${host}/docs/quickstart`, { headers: { ...agent, "x-journeys-inner": seen[0]?.headers["x-journeys-inner"] ?? "" } });
     await inner.text();
     assert.equal(seen.length, 2);
     assert.equal(w.shipped.length, 1);
@@ -517,7 +543,8 @@ test("an origin that is not an http or https URL is refused where it is read: a 
     const response = await fetch(`http://127.0.0.1:${port2}/docs/quickstart`, { headers: agent });
     assert.equal(response.status, 200);
     await response.text();
-    assert.deepEqual(seen, ["1"], "an empty JOURNEYS_ORIGIN is unset: the hop goes to the app's own listener");
+    assert.equal(seen.length, 1, "an empty JOURNEYS_ORIGIN is unset: the hop goes to the app's own listener");
+    assert.match(seen[0] ?? "", /^[0-9a-f]{64}$/, "marked as the inner pass");
     await until(() => unset.shipped.length === 1, "observed and shipped");
   } finally {
     server2.closeAllConnections();

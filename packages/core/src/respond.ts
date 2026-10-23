@@ -76,7 +76,7 @@ export function observeResponse(upstream: Response, state: State): Responded {
 
 /**
  * The hop through the adapter's `io.forward`, then the response side. A hop that failed before the
- * request left is thrown back, so the adapter passes the request on; one that may have reached the
+ * request left is thrown back for the adapter to record and pass on; one that may have reached the
  * origin, which may have acted on it, is never sent again: 504 on a timeout, 502 otherwise.
  */
 export async function forwardObserved(request: Request, state: State): Promise<Responded> {
@@ -95,6 +95,27 @@ export async function forwardObserved(request: Request, state: State): Promise<R
     return { response, records: finish(state) };
   }
   return observeResponse(upstream, state);
+}
+
+/**
+ * The record of a request the adapter hands on without its hop: the request side as observed and
+ * no response, the `hop` decision saying why; a gate's split is skipped, since the request goes on
+ * as received. A passthrough route records nothing, as it would with the hop.
+ */
+export function finishUnhopped(state: State, reason: string): Promise<SensorRecord[]> {
+  if (state.passthrough) return Promise.resolve([]);
+  state.decisions.push({ rule: "hop", kind: "observe", mode: "live", outcome: "skipped", reason });
+  if (state.gate) {
+    decide(state.decisions, state.gate, state.facts.environment, "skipped", "not hopped: the request went on as received, so the gate's answer was not sent");
+    state.gate = null;
+    state.record["scope.gateway"] = null;
+  }
+  return finish(state);
+}
+
+/** The record of a hop that never left, the error `forwardObserved` threw back, named the same way by the Next and Node forms. */
+export function finishUnsent(state: State, error: unknown): Promise<SensorRecord[]> {
+  return finishUnhopped(state, `${error instanceof Error ? error.name : "Error"}: the hop never left; handed on untouched`);
 }
 
 function respondByKind(upstream: Response, state: State, resType: string): Responded {

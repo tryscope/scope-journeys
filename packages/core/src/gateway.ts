@@ -57,6 +57,18 @@ export function isHost(value: string): boolean {
   return HOST_SHAPE.test(value) && URL.canParse(`http://${value}`);
 }
 
+/** JOURNEYS_TRUST_PROXY: how many proxies of the customer's sit in front of the sensor, each appending to x-forwarded-for; null when unset or not a whole number from 1 to 99. */
+export function trustedProxies(value: string | undefined): number | null {
+  const count = value?.trim() ?? "";
+  return /^[1-9][0-9]?$/.test(count) ? Number(count) : null;
+}
+
+/** The client's address in x-forwarded-for whose last `proxies` entries the customer's own proxies appended (the visitor writes any before them): that entry, or the first when the list is shorter; null for none. */
+export function forwardedClient(header: string | null, proxies: number): string | null {
+  const entries = (header ?? "").split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  return entries[Math.max(0, entries.length - proxies)] ?? null;
+}
+
 /**
  * The URL the agent spoke to, as the proxy in front named it: the host from the first
  * x-forwarded-host entry, else the Host header, else the URL's own (a server builds that one from

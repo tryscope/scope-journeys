@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
-import { originUrl } from "../gateway.js";
+import { originUrl, trustedProxies } from "../gateway.js";
 import { emit } from "./output.js";
 import { readEnvFile } from "./project.js";
 
@@ -9,7 +9,7 @@ import { readEnvFile } from "./project.js";
 const NODE_ADAPTER = "scope-journeys-node";
 
 interface NodeAdapter {
-  serveProxy(options: { origin: string; listen: string; trustProxy: boolean; name?: string; apiUrl?: string; env: Record<string, string | undefined>; signals: boolean }): Promise<{ url: string; closed: Promise<void> }>;
+  serveProxy(options: { origin: string; listen: string; trustProxy?: number; name?: string; apiUrl?: string; env: Record<string, string | undefined>; signals: boolean }): Promise<{ url: string; closed: Promise<void> }>;
 }
 
 const isModuleNotFound = (error: unknown): boolean => error instanceof Error && ((error as { code?: unknown }).code === "ERR_MODULE_NOT_FOUND" || /Cannot find (?:module|package)/.test(error.message));
@@ -36,11 +36,13 @@ export async function runProxy(argv: readonly string[], json = false): Promise<n
     process.stderr.write(`journeys proxy needs ${NODE_ADAPTER} beside the CLI: npm install ${NODE_ADAPTER}\n`);
     return 2;
   }
-  const trustProxy = values["trust-proxy"] === true || env.JOURNEYS_TRUST_PROXY === "1";
-  const running = await adapter.serveProxy({ origin, listen: typeof values.listen === "string" ? values.listen : (env.JOURNEYS_LISTEN ?? ":8080"), trustProxy, name: typeof values.name === "string" ? values.name : undefined, apiUrl: typeof values["api-url"] === "string" ? values["api-url"] : undefined, env: { ...env, JOURNEYS_TRUST_PROXY: trustProxy ? "1" : undefined }, signals: true });
-  const report = { listening: running.url, origin, install: env.JOURNEYS_INSTALL_ID ?? null, trust_proxy: trustProxy, salt: Boolean(env.JOURNEYS_SALT) };
+  // --trust-proxy trusts the count JOURNEYS_TRUST_PROXY names, one when it names none; a value that is not a count is left for the adapter to warn about.
+  const counted = trustedProxies(env.JOURNEYS_TRUST_PROXY);
+  const proxies = values["trust-proxy"] === true ? (counted ?? 1) : counted;
+  const running = await adapter.serveProxy({ origin, listen: typeof values.listen === "string" ? values.listen : (env.JOURNEYS_LISTEN ?? ":8080"), trustProxy: proxies ?? undefined, name: typeof values.name === "string" ? values.name : undefined, apiUrl: typeof values["api-url"] === "string" ? values["api-url"] : undefined, env, signals: true });
+  const report = { listening: running.url, origin, install: env.JOURNEYS_INSTALL_ID ?? null, trust_proxy: proxies, salt: Boolean(env.JOURNEYS_SALT) };
   if (json) emit(report, { json: true });
-  else process.stdout.write(`journeys proxy: listening on ${running.url}, forwarding to ${origin}${report.install ? ` as ${report.install}` : " with no install (forward-only default; run journeys init --node)"}${trustProxy ? ", trusting x-forwarded-for" : ""}\n`);
+  else process.stdout.write(`journeys proxy: listening on ${running.url}, forwarding to ${origin}${report.install ? ` as ${report.install}` : " with no install (forward-only default; run journeys init --node)"}${proxies === null ? "" : `, trusting ${proxies} ${proxies === 1 ? "proxy" : "proxies"} in x-forwarded-for`}\n`);
   await running.closed;
   return 0;
 }

@@ -72,8 +72,8 @@ test("journeys proxy: the standalone sensor in front of a toy origin; SIGTERM dr
   const originPort = await listen(origin);
   const ingestPort = await listen(ingest);
   const cwd = mkdtempSync(join(tmpdir(), "journeys-proxy-"));
-  writeFileSync(join(cwd, ".env.local"), `JOURNEYS_INSTALL_ID=jin_test0000000000000000000000\nJOURNEYS_INSTALL_KEY=sjk_test_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nJOURNEYS_SALT=test-salt\nJOURNEYS_API_URL=http://127.0.0.1:${ingestPort}\nJOURNEYS_POLICY_URL=http://127.0.0.1:${ingestPort}/policy\n`);
-  const child = spawn(process.execPath, ["--import", TRUST, BIN, "proxy", "--origin", `http://127.0.0.1:${originPort}`, "--listen", "127.0.0.1:0", "--json"], { cwd, env: { ...process.env, TEST_POLICY_KEY_X: x }, stdio: ["ignore", "pipe", "pipe"] });
+  writeFileSync(join(cwd, ".env.local"), `JOURNEYS_INSTALL_ID=jin_test0000000000000000000000\nJOURNEYS_INSTALL_KEY=sjk_test_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\nJOURNEYS_SALT=test-salt\nJOURNEYS_API_URL=http://127.0.0.1:${ingestPort}\nJOURNEYS_POLICY_URL=http://127.0.0.1:${ingestPort}/policy\nJOURNEYS_TRUST_PROXY=2\n`);
+  const child = spawn(process.execPath, ["--import", TRUST, BIN, "proxy", "--origin", `http://127.0.0.1:${originPort}`, "--listen", "127.0.0.1:0", "--trust-proxy", "--json"], { cwd, env: { ...process.env, TEST_POLICY_KEY_X: x }, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
@@ -81,8 +81,9 @@ test("journeys proxy: the standalone sensor in front of a toy origin; SIGTERM dr
   const exited = new Promise<number | null>((resolve) => child.once("exit", (code) => resolve(code)));
   try {
     for (let i = 0; i < 300 && !/"listening"/.test(stdout); i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
-    const report = JSON.parse(stdout) as { listening: string; origin: string; install: string };
+    const report = JSON.parse(stdout) as { listening: string; origin: string; install: string; trust_proxy: number | null };
     assert.equal(report.install, "jin_test0000000000000000000000");
+    assert.equal(report.trust_proxy, 2, "--trust-proxy keeps the count JOURNEYS_TRUST_PROXY names");
     const pending = fetch(`${report.listening}/docs/quickstart`, { headers: { accept: "text/html", "user-agent": "Claude-User (claude-code/2.1.0; +https://www.anthropic.com/claude-code)" } });
     for (let i = 0; i < 100 && seen.length === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(seen.length, 1, "the request reached the origin");
