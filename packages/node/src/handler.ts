@@ -48,6 +48,8 @@ export interface Exchange {
   socket: SocketFacts;
   /** The port the request arrived on: a mount's default hop target. */
   localPort: number | null;
+  /** Built from its head alone (`Sensor.loops`): the body is left unread for the app. */
+  head: boolean;
   /** Runs the work once the response has gone out to the client (the shipment); at once when the transport cannot say. */
   afterResponse: (work: () => void) => void;
 }
@@ -142,7 +144,7 @@ export function createSensor(options: NodeOptions = {}): Sensor {
       const facts = platformFacts(socket, request.headers.get("x-request-id"), identity);
       // A mount's hop carries the Host as received (the forwarded host is the record's, not the app's view); the proxy's carries the origin's.
       const io = createNodeIo({ salt: salt ?? "", host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, now, afterResponse: exchange.afterResponse, track, log });
-      const observed = await observe(request, policy, facts, io);
+      const observed = await observe(request, policy, facts, io, exchange.head);
       if (observed.kind === "answer") return observed.response;
       if (loops(request.headers.get(INNER_HEADER), request.headers.get("via"))) {
         if (!warnedLoop) {
@@ -264,7 +266,8 @@ export function createNodeHandler(options: NodeOptions = {}): NodeHandler {
     if (req.method === "TRACE") return send(res, new Response("Not Implemented", { status: 501, headers: { "content-type": "text/plain" } }));
     let exchange: Exchange;
     try {
-      exchange = { request: toRequest(req, sensor.proxies !== null, sensor.forwardedHost, observed && loops(req)), socket: socketFacts(req, sensor.proxies), localPort: req.socket?.localPort ?? null, afterResponse: afterResponse(res) };
+      const head = observed && loops(req);
+      exchange = { request: toRequest(req, sensor.proxies !== null, sensor.forwardedHost, head), socket: socketFacts(req, sensor.proxies), localPort: req.socket?.localPort ?? null, afterResponse: afterResponse(res), head };
     } catch (error) {
       sensor.log("error", `journeys: the request could not be read: ${error instanceof Error ? error.message : String(error)}`);
       if (next) return next();

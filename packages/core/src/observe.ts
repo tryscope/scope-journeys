@@ -226,7 +226,7 @@ function emptyRecord(state: Omit<State, "record">, io: Io, facts: Facts, policy:
  * the finder, the gate, the outbound request. Never throws to the adapter: a bug forwards the
  * request untouched and the record carries the error's class.
  */
-export async function observe(request: Request, policy: CompiledPolicy, facts: Facts, io: Io): Promise<Observation> {
+export async function observe(request: Request, policy: CompiledPolicy, facts: Facts, io: Io, head = false): Promise<Observation> {
   const startedAt = io.now();
   const url = new URL(request.url);
   const host = url.host;
@@ -353,8 +353,11 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
     // The docs finder answers here and forwards nothing; a GET with the task in the query serves
     // the agents whose fetch tool cannot POST.
     const finder = policy.rules.find((r) => r.kind === "finder" && r.route === path && (method === "POST" || method === "GET"));
-    if (finder) {
-      const text = finderText(state.requestBody?.parsed ?? {}, url).trim();
+    const finderTask = finder ? finderText(state.requestBody?.parsed ?? {}, url).trim() : "";
+    // `head`: built from its head alone, the request's body was left unread for the app, so no task can be read from it.
+    if (finder && head && !finderTask) decide(state.decisions, finder, facts.environment, "skipped", "the body was left unread for the app");
+    else if (finder) {
+      const text = finderTask;
       const token = mintReference(io);
       const guides = text ? finderAnswer(finder, text, host, prefix, token) : null;
       const answer: unknown = guides ?? { error: { code: "missing_task", message: "Post a JSON object with a one-sentence task." } };

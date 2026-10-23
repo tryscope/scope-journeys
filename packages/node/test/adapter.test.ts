@@ -943,3 +943,31 @@ test("on a mount, a request naming this sensor in Via without its marker, a hop 
     await fastify.close();
   }
 });
+
+test("on a mount, a finder POST that names this sensor in Via is not answered from the body the sensor left unread: the app gets it, task and all", async () => {
+  reset();
+  const w = world();
+  const bodies: string[] = [];
+  const app = express();
+  app.use(journeys({ env, fetch: w.fetch, log: () => undefined }));
+  app.use(express.text({ type: "*/*" }));
+  app.post("/api/docs/find", (req, res) => {
+    bodies.push(typeof req.body === "string" ? req.body : "");
+    res.status(200).json({ answered: "by the app" });
+  });
+  const server = createServer(app);
+  const port = await listen(server);
+  const task = JSON.stringify({ task: "Post to Slack when an order is added" });
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/docs/find`, { method: "POST", headers: { ...agent, "content-type": "application/json", via: "1.1 scope-journeys" }, body: task });
+    assert.equal(response.status, 200, "never the finder's missing-task refusal");
+    assert.deepEqual(await response.json(), { answered: "by the app" });
+    assert.deepEqual(bodies, [task], "the app reads the task");
+    await until(() => w.shipped.length === 1, "the request is recorded");
+    const record = (w.shipped[0] ?? []).find((r) => r.schema === "scope.request/1");
+    assert.deepEqual((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "finder").map((d) => d.outcome), ["skipped"]);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
