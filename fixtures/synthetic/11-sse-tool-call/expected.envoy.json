@@ -52,7 +52,7 @@
       "http.request.header.content-type": "application/json",
       "http.response.header.content-type": "text/event-stream",
       "scope.request.bytes": 102,
-      "scope.response.bytes": null,
+      "scope.response.bytes": 273,
       "scope.cache": null,
       "scope.timing": "MASKED",
       "scope.client.address_hash": "f8d68a8e6b22",
@@ -82,7 +82,7 @@
       "scope.key.device_code": null,
       "scope.key.user_code": null,
       "scope.key.oauth_client": null,
-      "mcp.session.id": "sess-fixture-04",
+      "mcp.session.id": "d7cb7389a352",
       "scope.key.hook": null,
       "scope.key.reference": "5Z4KJ7N9",
       "scope.key.setup_header": null,
@@ -99,21 +99,13 @@
       "scope.mcp.client": null,
       "scope.oauth": null,
       "scope.body.request": {
-        "jsonrpc": "2.0",
-        "id": 4,
-        "method": "tools/call",
-        "params": {
-          "name": "list_hooks",
-          "arguments": {}
-        }
+        "id": 4
       },
-      "scope.body.response": {
-        "sse": "retry: 1000\n\nevent: message\nid: 12\ndata: {\"jsonrpc\": \"2.0\", \"method\": \"notifications/progress\", \"params\": {\"progress\": 1, \"total\": 2}}\n\nevent: message\nid: 13\ndata: {\"jsonrpc\": \"2.0\", \"id\": 4, \"result\": {\"content\": [{\"type\": \"text\", \"text\": \"2 hooks: orders, invoices\"}]}}\n\n"
-      },
+      "scope.body.response": null,
       "scope.body.truncated": false,
       "scope.response.headers": {
         "content-type": "text/event-stream",
-        "mcp-session-id": "sess-fixture-04",
+        "mcp-session-id": "d7cb7389a352",
         "www-authenticate": null,
         "location": null,
         "cache-control": "no-cache",

@@ -160,6 +160,29 @@
     }
   },
   "record_bodies": true,
+  "observe": {
+    "bodies": {
+      "allow_fields": [
+        "error",
+        "ref",
+        "token",
+        "install_id",
+        "agent",
+        "device_code",
+        "user_code",
+        "status",
+        "access_token",
+        "api_key",
+        "code",
+        "via",
+        "client_id",
+        "url",
+        "hook_id",
+        "id",
+        "trial_key"
+      ]
+    }
+  },
   "rules": [
     {
       "id": "mcp-url",

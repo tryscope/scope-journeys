@@ -98,8 +98,8 @@ On every request it forwards to your origin it adds a `Via` header naming itself
 | the origin is down | the error is forwarded as received; the record carries the status |
 | the hop to your origin fails: the connection drops, or no answer within 30 seconds | the request is never sent again: the client gets a 502, or a 504 on the timeout; the record carries the status and the error's class |
 | Scope's ingest is down | the record is dropped after one retry and counted; nothing waits |
-| the policy fetch fails | the last good policy, or the embedded forward-only default |
-| `JOURNEYS_SALT` is not set | the forward-only default policy, one log line, never an exception |
+| the policy fetch fails | the last good policy, or the embedded forward-only default, whose records say so (a `policy` decision with the reason) |
+| `JOURNEYS_SALT` is not set | nothing is recorded or sent, every request goes to the origin untouched, the probe answers `x-journeys-probe: no-salt`; one log line, never an exception |
 
 ## Upgrades and removal
 

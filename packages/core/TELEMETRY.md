@@ -2,13 +2,13 @@
 
 Generated from `schemas/request.json` and `schemas/declaration.json` by `scripts/telemetry-doc.mjs`; a field cannot ship without appearing here, and the privacy test fails when this file is stale.
 
-**What it records.** For each request: method, host, path and query string, status, timing, the client's user agent, Accept and fetch-metadata headers, the network facts your platform exposes (AS number, country, TLS version, JA4), a one-way hash of the client's address, a one-way hash of any credential (bearer token, device code, install id), the MCP session id, the reference code if one was carried, and what the observer did. It never records a raw address or a raw credential; the hash is salted per installation and rotated on your request. It never records a text or HTML body. It records request and response bodies only when your policy turns `record_bodies` on, and then only on the routes you list and only up to 64 KB, with the fields you name as secrets and your secret value shapes hashed wherever they appear; every other field is recorded as sent, so name each secret field before you turn it on; in its lightest form it records no bodies at all, and that is the default. It never records cookies, the `Authorization` value or `Set-Cookie`.
+**What it records.** For each request: method, host, path and query string, status, timing, the client's user agent, Accept and fetch-metadata headers, the network facts your platform exposes (AS number, country, TLS version, JA4), a one-way hash of the client's address, a one-way hash of any credential (bearer token, device code, install id) and of the MCP session id, the reference code if one was carried, the outcome of a Web Bot Auth signature check (the signer, its key id and the reason), the MCP method, tool and client names and the OAuth grant type, client name, resource and scope a call names, the intent an agent declares (redacted like a body), and what the observer did. It never records a raw address or a raw credential; every hash is salted per installation and rotated on your request, and an observer without its salt records and sends nothing. In the query string and the `Location` header, the value of a parameter named `api_key`, `key`, `token`, `access_token`, `refresh_token`, `id_token`, `code`, `client_secret`, `password`, `secret`, `signature`, `sig`, `session_id` (the older MCP transport's session), in any case or spelling (`apiKey`, `api-key`, percent-encoded), or whose last word is `key`, `token`, `secret`, `password`, `signature` or `sig` (`X-Amz-Security-Token`, `token[0]`, `user[token]`), is hashed under any policy, also inside a URL another parameter carries, beside your secret value shapes, and a value that carries an encoded parameter of its own is hashed from the start of the path segment that holds it (an encoded return URL becomes one hash), as is text still encoded after four decodings, so no encoding hides a secret; a valid reference code stays readable only in the parameters your policy says carry one, and a string holding more than 64 such values is recorded as one hash. It never records a text or HTML body or the content of an event stream. It records request and response bodies only when your policy turns `record_bodies` on and lists fields in `observe.bodies.allow_fields`, and then only on the routes your surface map observes (the answer's body also on an error answer, status 400 or above, from any route it does not pass through), only up to 64 KB and only the fields you allow, with the values of your secret fields and of the secret names above, and your secret value shapes, hashed wherever they appear; in its lightest form it records no bodies at all, and that is the default. It never records cookies, the `Authorization` value or `Set-Cookie`.
 
 **What it holds.** No secret of yours: the observer's own credential is an installation key you can rotate or revoke at any time, or, on Vercel, your project's OIDC identity with no key at all. Its configuration is a public document with no secret in it. It stores nothing on your infrastructure.
 
-**How it fails.** Open: if the observer cannot reach Scope, cannot load its configuration, or encounters an error, your request is forwarded unchanged and your origin's answer is returned as it was. Once a request may have reached your origin it is not sent again: when its forward fails after the request left (the connection drops, or no answer within 30 seconds), the client gets a 502, or a 504 on the timeout. The one exception is HTTP's own: on the Node form, a GET, HEAD, OPTIONS, PUT or DELETE whose kept-alive connection was reset before any answer goes once more on a fresh connection. It never retries a report more than once and never delays a response to report.
+**How it fails.** Open: if the observer cannot reach Scope, cannot load its configuration, or encounters an error, your request is forwarded unchanged and your origin's answer is returned as it was. Once a request may have reached your origin it is not sent again: when its forward fails after the request left (the connection drops, or no answer within 30 seconds), the client gets a 502, or a 504 on the timeout. The one exception is HTTP's own: on the Node form, a GET, HEAD, OPTIONS, PUT or DELETE whose kept-alive connection was reset before any answer goes once more on a fresh connection. With no configuration it runs its built-in default, which changes nothing on the wire, and each record it makes says so. Without its salt it forwards every request untouched and sends nothing, and `journeys doctor` names the missing salt. It never retries a report more than once and never delays a response to report.
 
-**Where the data goes and for how long.** To Scope's ingest over HTTPS, batched after the response, signed; stored in your tenant for 90 days by default, with the raw batches kept append-only as the audit trail; exportable to your own OpenTelemetry collector as log records and traces; deletable with your tenant.
+**Where the data goes and for how long.** To Scope's ingest over HTTPS after the response went out, one call per request, authenticated by your install key or, on Vercel, your project's OIDC identity; stored in your tenant for 90 days by default, with the raw batches kept append-only as the audit trail; exportable to your own OpenTelemetry collector as log records and traces; deletable with your tenant.
 
 **The salt.** Every hash is `sha256(salt + ":" + value)` cut to twelve hexadecimal characters, with a salt you generate at install and Scope never receives. A hash is a join key inside your salt epoch and nothing else: Scope cannot reverse it, and you can re-hash a value you know to find it in your own records.
 
@@ -47,14 +47,14 @@ Present: every record.
 |---|---|---|
 | `http.request.method` | string |  |
 | `server.address` | string | the host the agent spoke to (the sensor's), which is also a signature's authority |
-| `url.path` | string | redacted by shape: a value of the product's signed shape is replaced by its hash |
-| `url.query` | string \| null | the query string without the leading question mark, redacted by shape; references kept; null when the url has none |
+| `url.path` | string | redacted like url.query (a secret-named pair's value, and a segment holding an encoded pair from its start, become h:<hash>), then by shape: a value of the product's signed shape is replaced by its hash |
+| `url.query` | string \| null | the query string without the leading question mark; the value of a secret-named parameter (api_key, key, token, access_token, refresh_token, id_token, code, client_secret, password, secret, signature, sig, session_id, in any case or spelling, also percent-encoded, or a name whose last word is key, token, secret, password, signature or sig, also inside a URL another parameter carries) becomes h:<hash>, unless it is a valid reference code where the policy says a reference travels (headers.reference, a door's fields.reference); a value that carries an encoded parameter of its own, or is still encoded after four decodings, becomes h:<hash> from the start of the path segment that holds it; a string holding more than 64 such values is recorded as one hash; then redacted by shape; null when the url has none |
 | `http.response.status_code` | integer \| null |  |
 | `scope.route` | docs \| docs_root \| download \| api \| mcp \| oauth.register \| oauth.authorize \| oauth.token \| oauth.approve \| device.start \| device.poll \| device.approve \| signup \| hooks.create \| hooks.catch \| credentials \| trial \| finder \| cli.init \| cli.beacon \| passthrough \| other | the surface role of the path, from the policy's surface map |
 | `http.request.header.content-type` | string \| null |  |
 | `http.response.header.content-type` | string \| null |  |
 | `scope.request.bytes` | integer \| null | the request body's size in bytes, when the body was read |
-| `scope.response.bytes` | integer \| null | the response body's size in bytes, when the body was read |
+| `scope.response.bytes` | integer \| null | the response body's size, when the body was read or, for an event stream, counted as it passed (in bytes) |
 | `scope.cache` | string \| null | cf-cache-status or x-vercel-cache as seen on the origin's answer |
 | `scope.timing` | object |  |
 | `scope.timing.origin_ms` | integer \| null | the origin's answer time as seen from the sensor |
@@ -115,13 +115,13 @@ Present: when the request carries the header, query parameter or body field.
 | `scope.key.device_code` | hash12 \| null | the hashed device code of a device-flow start or poll, when bodies are recorded |
 | `scope.key.user_code` | hash12 \| null | the hashed user code of a device-flow start or approval, when bodies are recorded |
 | `scope.key.oauth_client` | hash12 \| null | the hashed OAuth client id of a registration, authorization, approval or token call, when bodies are recorded (the authorize query is read in every form) |
-| `mcp.session.id` | string \| null | the MCP session id the request carried; the one the answer assigned is in scope.response.headers |
+| `mcp.session.id` | string \| null | the hash of the MCP session id the request carried; the one the answer assigned is in scope.response.headers, hashed the same way |
 | `scope.key.hook` | string \| null | the id of a catch hook, from the catch path or the creation answer |
 | `scope.key.reference` | reference \| null | the reference the request carried (query, setup header, body field named by the policy); only a value with the reference shape and check character counts, so another value in a reference parameter (a device user code in code= on a sign-in page) is not recorded here (the device door records it as scope.key.user_code) |
-| `scope.key.setup_header` | string \| null | the policy's setup header as sent, redacted by shape |
+| `scope.key.setup_header` | string \| null | the policy's setup header: a valid reference code as sent, any other value (the session id the gate hands out) hashed like mcp.session.id |
 | `scope.key.agent_header` | string \| null |  |
 | `scope.key.client_header` | string \| null |  |
-| `scope.key.intent_header` | string \| null | the policy's intent header as sent; a filled one is also a declaration |
+| `scope.key.intent_header` | string \| null | the policy's intent header, redacted like url.query and by shape; a filled one is also a declaration |
 
 ### MCP and OAuth
 
@@ -148,10 +148,10 @@ Present: only on observed routes, only when the policy records bodies.
 
 | field | type | description |
 |---|---|---|
-| `scope.body.request` | object \| array \| null | the request body on an observed route, parsed as JSON (an object, or an array for a JSON-RPC batch) or a form, redacted by field and by shape, capped at 64 KB; {bytes, type} for a text or HTML body; null in the no-bodies form |
-| `scope.body.response` | object \| array \| null | the same for the origin's answer |
+| `scope.body.request` | object \| array \| null | the request body on an observed route, parsed as JSON or a form (capped at 64 KB), cut to the fields observe.bodies.allow_fields names at any depth, with the values of the policy's secret fields and of the secret names (as in url.query; code only in a request) and the shapes hashed; null when no allowed field remains and in the no-bodies form |
+| `scope.body.response` | object \| array \| null | the same for the origin's answer, also on an error answer (400 or above) from any route the surface map does not pass through; an event stream's content is never recorded, only its size in scope.response.bytes |
 | `scope.body.truncated` | boolean | true when a body exceeded 64 KB and was cut before parsing |
-| `scope.response.headers` | object \| null | the answer headers the stitcher needs: content-type, mcp-session-id, www-authenticate, location (redacted), cache-control, x-vercel-cache, cf-cache-status |
+| `scope.response.headers` | object \| null | the answer headers the stitcher needs: content-type, mcp-session-id (hashed), www-authenticate, location (redacted like url.query), cache-control, x-vercel-cache, cf-cache-status |
 
 ### page and rules
 
@@ -166,7 +166,7 @@ Present: on page reads and wherever a rule matched.
 | `scope.page.injected` | array of string | the labels of the inject rules that changed the page |
 | `scope.page.bytes` | integer |  |
 | `scope.reference_minted` | reference \| null | a reference minted into a non-page answer (an error link, a finder answer); a page's reference, the helpful 404's included, is scope.page.reference_minted |
-| `scope.decision` | array of decision | what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `assertion` (the assertion could not be signed) and `hop` (the hop failed after the request may have left: answered 502, or 504 on a timeout, and not sent again) |
+| `scope.decision` | array of decision | what every rule that matched did, in rule order, and the observer's own steps as rules of kind observe: `policy` (the embedded default ran: errored, reason `built-in default: <why>`), `assertion` (the assertion could not be signed) and `hop` (the hop failed after the request may have left: answered 502, or 504 on a timeout, and not sent again) |
 | `scope.gateway` | object \| null | on the MCP route: how many messages the gate answered and how many it forwarded |
 | `scope.gateway.declared` | integer |  |
 | `scope.gateway.forwarded` | integer |  |
@@ -192,13 +192,13 @@ An intent the sensor collected: from the declaration tool in front of the MCP ro
 | `install` | prefixedId \| null | the install this sensor runs as; null only on a sensor with no install id (a lab deployment) |
 | `request` | string \| null | the request record the declaration rode on, when one did |
 | `source` | gate \| header \| finder \| sdk \| cli |  |
-| `text` | string | the sentence the agent gave, verbatim |
+| `text` | string | the sentence the agent gave, redacted like url.query and by shape (a declaration that is no sentence: its arguments as JSON, redacted like a body) |
 | `task` | string \| null | the task category the agent chose, when the declaration tool asked for one |
 | `found_via` | string \| null | how the agent says it found the product, when asked |
 | `agent` | string \| null | the agent's own name for itself, when it gave one |
 | `scope.client.address_hash` | hash12 |  |
 | `scope.key.credential` | hash12 \| null | the hashed bearer of the call that carried the declaration |
-| `mcp.session.id` | string \| null | the MCP session the declaration was made in |
+| `mcp.session.id` | string \| null | the hash of the MCP session id the declaration was made in |
 | `scope.key.reference` | reference \| null | the page reference the call arrived with |
 | `scope.reference_minted` | reference \| null | the reference minted into the finder's answer |
 
@@ -218,8 +218,8 @@ The configuration the sensor fetches. Immutable integer versions per customer; p
 | `secrets` | object |
 | `headers` | the names of the headers the sensor reads; a name that is not a header name is ignored, and session, setup, agent, client and intent may not name one that carries a credential (a name with auth, cookie, token, secret, password, credential, key, jwt, assertion, oidc, signature, bypass, dpop, proof, hmac, csrf or xsrf in it, the credential header, surfaces.api.credential_header) |
 | `forward` | object |
-| `record_bodies` | false is the lightest form: bodies are read where a rule needs them and never leave; true records the bodies of the routes the surface map observes, every field but secrets.fields and secrets.shapes as sent |
-| `observe` | reserved for the body allow list |
+| `record_bodies` | false is the lightest form: bodies are read where a rule needs them and never leave; true records, on the routes the surface map observes and for an error answer (400 or above) on any route it does not pass through, only the fields observe.bodies.allow_fields names, with secret names and shapes hashed; true with no allowed field records no body |
+| `observe` | the body allowlist; routes, max_bytes and json_rpc are reserved and not read |
 | `rules` | array of object |
 | `assertion` | object |
 | `signers` | the Web Bot Auth signers whose key directories the sensor fetches, each an exact https origin such as https://chatgpt.com (an entry that is not one is ignored and named in the notices); a signature from any other signer is recorded as unlisted_signer and causes no outbound request |

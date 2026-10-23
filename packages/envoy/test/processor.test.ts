@@ -250,6 +250,55 @@ test("with no JOURNEYS_API_URL the processor fetches its policy from and ships i
   }
 });
 
+test("without JOURNEYS_SALT nothing is fetched or recorded: every request continues untouched, the probe answers no-salt", async () => {
+  const dir = join(FIXTURES, "01-html-page");
+  const request = JSON.parse(readFileSync(join(dir, "request.json"), "utf8")) as FixtureRequest;
+  const upstream = JSON.parse(readFileSync(join(dir, "upstream.json"), "utf8")) as FixtureUpstream;
+  const urls: string[] = [];
+  const fetcher = (async (input: RequestInfo | URL) => {
+    urls.push(String(input instanceof Request ? input.url : input));
+    return new Response(null, { status: 202 });
+  }) as typeof fetch;
+  resetPolicyCache();
+  resetDelivery();
+  resetCache();
+  const warnings: string[] = [];
+  const env: Record<string, string> = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: "sjk_test_dddddddddddddddddddddddddddddddd", JOURNEYS_API_URL: API };
+  const server = await serveExtProc({ listen: "127.0.0.1:0", env, fetch: fetcher, log: (_level, line) => warnings.push(line), signals: false, drainMs: 2_000 });
+  const client = new ExternalProcessor(`127.0.0.1:${server.port}`, grpc.credentials.createInsecure());
+  try {
+    const forwarded: Captured[] = [];
+    const page = await drive(client, { request, upstream }, forwarded);
+    assert.equal(page.response.body, upstream.body, "the origin's page as it answered");
+    assert.deepEqual(forwarded[0]?.headers, Object.fromEntries(Object.entries(request.headers).map(([k, v]) => [k.toLowerCase(), v])), "the request reaches the origin with no mutation");
+    const probe = await drive(client, { request: { method: "GET", url: "https://docs.acme.example/.well-known/journeys-probe?journeys_probe=c21va2U", headers: {}, body: null }, upstream }, []);
+    assert.equal(probe.response.status, 204);
+    assert.equal(probe.response.headers["x-journeys-probe"], "no-salt");
+    // Observability mode streams every body unasked: each message continues and nothing is read.
+    const call = (client as unknown as { Process(): grpc.ClientDuplexStream<ProcessingRequest, ProcessingResponse> }).Process();
+    const answers: ProcessingResponse[] = [];
+    call.on("data", (r: ProcessingResponse) => answers.push(r));
+    const pseudo = { ":method": "POST", ":scheme": "https", ":authority": "api.acme.example", ":path": "/api/v1/hooks?api_key=sk_live_ABC" };
+    call.write({ request_headers: { headers: { headers: headerValues({ ...pseudo, "content-type": "application/json" }) }, end_of_stream: false } });
+    call.write({ request_body: { body: Buffer.from('{"name":"orders"}'), end_of_stream: true } });
+    call.write({ response_headers: { headers: { headers: headerValues({ ":status": "200", "content-type": "application/json" }) }, end_of_stream: false } });
+    call.write({ response_body: { body: Buffer.from('{"ok":true}'), end_of_stream: true } });
+    for (let i = 0; i < 100 && answers.length < 4; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    call.end();
+    assert.deepEqual(answers.map((a) => [a.request_headers, a.request_body, a.response_headers, a.response_body].findIndex(Boolean)), [0, 1, 2, 3], "one answer per message, in order");
+    for (const a of answers) {
+      const common = (a.request_headers ?? a.request_body ?? a.response_headers ?? a.response_body)?.response;
+      assert.deepEqual([common?.status ?? 0, common?.header_mutation, common?.body_mutation, a.mode_override, a.immediate_response], [0, undefined, undefined, undefined, undefined], "continued unchanged");
+    }
+    for (let i = 0; i < 30; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.deepEqual(urls, [], "no settings fetch and no shipment");
+    assert.equal(warnings.filter((l) => /JOURNEYS_SALT is not set/.test(l)).length, 1, warnings.join("\n"));
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
 test("shipping follows no redirect: a redirected batch is dropped and counted", async () => {
   resetDelivery();
   const redirects: Array<RequestRedirect | undefined> = [];

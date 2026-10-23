@@ -55,6 +55,9 @@ export function secureUrl(value: string, name: string, log: (line: string) => vo
   return null;
 }
 
+/** The embedded default, named with the reason it runs instead of a document. */
+const builtIn = (now: number, fallback: string): PolicyState => ({ at: now, policy: { ...compilePolicy(defaultPolicy), fallback }, environment: null, saltEpoch: null, signed: null });
+
 function checked(document: unknown): CompiledPolicy {
   const refusals = policyRefusals(document);
   if (refusals.length) throw new PolicyError(refusals.map((f) => `${f.path} ${f.message}`).join("; "));
@@ -179,12 +182,13 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
     refused.add(`install:${url}`);
     options.log("journeys: JOURNEYS_INSTALL_ID is not set; the policy is signed for an install, so the embedded default runs");
   }
-  // Held state is one install's answers from one url.
-  const key = url !== null && installId !== null ? `${installId} ${url}` : "default";
+  const unfetched = options.url === null ? "no settings address" : !options.credential ? "no install key" : url === null ? "settings address refused" : "no install id";
+  // Held state is one install's answers from one url; each reason the embedded default runs is held on its own, so one configuration's reason never names another's.
+  const key = url !== null && installId !== null ? `${installId} ${url}` : `default:${unfetched}`;
   const current = states.get(key);
   if (current && options.now - current.at < TTL_MS) return current;
   if (url === null || installId === null) {
-    const fresh = current ?? { at: options.now, policy: compilePolicy(defaultPolicy), environment: null, saltEpoch: null, signed: null };
+    const fresh = current ?? builtIn(options.now, unfetched);
     states.set(key, { ...fresh, at: options.now });
     return fresh;
   }
@@ -195,6 +199,8 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
     states.set(key, kept);
     return kept;
   };
+  let what: string;
+  let reason: string;
   try {
     const warm = current ? null : await stored(options, installId, key);
     if (warm) return hold(warm);
@@ -207,9 +213,10 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
       // A 304 is signed over the body held: its environment and epoch apply only once that holds.
       const held = response.status === 304 && etag !== null && current?.signed ? { body: current.signed.body, policy: current.policy } : null;
       if (!held && !response.ok) {
-        options.log(`journeys: policy fetch answered ${response.status}; keeping ${current ? "the last good policy" : "the embedded default"}`);
         // An unread body holds the connection open until the platform gives up on it; a cancel that fails changes nothing here.
         void response.body?.cancel().catch(() => undefined);
+        what = `policy fetch answered ${response.status}`;
+        reason = `answered ${response.status}`;
         break;
       }
       const answer: Answer = { body: held ? held.body : await bodyText(response), signature: response.headers.get("x-journeys-signature"), environment: response.headers.get("x-journeys-environment"), saltEpoch: response.headers.get("x-journeys-salt-epoch"), etag: held ? etag : etagOf(response.headers.get("etag")) };
@@ -238,11 +245,14 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
     }
   } catch (error) {
     // A body that is not JSON throws a SyntaxError, and an answer or pattern the sensor refuses a PolicyError.
-    const what = error instanceof PolicyError || error instanceof SyntaxError ? `policy refused (${error.message})` : `policy fetch failed (${error instanceof Error ? error.message : String(error)})`;
-    options.log(`journeys: ${what}; keeping ${current ? "the last good policy" : "the embedded default"}`);
+    const refusedAnswer = error instanceof PolicyError || error instanceof SyntaxError;
+    what = refusedAnswer ? `policy refused (${error.message})` : `policy fetch failed (${error instanceof Error ? error.message : String(error)})`;
+    reason = refusedAnswer ? "settings refused" : `fetch failed (${error instanceof Error ? error.name : "unknown"})`;
   }
+  // Settings held from an earlier answer outlive a failure; an embedded default is named anew with the new failure's reason.
   const latest = states.get(key);
-  const fallback: PolicyState = latest ? { ...latest, at: options.now } : { at: options.now, policy: compilePolicy(defaultPolicy), environment: null, saltEpoch: null, signed: null };
+  options.log(`journeys: ${what}; keeping ${latest?.signed ? "the last good policy" : "the embedded default"}`);
+  const fallback: PolicyState = latest?.signed ? { ...latest, at: options.now } : builtIn(options.now, reason);
   states.set(key, fallback);
   return fallback;
 }

@@ -105,8 +105,9 @@ On every request it forwards it adds a `Via` header naming itself, removes the h
 | the hop fails after the request left: the connection drops, or the origin stays silent for 30 seconds | the request is not sent again: the client gets a 502, or a 504 when the origin stayed silent; the record carries the status and the error's class. A GET, HEAD, OPTIONS, PUT or DELETE whose kept-alive connection was reset before any answer goes once more on a fresh connection |
 | a `Host` header that is not a host name | the request is not observed: a mount hands it to your routes untouched, the proxy forwards it untouched |
 | a `TRACE` request, which the fetch API cannot carry | a mount hands it to your routes untouched; the proxy answers 501 |
-| no install id or no salt | one log line naming `journeys init --node`; every request passes through under the forward-only default |
-| the policy fetch fails | the last good policy, or the embedded forward-only default |
+| no install id | one log line naming `journeys init --node`; every request passes through under the forward-only default |
+| no salt | one log line naming `journeys init --node`; nothing is recorded or sent, every request goes on untouched, and the probe answers `x-journeys-probe: no-salt` |
+| the policy fetch fails | the last good policy, or the embedded forward-only default, whose records say so (a `policy` decision with the reason) |
 | Scope's ingest is down, or answers 429 | one retry (after `Retry-After`, capped at 60 seconds, on a 429), then the record is dropped and counted; nothing waits in the request path |
 
 ## Remove it

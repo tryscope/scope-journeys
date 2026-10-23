@@ -43,7 +43,7 @@ if (!ready) {
   const why = exited === null ? `did not answer ok on ${url}/llms.txt within 30 s (last: ${last})` : `exited (${exited}) before answering on ${url}`;
   throw new Error(`smoke: the docs app ${why}; the server's last lines:\n${tail()}`);
 }
-const test = spawn("node", ["--test", join(DOCS, "test", "twins.test.mjs")], { cwd: DOCS, stdio: "inherit", env: { ...process.env, DOCS_URL: url } });
+const test = spawn("node", ["--test", join(DOCS, "test", "twins.test.mjs")], { cwd: DOCS, stdio: "inherit", env: { ...process.env, DOCS_URL: url, DOCS_PROBE: "no-salt" } });
 const code = await new Promise((resolve) => test.on("exit", resolve));
 stop();
 if (code !== 0) console.error(`smoke: the twins failed (exit ${code}); the server's last lines:\n${tail()}`);

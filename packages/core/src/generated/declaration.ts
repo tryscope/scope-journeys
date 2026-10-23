@@ -33,7 +33,7 @@ export interface ScopeDeclaration1 {
   request?: string | null;
   source: "gate" | "header" | "finder" | "sdk" | "cli";
   /**
-   * the sentence the agent gave, verbatim
+   * the sentence the agent gave, redacted like url.query and by shape (a declaration that is no sentence: its arguments as JSON, redacted like a body)
    */
   text: string;
   /**
@@ -54,7 +54,7 @@ export interface ScopeDeclaration1 {
    */
   "scope.key.credential"?: Hash12 | null;
   /**
-   * the MCP session the declaration was made in
+   * the hash of the MCP session id the declaration was made in
    */
   "mcp.session.id"?: string | null;
   /**

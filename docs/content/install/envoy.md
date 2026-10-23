@@ -88,8 +88,9 @@ On every request Envoy forwards, the processor asks for the `Via` header naming 
 |---|---|
 | the processor is down, slow (2 seconds per message) or answers something Envoy refuses | `failure_mode_allow: true`: the request reaches the origin untouched |
 | the sensor throws on a message | the processor answers `CONTINUE` for that message and logs the cause; the request proceeds untouched |
-| no install id or no salt | one log line naming `journeys init --envoy`; every request passes through under the forward-only default |
-| the policy fetch fails | the last good policy, or the embedded forward-only default |
+| no install id | one log line naming `journeys init --envoy`; every request passes through under the forward-only default |
+| no salt | one log line naming `journeys init --envoy`; nothing is recorded or sent, every message continues untouched, and once the filter leaves observability mode the probe answers `x-journeys-probe: no-salt` |
+| the policy fetch fails | the last good policy, or the embedded forward-only default, whose records say so (a `policy` decision with the reason) |
 | Scope's ingest is down, or answers 429 | one retry (after `Retry-After`, capped at 60 seconds, on a 429), then the record is dropped and counted; nothing waits |
 
 ## Remove it
