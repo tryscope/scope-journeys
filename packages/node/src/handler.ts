@@ -26,8 +26,8 @@ export interface NodeOptions {
   policyUrl?: string;
   installId?: string;
   environment?: Environment;
-  /** How many proxies in front append to x-forwarded-for (JOURNEYS_TRUST_PROXY): the client's address is the entry they count to, the scheme x-forwarded-proto's, and on a mount the host x-forwarded-host's; unset, the socket's and the Host header's. */
-  trustProxy?: number;
+  /** How many proxies in front append to x-forwarded-for (JOURNEYS_TRUST_PROXY): the client's address is the entry they count to, the scheme x-forwarded-proto's, and on a mount the host x-forwarded-host's; unset, the socket's and the Host header's.; `true` and `false` are deprecated (one proxy, none). */
+  trustProxy?: number | boolean;
   /**
    * `mount` (the default) sits inside the app: the hop returns to the app's own listener with the
    * inner marker and the request's own Host. `proxy` fronts another server: the hop carries the
@@ -49,7 +49,7 @@ export interface Exchange {
   /** The port the request arrived on: a mount's default hop target. */
   localPort: number | null;
   /** Built from its head alone (`Sensor.loops`): the body is left unread for the app. */
-  head: boolean;
+  head?: boolean;
   /** Runs the work once the response has gone out to the client (the shipment); at once when the transport cannot say. */
   afterResponse: (work: () => void) => void;
 }
@@ -83,8 +83,8 @@ export function createSensor(options: NodeOptions = {}): Sensor {
   const log = options.log ?? stderr;
   const track = options.track ?? (() => undefined);
   const form = options.form ?? "mount";
-  // The option is read as the variable is: a caller's `false`, `0` or `true` is not a count and trusts none.
-  const trustSetting = options.trustProxy === undefined ? env.JOURNEYS_TRUST_PROXY : String(options.trustProxy);
+  // The option is read as the variable is; the deprecated `true` is one proxy and `false` none (DEPRECATION.md).
+  const trustSetting = options.trustProxy === undefined ? env.JOURNEYS_TRUST_PROXY : options.trustProxy === true ? "1" : options.trustProxy === false ? "" : String(options.trustProxy);
   const proxies = trustedProxies(trustSetting);
   if (trustSetting && proxies === null) log("warn", `journeys: the trusted proxy count ${JSON.stringify(trustSetting)} (trustProxy or JOURNEYS_TRUST_PROXY) is not a number of proxies; x-forwarded-for is not trusted (1 for a load balancer or a CDN, 2 for a CDN in front of a load balancer)`);
   const observeHost = options.host ?? env.JOURNEYS_HOST ?? null;
@@ -112,7 +112,8 @@ export function createSensor(options: NodeOptions = {}): Sensor {
     return new URL(`http://127.0.0.1:${exchange.localPort}`);
   };
   // A hop from a process on another salt, or a visitor's forgery: a second hop could go back and forth between processes.
-  const loops = (inner: string | null, via: string | null): boolean => form === "mount" && inner !== innerMarker && namesSensor(via, name);
+  // Without a salt nothing is recorded, so such a request goes on untouched, its body read for the hop as any other.
+  const loops = (inner: string | null, via: string | null): boolean => form === "mount" && Boolean(salt) && inner !== innerMarker && namesSensor(via, name);
   const hopHeaders = (request: Request): Record<string, string> => (form === "mount" ? { [INNER_HEADER]: innerMarker, "x-forwarded-proto": new URL(request.url).protocol.slice(0, -1) } : {});
 
   return {
@@ -145,7 +146,7 @@ export function createSensor(options: NodeOptions = {}): Sensor {
       const facts = platformFacts(socket, request.headers.get("x-request-id"), identity);
       // A mount's hop carries the Host as received (the forwarded host is the record's, not the app's view); the proxy's carries the origin's.
       const io = createNodeIo({ salt, host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, now, afterResponse: exchange.afterResponse, track, log });
-      const observed = await observe(request, policy, facts, io, exchange.head);
+      const observed = await observe(request, policy, facts, io, exchange.head === true);
       if (observed.kind === "answer") return observed.response;
       if (loops(request.headers.get(INNER_HEADER), request.headers.get("via"))) {
         if (!warnedLoop) {

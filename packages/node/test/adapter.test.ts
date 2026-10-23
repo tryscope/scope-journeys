@@ -19,7 +19,7 @@ import { DEFAULT_API_URL, resetPolicyCache, trustPolicyKeyForTests } from "scope
 
 import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
 
-import { canonicalAddress, createNodeHandler, createSensor, deliver, droppedSoFar, fastifyJourneys, honoJourneys, hop, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler, type RunningProxy } from "../src/index.js";
+import { canonicalAddress, createNodeHandler, createSensor, forwardedAddress, deliver, droppedSoFar, fastifyJourneys, honoJourneys, hop, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler, type RunningProxy } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const INSTALL = "jin_test0000000000000000000000";
@@ -131,6 +131,7 @@ test("the socket's facts: the peer by default, the x-forwarded-for entry the tru
   assert.deepEqual(untrusted, { address: "10.0.0.9", peer: "10.0.0.9", tls_protocol_version: null, network_protocol_version: "HTTP/1.1" });
   assert.deepEqual(socketFacts(req, 1), { address: "203.0.113.7", peer: "10.0.0.9", tls_protocol_version: null, network_protocol_version: "HTTP/1.1" }, "one proxy: the entry it appended, never the visitor's");
   assert.equal(socketFacts(req, 2).address, "1.2.3.4", "two proxies: the entry the outer one appended");
+  assert.equal(forwardedAddress("1.2.3.4, 203.0.113.7"), "1.2.3.4", "the deprecated export keeps its first-entry answer");
   assert.equal(canonicalAddress("::ffff:203.0.113.7"), "203.0.113.7");
   assert.equal(canonicalAddress("2001:db8::1"), "2001:db8::1");
   assert.equal(canonicalAddress(null), null);
@@ -156,7 +157,11 @@ test("JOURNEYS_TRUST_PROXY and the trustProxy option are a number of proxies: 2 
   assert.equal(logs.length, 1);
   assert.match(logs[0] ?? "", /"true" \(trustProxy or JOURNEYS_TRUST_PROXY\) is not a number of proxies/);
   assert.equal(createSensor({ env, trustProxy: 2, log: () => undefined }).proxies, 2, "the option counts as the variable does");
-  for (const value of [0, false, true]) assert.equal(createSensor({ env, trustProxy: value as unknown as number, log: () => undefined }).proxies, null, `the option ${String(value)} is not a count`);
+  assert.equal(createSensor({ env, trustProxy: true, log: () => undefined }).proxies, 1, "the deprecated true is one proxy");
+  const quiet: string[] = [];
+  assert.equal(createSensor({ env: { ...env, JOURNEYS_TRUST_PROXY: "2" }, trustProxy: false, log: (_level, line) => quiet.push(line) }).proxies, null, "and false is none, whatever the variable says");
+  assert.deepEqual(quiet, [], "with no warning: false is a setting, not a bad count");
+  assert.equal(createSensor({ env, trustProxy: 0, log: () => undefined }).proxies, null, "0 is not a count");
 });
 
 test("behind a trusted proxy the record names the forwarded host and scheme, JOURNEYS_HOST is matched against that host, and the hop keeps the Host as received", async () => {
@@ -1094,5 +1099,32 @@ test("on a mount, a finder POST that names this sensor in Via is not answered fr
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("a mount without a salt, unset or empty, records nothing, so a POST naming this sensor in Via goes to the app with its body whole", async () => {
+  for (const salt of [undefined, ""]) {
+    reset();
+    const w = world();
+    const bodies: string[] = [];
+    const app = express();
+    app.use(journeys({ env: { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: KEY, JOURNEYS_API_URL: API, ...(salt === undefined ? {} : { JOURNEYS_SALT: salt }) }, fetch: w.fetch, log: () => undefined }));
+    app.use(express.text({ type: "*/*" }));
+    app.post("/api/v1/hooks", (req, res) => {
+      bodies.push(typeof req.body === "string" ? req.body : "");
+      res.status(201).end();
+    });
+    const server = createServer(app);
+    const port = await listen(server);
+    const body = JSON.stringify({ hook: "orders" });
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/v1/hooks`, { method: "POST", headers: { ...agent, "content-type": "application/json", via: "1.1 scope-journeys" }, body });
+      assert.equal(response.status, 201);
+      assert.deepEqual(bodies, [body], String(salt));
+      assert.equal(w.shipped.length, 0, "nothing recorded without a salt");
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
   }
 });

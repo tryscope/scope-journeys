@@ -495,6 +495,7 @@ test("a gate batch on a request that names this sensor in Via: the app gets the 
   assert.deepEqual((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "gate").map((d) => d.outcome), ["skipped"], "the gate did not answer");
   assert.equal(record?.["scope.gateway"], null);
   assert.equal(records.find((r) => r.schema === "scope.declaration/1")?.text, "Post to Slack when an order is added", "the agent's declaration is kept");
+  assert.equal(records.find((r) => r.schema === "scope.declaration/1")?.["mcp.session.id"], null, "naming no session: the one the gate would have answered with was never sent");
 });
 
 test("the OIDC form: the project's token is the bearer on the policy fetch and on the shipment", async () => {

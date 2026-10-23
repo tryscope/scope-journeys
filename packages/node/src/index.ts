@@ -14,7 +14,7 @@ import { socketFacts } from "./facts.js";
 export { createNodeHandler, createSensor, toRequest, requestHost, send, afterResponse, INNER_HEADER, type NodeOptions, type NodeHandler, type Sensor, type Exchange } from "./handler.js";
 export { createNodeIo, type NodeIoOptions } from "./io.js";
 export { hop, headersOf, HOP_BY_HOP, type HopOptions } from "./hop.js";
-export { platformFacts, socketFacts, canonicalAddress, type Identity, type SocketFacts } from "./facts.js";
+export { platformFacts, socketFacts, canonicalAddress, forwardedAddress, type Identity, type SocketFacts } from "./facts.js";
 export { memoryCache, resetCache } from "./cache.js";
 export { deliver, droppedSoFar, resetDelivery, type DeliveryOptions } from "./deliver.js";
 export { serveProxy, parseListen, type ProxyOptions, type RunningProxy } from "./proxy.js";

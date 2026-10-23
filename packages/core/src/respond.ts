@@ -112,6 +112,8 @@ function finishUnhopped(state: State, reason: string): Promise<SensorRecord[]> {
   state.decisions.push({ rule: "hop", kind: "observe", mode: "live", outcome: "skipped", reason });
   if (state.gate) {
     decide(state.decisions, state.gate, state.facts.environment, "skipped", "not hopped: the request went on as received, so the gate's answer was not sent");
+    // The session a gate's answer would have carried was never sent: a declaration names the request's own, or none.
+    for (const d of state.declarations) if (d.source === "gate") d["mcp.session.id"] = state.record["mcp.session.id"];
     state.gate = null;
     state.record["scope.gateway"] = null;
   }

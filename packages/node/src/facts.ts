@@ -23,6 +23,12 @@ export interface SocketFacts {
   network_protocol_version: string | null;
 }
 
+/** @deprecated The first x-forwarded-for entry, which the visitor writes; use `forwardedClient` from scope-journeys (DEPRECATION.md). */
+export function forwardedAddress(header: string | string[] | undefined): string | null {
+  const value = Array.isArray(header) ? header[0] : header;
+  return value?.split(",")[0]?.trim() || null;
+}
+
 /** A dual-stack listener reports an IPv4 client as `::ffff:a.b.c.d`; the record keeps the address the client has, so the hash matches the other forms' for the same client. */
 export function canonicalAddress(address: string | null | undefined): string | null {
   if (!address) return null;
