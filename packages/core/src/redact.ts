@@ -3,29 +3,62 @@ import type { CompiledPolicy } from "./policy.js";
 import { isReference } from "./references.js";
 
 // The names hashed under every policy, the built-in default included: a URL parameter or a body
-// field so named, in any case and spelling (apiKey, api-key; in a URL also percent-encoded). A valid
-// reference code stays only where the policy says references travel.
-const SECRET_NAMES = ["api_key", "key", "token", "access_token", "refresh_token", "id_token", "code", "client_secret", "password", "secret", "signature", "sig"];
+// field whose last word is one of WORDS (api-key, X-Amz-Security-Token, securityToken) or that is
+// one of SECRET_FIELDS in any case and spelling (apikey, Code); in a URL also percent-encoded. A
+// valid reference code stays only where the policy says references travel.
+const WORDS = new Set(["key", "token", "secret", "password", "signature", "sig"]);
 const bare = (name: string): string => name.toLowerCase().replace(/[_-]/g, "");
-const SECRET_FIELDS = new Set(SECRET_NAMES.map(bare));
+const SECRET_FIELDS = new Set(["api_key", "access_token", "refresh_token", "id_token", "client_secret", "code"].map(bare));
 // A `code` the client sends is an OAuth or device code; in an answer it is far more often an error code.
 const ANSWER_FIELDS = new Set([...SECRET_FIELDS].filter((name) => name !== "code"));
-// A name=value pair in a URL or free text, read twice without consuming the value a name sits in,
-// so pairs nested at any depth are reached: on the raw text, where a value runs to the next raw &,
-// # or space with its own escapes kept (`password=%26...`); and on the text with its ASCII escapes
-// decoded but whitespace escapes kept, where a name an encoded separator hid is found. A name may
-// start after `=` or an encoded space too (a pair carried as a value: `params=token%3D...`).
-const NAME = /(?<=^|[?&#\s=]|%20|%0[9a-d])((?:[^?&#\s=%]|%(?!20|0[9a-d]))+)=/gi;
-const VALUE = /[^&#\s]*/y;
-const NON_SPACE_ESCAPE = /%(?!20|0[9a-d])[0-7][0-9a-f]/gi;
-// A pair's name as the origin reads it: its ASCII escapes decoded (which cannot throw), and the part
-// after the last separator an encoded one hid (`b%26code` names `code`).
-const nameOf = (raw: string): string =>
-  raw
-    .replace(/%[0-7][0-9a-f]/gi, (escape) => String.fromCharCode(parseInt(escape.slice(1), 16)))
-    .toLowerCase()
-    .split(/[?&#\s]/)
-    .pop() ?? "";
+// Every secret name holds one of these once bare, so most names skip the splitting.
+const CANDIDATE = new RegExp([...SECRET_FIELDS, ...WORDS].join("|"));
+const ESCAPES = /%[0-7][0-9a-f]/gi;
+
+/**
+ * The secret name `name` ends in, or null: its last run of letters, digits, `_` and `-` that holds a
+ * letter (`next?code`, `token[0]`, `user[token]`), or the run before its trailing `[...]` keys
+ * (`token[a]`), when that run is one of `names` or its last word one of WORDS.
+ */
+function secretName(name: string, names: ReadonlySet<string>): string | null {
+  if (!CANDIDATE.test(bare(name))) return null;
+  let outer = name;
+  while (outer.endsWith("]") && outer.lastIndexOf("[") > 0) outer = outer.slice(0, outer.lastIndexOf("["));
+  for (const side of [name, outer]) {
+    const run = side.split(/[^A-Za-z0-9_-]+/).filter((r) => /[A-Za-z]/.test(r)).pop() ?? "";
+    const word = run.split(/[_-]|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/).filter((w) => /[A-Za-z]/.test(w)).pop() ?? "";
+    if (names.has(bare(run)) || WORDS.has(word.toLowerCase())) return run;
+  }
+  return null;
+}
+
+/**
+ * Where the secret in `chunk` starts, or null when it holds none; it runs to the chunk's end. The
+ * chunk is read at each raw `=`: a secret's name hides the value after it, and a part that holds an
+ * `=` once decoded (base64 padding at its end aside), or is still encoded after four decodings,
+ * hides itself from its last `/`, `?` or `;` on.
+ */
+function secretFrom(chunk: string, policy: CompiledPolicy): number | null {
+  const parts = chunk.split("=");
+  let at = 0;
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i] ?? "";
+    // Read as the site reads it and as an app that decodes it again would; ASCII escapes cannot throw.
+    let read = part;
+    for (let n = 0; n < 4 && read.search(ESCAPES) !== -1; n += 1) read = read.replace(ESCAPES, (escape) => String.fromCharCode(parseInt(escape.slice(1), 16)));
+    if (read.search(ESCAPES) !== -1 || (read.includes("=") && read.replace(/={1,2}$/, "").includes("="))) {
+      const head = part.slice(0, part.search(ESCAPES));
+      return at + Math.max(head.lastIndexOf("/"), head.lastIndexOf("?"), head.lastIndexOf(";")) + 1;
+    }
+    at += part.length + 1;
+    const name = i < parts.length - 1 ? secretName(read, SECRET_FIELDS) : null;
+    if (name !== null) {
+      const sent = chunk.slice(at).trimStart();
+      if (!kept(name.toLowerCase(), sent, policy)) return chunk.length - sent.length;
+    }
+  }
+  return null;
+}
 
 /** `text` with each match of the global `re` replaced by `mark(match, its hash)`; the hashes are computed together. */
 async function hashMatches(text: string, re: RegExp, io: Io, mark: (match: RegExpExecArray, hash: string) => string): Promise<string> {
@@ -40,25 +73,21 @@ async function hashMatches(text: string, re: RegExp, io: Io, mark: (match: RegEx
 }
 
 /**
- * Redaction of a string: the value of a secret-named URL parameter becomes `h:<hash>`, then a value
- * of the product's signed shape is replaced, wherever it appears, by `<prefix>:h:<hash>` where the
- * prefix is the shape's first capture group (the product's own key prefix) or `v`. Field names leak
- * signed values under unexpected names; shapes do not.
+ * Redaction of a string, a URL or free text, in chunks between `&`, `#` and whitespace (a space by an
+ * `=` aside): each chunk's secret, as `secretFrom` finds it, becomes `h:<hash>`. Then a value of the
+ * product's signed shape is replaced, wherever it appears, by `<prefix>:h:<hash>` where the prefix is
+ * the shape's first capture group (the product's own key prefix) or `v`. Field names leak signed
+ * values under unexpected names; shapes do not.
  */
 export async function redactString(value: string, policy: CompiledPolicy, io: Io): Promise<string> {
   let out = value;
-  const spans = /=|%3d/i.test(value) ? secretSpans(value, policy) : [];
-  // Past 64 secret values the string is one hash, so the secret names cost a bounded number of hashes per string.
-  if (spans.length > 64) out = `h:${await io.hash(value)}`;
-  else if (spans.length) {
-    const hashes = await Promise.all(spans.map(([start, end]) => io.hash(value.slice(start, end))));
-    out = "";
-    let last = 0;
-    spans.forEach(([start, end], i) => {
-      out += `${value.slice(last, start)}h:${hashes[i]}`;
-      last = end;
-    });
-    out += value.slice(last);
+  if (/=|%[0-7][0-9a-f]/i.test(value)) {
+    // The odd chunks are the separators.
+    const found = value.split(/([&#]|(?<![=\s])\s+(?![=\s]))/).map((chunk, i) => ({ chunk, from: i % 2 ? null : secretFrom(chunk, policy) }));
+    const secrets = found.filter(({ from }) => from !== null).length;
+    // Past 64 secret values the string is one hash, so the secret names cost a bounded number of hashes per string.
+    if (secrets > 64) out = `h:${await io.hash(value)}`;
+    else if (secrets) out = (await Promise.all(found.map(async ({ chunk, from }) => (from === null ? chunk : `${chunk.slice(0, from)}h:${await io.hash(chunk.slice(from))}`)))).join("");
   }
   // Most strings hold no secret: they skip the hashing and its await (search leaves the shared lastIndex alone).
   for (const re of policy.shapes) if (out.search(re) !== -1) out = await hashMatches(out, re, io, (m, hash) => `${m[1] ?? "v"}:h:${hash}`);
@@ -69,63 +98,9 @@ export async function redactString(value: string, policy: CompiledPolicy, io: Io
 const kept = (name: string, value: string, policy: CompiledPolicy): boolean => !value || hashedValue(value) !== null || (policy.referenceNames.has(name) && isReference(value));
 
 /**
- * The [start, end) of the secret values `text` holds, mapped through `at` to the raw string. The name
- * is checked before the value is read, and the names inside a value already found are skipped, so
- * the scan stays linear.
- */
-function scanPairs(text: string, at: (position: number) => number, policy: CompiledPolicy): Array<[number, number]> {
-  const spans: Array<[number, number]> = [];
-  let last = 0;
-  for (const m of text.matchAll(NAME)) {
-    const start = m.index + m[0].length;
-    if (start < last) continue;
-    const name = nameOf(m[1] ?? "");
-    if (!SECRET_FIELDS.has(bare(name))) continue;
-    VALUE.lastIndex = start;
-    const value = VALUE.exec(text)?.[0] ?? "";
-    if (kept(name, value, policy)) continue;
-    last = start + value.length;
-    spans.push([at(start), at(last)]);
-  }
-  return spans;
-}
-
-/** The raw [start, end) of every secret value in `text`, from both readings, overlapping or touching spans merged. */
-function secretSpans(text: string, policy: CompiledPolicy): Array<[number, number]> {
-  const spans = scanPairs(text, (position) => position, policy);
-  // The decoded text, and for each of its positions the raw position it came from (one more for the end).
-  let decoded = "";
-  const from: number[] = [];
-  let raw = 0;
-  const copy = (until: number): void => {
-    decoded += text.slice(raw, until);
-    for (; raw < until; raw += 1) from.push(raw);
-  };
-  for (const m of text.matchAll(NON_SPACE_ESCAPE)) {
-    copy(m.index);
-    decoded += String.fromCharCode(parseInt(m[0].slice(1), 16));
-    from.push(m.index);
-    raw = m.index + m[0].length;
-  }
-  if (raw > 0) {
-    copy(text.length);
-    from.push(text.length);
-    spans.push(...scanPairs(decoded, (position) => from[position] ?? text.length, policy));
-  }
-  spans.sort((a, b) => a[0] - b[0]);
-  const merged: Array<[number, number]> = [];
-  for (const span of spans) {
-    const previous = merged[merged.length - 1];
-    if (previous && span[0] <= previous[1]) previous[1] = Math.max(previous[1], span[1]);
-    else merged.push(span);
-  }
-  return merged;
-}
-
-/**
  * Redaction by field name, recursively: a field the policy names as a secret, or one of the names
- * hashed under every policy, becomes `h:<hash>` of its string, or of its whole value as JSON
- * otherwise (one hash per field, however large); a field the policy names as a
+ * hashed under every policy unless it is true or false, becomes `h:<hash>` of its string, or of its
+ * whole value as JSON otherwise (one hash per field, however large); a field the policy names as a
  * uri field has its named parameter, in the query or the fragment, hashed in place; every other
  * string is redacted as above.
  */
@@ -136,8 +111,9 @@ export async function redact(value: unknown, policy: CompiledPolicy, io: Io, fro
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       const param = policy.uriFields.get(k);
-      const reference = typeof v === "string" && policy.referenceNames.has(k.toLowerCase()) && isReference(v);
-      if (v !== null && v !== undefined && v !== "" && (policy.secretFields.has(k) || ((from === "answer" ? ANSWER_FIELDS : SECRET_FIELDS).has(bare(k)) && !reference))) out[k] = `h:${await io.hash(typeof v === "string" ? v : JSON.stringify(v))}`;
+      const name = typeof v === "boolean" ? null : secretName(k, from === "answer" ? ANSWER_FIELDS : SECRET_FIELDS);
+      const reference = typeof v === "string" && name !== null && policy.referenceNames.has(name.toLowerCase()) && isReference(v);
+      if (v !== null && v !== undefined && v !== "" && (policy.secretFields.has(k) || (name !== null && !reference))) out[k] = `h:${await io.hash(typeof v === "string" ? v : JSON.stringify(v))}`;
       else if (param && typeof v === "string") out[k] = await redactString(await hashMatches(v, param, io, (_, hash) => `h:${hash}`), policy, io);
       else out[k] = await redact(v, policy, io, from);
     }

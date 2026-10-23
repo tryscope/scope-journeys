@@ -1,4 +1,4 @@
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardObserved, hopUrl, loadPolicy, observe, originUrl, passHeaders, probeAnswer, secureUrl, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, failedHop, forwardObserved, hopUrl, loadPolicy, observe, originUrl, passHeaders, probeAnswer, secureUrl, type Environment, type Io, type SensorRecord } from "scope-journeys";
 
 import { platformFacts, type RequestWithCf } from "./facts.js";
 import { workerCache } from "./cache.js";
@@ -83,7 +83,12 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
       if (!hopOrigin) throw new Error("journeys: JOURNEYS_ORIGIN is not an http or https URL with no credentials");
       const target = hopUrl(hopOrigin, url);
       const untouched = async (): Promise<Response> => {
-        const upstream = await fetchFn(target, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit);
+        let upstream: Response;
+        try {
+          upstream = await fetchFn(target, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit);
+        } catch (error) {
+          return failedHop(error, log);
+        }
         return new Response(upstream.body, { status: upstream.status, headers: passHeaders(upstream.headers) });
       };
       const salt = b.JOURNEYS_SALT;

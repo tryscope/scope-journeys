@@ -199,6 +199,7 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
     states.set(key, kept);
     return kept;
   };
+  let what: string;
   let reason: string;
   try {
     const warm = current ? null : await stored(options, installId, key);
@@ -212,9 +213,9 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
       // A 304 is signed over the body held: its environment and epoch apply only once that holds.
       const held = response.status === 304 && etag !== null && current?.signed ? { body: current.signed.body, policy: current.policy } : null;
       if (!held && !response.ok) {
-        options.log(`journeys: policy fetch answered ${response.status}; keeping ${current?.signed ? "the last good policy" : "the embedded default"}`);
         // An unread body holds the connection open until the platform gives up on it; a cancel that fails changes nothing here.
         void response.body?.cancel().catch(() => undefined);
+        what = `policy fetch answered ${response.status}`;
         reason = `answered ${response.status}`;
         break;
       }
@@ -245,12 +246,12 @@ export async function loadPolicy(options: LoadOptions): Promise<PolicyState> {
   } catch (error) {
     // A body that is not JSON throws a SyntaxError, and an answer or pattern the sensor refuses a PolicyError.
     const refusedAnswer = error instanceof PolicyError || error instanceof SyntaxError;
-    const what = refusedAnswer ? `policy refused (${error.message})` : `policy fetch failed (${error instanceof Error ? error.message : String(error)})`;
-    options.log(`journeys: ${what}; keeping ${current?.signed ? "the last good policy" : "the embedded default"}`);
+    what = refusedAnswer ? `policy refused (${error.message})` : `policy fetch failed (${error instanceof Error ? error.message : String(error)})`;
     reason = refusedAnswer ? "settings refused" : `fetch failed (${error instanceof Error ? error.name : "unknown"})`;
   }
   // Settings held from an earlier answer outlive a failure; an embedded default is named anew with the new failure's reason.
   const latest = states.get(key);
+  options.log(`journeys: ${what}; keeping ${latest?.signed ? "the last good policy" : "the embedded default"}`);
   const fallback: PolicyState = latest?.signed ? { ...latest, at: options.now } : builtIn(options.now, reason);
   states.set(key, fallback);
   return fallback;

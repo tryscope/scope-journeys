@@ -217,6 +217,20 @@ test("without JOURNEYS_SALT nothing is fetched or recorded: the request reaches 
   expect(urls, "no settings fetch and no shipment").toEqual(["https://origin.invalid/docs/quickstart?code=abc"]);
 });
 
+test("without JOURNEYS_SALT a hop that fails after the request left is never sent again either: 502, one fetch to the origin, nothing left to passThroughOnException", async () => {
+  let hops = 0;
+  const fetcher = (async (input: RequestInfo | URL) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (url.startsWith("https://origin.invalid")) hops += 1;
+    throw new Error("Network connection lost.");
+  }) as typeof fetch;
+  const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_ORIGIN: "https://origin.invalid" } });
+  const checkout = new Request("https://acme.example/api/v1/actions/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ amount: 100 }) });
+  const response = await handler.fetch(checkout, {}, { waitUntil: () => undefined, passThroughOnException: () => undefined });
+  expect(response.status).toBe(502);
+  expect(hops, "the origin is asked once").toBe(1);
+});
+
 test("delivery on a 429: one retry after Retry-After (capped), then the batch is dropped and counted; a 429 then a 200 ships and clears the count", async () => {
   const answers: Array<{ status: number; headers?: Record<string, string> }> = [{ status: 429, headers: { "retry-after": "120" } }, { status: 429 }];
   const fetcher = (async () => {

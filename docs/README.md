@@ -26,7 +26,7 @@ npm run dev              # generates the derived pages, then next dev
 npm run smoke            # build, start on 127.0.0.1:3917, run test/twins.test.mjs against it
 ```
 
-The twin test (`test/twins.test.mjs`) runs against any running copy: `DOCS_URL=https://journeys.tryscope.com node --test test/twins.test.mjs`.
+The twin test (`test/twins.test.mjs`) runs against any running copy: `DOCS_URL=https://journeys.tryscope.com node --test test/twins.test.mjs`, with `DOCS_PROBE=no-salt` for a copy that has no salt.
 
 ## Deploy
 

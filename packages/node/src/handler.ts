@@ -3,7 +3,7 @@ import type { TLSSocket } from "node:tls";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardObserved, forwardedUrl, isHost, loadPolicy, observe, originUrl, passHeaders, probeAnswer, secureUrl, type Environment, type LogLevel } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, failedHop, forwardObserved, forwardedUrl, isHost, loadPolicy, observe, originUrl, passHeaders, probeAnswer, secureUrl, type Environment, type LogLevel } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { droppedSoFar } from "./deliver.js";
@@ -142,7 +142,12 @@ export function createSensor(options: NodeOptions = {}): Sensor {
       for (const [name, value] of Object.entries(hopHeaders(request))) headers.set(name, value);
       if (socket.peer) headers.append("x-forwarded-for", socket.peer);
       const bodyless = request.method === "GET" || request.method === "HEAD";
-      const upstream = await hop(new Request(request.url, { method: request.method, headers, body: bodyless ? null : request.body, redirect: "manual", ...(bodyless ? {} : { duplex: "half" }) } as RequestInit), { target, host: form === "proxy" ? target.host : (request.headers.get("host") ?? new URL(request.url).host), timeoutMs: 30_000 });
+      let upstream: Response;
+      try {
+        upstream = await hop(new Request(request.url, { method: request.method, headers, body: bodyless ? null : request.body, redirect: "manual", ...(bodyless ? {} : { duplex: "half" }) } as RequestInit), { target, host: form === "proxy" ? target.host : (request.headers.get("host") ?? new URL(request.url).host), timeoutMs: 30_000 });
+      } catch (error) {
+        return failedHop(error, log);
+      }
       return new Response(upstream.body, { status: upstream.status, headers: passHeaders(upstream.headers) });
     },
   };

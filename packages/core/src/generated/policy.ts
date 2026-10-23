@@ -189,7 +189,7 @@ export type ScopePolicy1 = {
   };
   secrets: {
     /**
-     * body fields hashed by name wherever they appear, beside the names the sensor always hashes in bodies and URLs (api_key, key, token, access_token, refresh_token, id_token, code, client_secret, password, secret, signature, sig, in any case or spelling; such a field's whole value is hashed, except code in an answer's body (usually an error code); a valid reference code stays readable only where headers.reference or a door's fields.reference names the field)
+     * body fields hashed by name wherever they appear, beside the names the sensor always hashes in bodies and URLs (api_key, key, token, access_token, refresh_token, id_token, code, client_secret, password, secret, signature, sig, in any case or spelling, or a name whose last word is key, token, secret, password, signature or sig; such a field's whole value is hashed unless it is true or false, except code in an answer's body (usually an error code); a valid reference code stays readable only where headers.reference or a door's fields.reference names the field)
      */
     fields?: string[];
     /**

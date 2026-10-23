@@ -203,6 +203,33 @@ test("the embedded default carries the reason it runs, so its records can name i
   assert.equal(held.policy.fallback, undefined, "and they are not the default");
 });
 
+test("a load that fails while a concurrent one took a signed policy keeps that policy and says so", async () => {
+  resetPolicyCache();
+  let release: () => void = () => undefined;
+  let started: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const fetching = new Promise<void>((resolve) => (started = resolve));
+  let calls = 0;
+  const fetcher = (async () => {
+    calls += 1;
+    if (calls === 1) {
+      started();
+      await gate;
+      throw new TypeError("fetch failed");
+    }
+    return signedPolicy(POLICY, { install: INSTALL, issuedAt: 1 });
+  }) as typeof fetch;
+  const log: string[] = [];
+  const load = () => loadPolicy({ installId: INSTALL, url: URL_A, credential: "k", fetch: fetcher, now: 0, cache: null, log: (l) => log.push(l) });
+  const failing = load();
+  await fetching;
+  assert.equal((await load()).policy.version, 3);
+  release();
+  const kept = await failing;
+  assert.deepEqual([kept.policy.version, kept.policy.fallback], [3, undefined]);
+  assert.deepEqual(log, ["journeys: policy fetch failed (fetch failed); keeping the last good policy"]);
+});
+
 test("an answer the sensor cannot check keeps the last good policy: unsigned, another install's, a changed body or header, an unknown key, a signature out of form", async () => {
   const v4 = JSON.stringify({ ...POLICY, version: 4 });
   const signed = (install: string, environment = "production", epoch = "1", body = v4, kid?: string) => policySignature(install, environment, epoch, 1, body, kid);
