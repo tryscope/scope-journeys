@@ -66,7 +66,7 @@ export async function bodyKeys(route: Route, surfaces: CompiledSurfaces | null, 
   } else if (route === "oauth.token" || route === "oauth.approve") {
     keys.oauth_client = await keyOf(field(requestBody, fieldNames(oauth, "client_id", ["client_id"])), io);
   } else if (route === "oauth.authorize") {
-    keys.oauth_client = authorizeQueryClientId ? await io.hash(authorizeQueryClientId) : null;
+    keys.oauth_client = await keyOf(authorizeQueryClientId, io);
   } else if (route === "credentials") {
     keys.oauth_client = await keyOf(field(responseBody, fieldNames(credentials, "client_id", ["client_id"])), io);
   } else if (route === "hooks.create") {

@@ -83,11 +83,16 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
       if (!hopOrigin) throw new Error("journeys: JOURNEYS_ORIGIN is not an http or https URL with no credentials");
       const target = hopUrl(hopOrigin, url);
       const untouched = async (): Promise<Response> => {
+        // The deadline is for the origin's answer only, so a stream that started is not cut.
+        const deadline = new AbortController();
+        const timer = setTimeout(() => deadline.abort(new DOMException("the origin did not answer within 30 seconds", "TimeoutError")), 30_000);
         let upstream: Response;
         try {
-          upstream = await fetchFn(target, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit);
+          upstream = await fetchFn(target, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", signal: deadline.signal, ...(request.body ? { duplex: "half" } : {}) } as RequestInit);
         } catch (error) {
           return failedHop(error, log);
+        } finally {
+          clearTimeout(timer);
         }
         return new Response(upstream.body, { status: upstream.status, headers: passHeaders(upstream.headers) });
       };

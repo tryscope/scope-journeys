@@ -6,6 +6,7 @@
 // completes and its record ships), and the listen address parser.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { test } from "node:test";
 
@@ -779,6 +780,40 @@ test("without JOURNEYS_SALT a hop that fails after the request left is never sen
     await new Promise((resolve) => server.close(resolve));
   }
   assert.deepEqual(w.calls, [], "no settings fetch and no shipment");
+});
+
+test("without JOURNEYS_SALT an answer the origin compressed reaches the client still marked so, through the proxy and a mount", async () => {
+  reset();
+  const w = world();
+  const { JOURNEYS_SALT: _salt, ...unsalted } = env;
+  const answer = (req: IncomingMessage, res: import("node:http").ServerResponse): void => {
+    const gzip = /gzip/.test(req.headers["accept-encoding"] ?? "");
+    res.writeHead(200, { "content-type": "text/html", ...(gzip ? { "content-encoding": "gzip" } : {}) });
+    res.end(gzip ? gzipSync(PAGE) : PAGE);
+  };
+  const origin = createServer(answer);
+  const originPort = await listen(origin);
+  const proxy = await serveProxy({ origin: `http://127.0.0.1:${originPort}`, listen: "127.0.0.1:0", env: unsalted, fetch: w.fetch, drainMs: 500, signals: false, log: () => undefined });
+  try {
+    const page = await fetch(`${proxy.url}/docs/quickstart`, { headers: { ...agent, "accept-encoding": "gzip" } });
+    assert.equal(await page.text(), PAGE);
+  } finally {
+    await proxy.close();
+    origin.closeAllConnections();
+    await new Promise((resolve) => origin.close(resolve));
+  }
+  const app = express();
+  app.use(journeys({ env: unsalted, fetch: w.fetch, log: () => undefined }));
+  app.get("/docs/quickstart", (req, res) => answer(req, res));
+  const server = createServer(app);
+  const port = await listen(server);
+  try {
+    const page = await fetch(`http://127.0.0.1:${port}/docs/quickstart`, { headers: { ...agent, "accept-encoding": "gzip" } });
+    assert.equal(await page.text(), PAGE);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test("parseListen: host:port, :port, port, a bracketed IPv6 host; refuses the rest", () => {

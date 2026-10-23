@@ -5,7 +5,8 @@ import { gateResponse } from "./rules/gate.js";
  * Server-sent events through the gate, forwarded as they arrive: every line of every frame is
  * kept (id, retry, event names, comments); only a data payload that carries a tools list or the
  * server information is re-serialised after the gate's change; local answers close the stream.
- * `onDone` receives the bytes the origin sent and the rewritten flag; the record keeps no content.
+ * `onDone` receives the bytes the origin sent and the rewritten flag, once, also when the client
+ * leaves or the origin fails; the record keeps no content.
  */
 export function gateStream(body: ReadableStream<Uint8Array>, rule: CompiledRule, locals: unknown[], live: boolean, onDone: (bytes: number, changed: boolean) => void): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
@@ -38,23 +39,25 @@ export function gateStream(body: ReadableStream<Uint8Array>, rule: CompiledRule,
     return out.join("\n");
   };
   const emit = (controller: TransformStreamDefaultController<Uint8Array>, text: string): void => controller.enqueue(encoder.encode(text));
-  return body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        bytes += chunk.byteLength;
-        pending += decoder.decode(chunk, { stream: true });
-        let boundary: RegExpExecArray | null;
-        while ((boundary = /\r\n\r\n|\n\n|\r\r/.exec(pending))) {
-          emit(controller, rewriteFrame(pending.slice(0, boundary.index)) + boundary[0]);
-          pending = pending.slice(boundary.index + boundary[0].length);
-        }
-      },
-      flush(controller) {
-        if (pending) emit(controller, rewriteFrame(pending));
-        if (live) for (const local of locals) emit(controller, `event: message\ndata: ${JSON.stringify(local)}\n\n`);
-        onDone(bytes, changed);
-      },
-    }),
+  return countBytes(
+    body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          bytes += chunk.byteLength;
+          pending += decoder.decode(chunk, { stream: true });
+          let boundary: RegExpExecArray | null;
+          while ((boundary = /\r\n\r\n|\n\n|\r\r/.exec(pending))) {
+            emit(controller, rewriteFrame(pending.slice(0, boundary.index)) + boundary[0]);
+            pending = pending.slice(boundary.index + boundary[0].length);
+          }
+        },
+        flush(controller) {
+          if (pending) emit(controller, rewriteFrame(pending));
+          if (live) for (const local of locals) emit(controller, `event: message\ndata: ${JSON.stringify(local)}\n\n`);
+        },
+      }),
+    ),
+    () => onDone(bytes, changed),
   );
 }
 

@@ -4,11 +4,11 @@ import { isReference } from "./references.js";
 
 // The names hashed under every policy, the built-in default included: a URL parameter or a body
 // field whose last word is one of WORDS (api-key, X-Amz-Security-Token, securityToken) or that is
-// one of SECRET_FIELDS in any case and spelling (apikey, Code); in a URL also percent-encoded. A
-// valid reference code stays only where the policy says references travel.
+// one of SECRET_FIELDS in any case and spelling (apikey, ToKeN, Code); in a URL also
+// percent-encoded. A valid reference code stays only where the policy says references travel.
 const WORDS = new Set(["key", "token", "secret", "password", "signature", "sig"]);
 const bare = (name: string): string => name.toLowerCase().replace(/[_-]/g, "");
-const SECRET_FIELDS = new Set(["api_key", "access_token", "refresh_token", "id_token", "client_secret", "code"].map(bare));
+const SECRET_FIELDS = new Set([...WORDS, "api_key", "access_token", "refresh_token", "id_token", "client_secret", "code", "session_id"].map(bare));
 // A `code` the client sends is an OAuth or device code; in an answer it is far more often an error code.
 const ANSWER_FIELDS = new Set([...SECRET_FIELDS].filter((name) => name !== "code"));
 // Every secret name holds one of these once bare, so most names skip the splitting.

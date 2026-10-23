@@ -148,7 +148,11 @@ export function createSensor(options: NodeOptions = {}): Sensor {
       } catch (error) {
         return failedHop(error, log);
       }
-      return new Response(upstream.body, { status: upstream.status, headers: passHeaders(upstream.headers) });
+      // This hop asks with the client's accept-encoding and hands the body on as encoded, so the encoding stays named.
+      const answered = passHeaders(upstream.headers);
+      const encoding = upstream.headers.get("content-encoding");
+      if (encoding) answered.set("content-encoding", encoding);
+      return new Response(upstream.body, { status: upstream.status, headers: answered });
     },
   };
 }

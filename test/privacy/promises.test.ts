@@ -36,7 +36,7 @@ test("secret URL values are hashed under any policy, the built-in default includ
   const spelled = await run(defaultPolicy, { method: "GET", url: `https://acme.example/cb?apiKey=AK1&access-token=AT2&api%5Fkey=SEC1&%74oken=SEC2&password=%26SEC3&next=https://a.example/back?code=SEC4&return_to=${nested}&monkey=banana`, headers: {}, body: null }, { status: 204, headers: {} });
   assert.equal(spelled.record["url.query"], `apiKey=h:${await hash("AK1")}&access-token=h:${await hash("AT2")}&api%5Fkey=h:${await hash("SEC1")}&%74oken=h:${await hash("SEC2")}&password=h:${await hash("%26SEC3")}&next=https://a.example/back?code=h:${await hash("SEC4")}&return_to=h:${await hash(nested)}&monkey=banana`, "any case and spelling, an encoded name or value, a URL inside a parameter; a value carrying its own pairs is one hash");
   for (const secret of ["SEC2", "SEC3", "SEC5"]) assert.ok(!spelled.serialised.includes(secret), `${secret} left raw`);
-  for (const query of ["params=token%3DDEEP6%26foo%3Dbar", "x=%74oken%3DDEEP7", "error_description=invalid%20request%20token=DEEP8&state=s", "x=hello%0Atoken%3DDEEP9", "next=https%3A%2F%2Fa%2F%3Fq%3Dx%20token%3DDEEP0", "next=https://a.example/b?r=https://c.example/?token=DEEP1", "next=https://a.example/b?r=https%3A%2F%2Fc%2F%3Ftoken%3DDEEP2", "return_to=https%3A%2F%2Fa%2F%3Fnext%3Dhttps%3A%2F%2Fb%2F%3Ftoken%3DDEEP3", "r=https%3A%2F%2Fa%2F%3Fname%3Dcaf%E9%26token%3DDEEP4", "a=b?c=d?token=DEEP5", "next=https%3A%2F%2Fa.example%2F%3Ftoken%3DDEEP11%26r%3Dhttps%253A%252F%252Fb.example%252F%253Ftoken%253DDEEP12", "r=token%2525253DDEEP13", "error_description=invalid+request+token=DEEP14", "q=a+token%3DDEEP15", "a=1;token=DEEP16", "X-Amz-Security-Token=DEEP17&X-Amz-Signature=DEEP18&oauth_signature=DEEP19&myAPIKey=DEEP20&token[]=DEEP21", "x=1&token%3DDEEP22", "a%3DDEEP23=1", "%2525252574oken=DEEP24", "please use token=DEEP25 now", "password = DEEP26", "my api key=DEEP27", "password=hunter?DEEP28&x=1", "token=abc?DEEP29=x", "b%26code=DEEP30", "r=token%25%33%64DEEP31", "token%25%33%64DEEP32=1", "token[0]=DEEP33&token_1=DEEP34", "token[a]=DEEP35&password%5Bnew%5D=DEEP36&user[api_key]=DEEP37"]) {
+  for (const query of ["params=token%3DDEEP6%26foo%3Dbar", "x=%74oken%3DDEEP7", "error_description=invalid%20request%20token=DEEP8&state=s", "x=hello%0Atoken%3DDEEP9", "next=https%3A%2F%2Fa%2F%3Fq%3Dx%20token%3DDEEP0", "next=https://a.example/b?r=https://c.example/?token=DEEP1", "next=https://a.example/b?r=https%3A%2F%2Fc%2F%3Ftoken%3DDEEP2", "return_to=https%3A%2F%2Fa%2F%3Fnext%3Dhttps%3A%2F%2Fb%2F%3Ftoken%3DDEEP3", "r=https%3A%2F%2Fa%2F%3Fname%3Dcaf%E9%26token%3DDEEP4", "a=b?c=d?token=DEEP5", "next=https%3A%2F%2Fa.example%2F%3Ftoken%3DDEEP11%26r%3Dhttps%253A%252F%252Fb.example%252F%253Ftoken%253DDEEP12", "r=token%2525253DDEEP13", "error_description=invalid+request+token=DEEP14", "q=a+token%3DDEEP15", "a=1;token=DEEP16", "X-Amz-Security-Token=DEEP17&X-Amz-Signature=DEEP18&oauth_signature=DEEP19&myAPIKey=DEEP20&token[]=DEEP21", "x=1&token%3DDEEP22", "a%3DDEEP23=1", "%2525252574oken=DEEP24", "please use token=DEEP25 now", "password = DEEP26", "my api key=DEEP27", "password=hunter?DEEP28&x=1", "token=abc?DEEP29=x", "b%26code=DEEP30", "r=token%25%33%64DEEP31", "token%25%33%64DEEP32=1", "token[0]=DEEP33&token_1=DEEP34", "token[a]=DEEP35&password%5Bnew%5D=DEEP36&user[api_key]=DEEP37", "ToKeN=DEEP38&PassWord=DEEP39&API-KEY=DEEP40", "sessionId=DEEP41&session_id=DEEP42&Session-Id=DEEP43"]) {
     const deep = await run(defaultPolicy, { method: "GET", url: `https://acme.example/cb?${query}`, headers: {}, body: null }, { status: 302, headers: { location: `https://app.example/p=1?${query}` } });
     assert.ok(!/DEEP\d/.test(deep.serialised), `a secret nested in ${query} left raw`);
   }
@@ -52,6 +52,16 @@ test("secret URL values are hashed under any policy, the built-in default includ
 });
 
 const BODIES = { schema: "scope.policy/1", version: 7, surfaces: { signup: { path: "^/signup$", fields: { reference: ["token"] } }, device: { start: "^/device/code$" }, api: { paths: ["^/v1/"] } }, record_bodies: true, observe: { bodies: { allow_fields: ["email", "password", "token", "secret", "uri", "code", "link", "note", "error", "securityToken", "x_amz_signature", "monkey"] } }, secrets: { uri_fields: { uri: "code" } } };
+
+test("an OAuth client id is keyed the same on every route, also when it carries a secret, which never leaves", async () => {
+  const policy = { schema: "scope.policy/1", version: 9, surfaces: { oauth: { authorize: "^/oauth/authorize$", token: "^/oauth/token$" } }, record_bodies: true, observe: { bodies: { allow_fields: ["grant_type"] } } };
+  const client = "https://client.example/m.json?token=CLIENTSECRET";
+  const authorize = await run(policy, { method: "GET", url: `https://api.acme.example/oauth/authorize?client_id=${encodeURIComponent(client)}&response_type=code`, headers: {}, body: null }, { status: 302, headers: { location: "https://client.example/cb?code=C1" } });
+  const token = await run(policy, { method: "POST", url: "https://api.acme.example/oauth/token", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", client_id: client, code: "C1" }).toString() }, { status: 200, headers: { "content-type": "application/json" }, body: "{}" });
+  assert.ok(authorize.record["scope.key.oauth_client"]);
+  assert.equal(token.record["scope.key.oauth_client"], authorize.record["scope.key.oauth_client"]);
+  for (const sent of [authorize, token]) assert.ok(!sent.serialised.includes("CLIENTSECRET"));
+});
 
 test("a string holding more than 64 secret values is recorded as one hash, so the work per string stays bounded", async () => {
   const flood = Array.from({ length: 65 }, (_, i) => `token=T${i}`).join("&");
@@ -127,6 +137,9 @@ test("the gate's declaration carries the hashed session id, and its answer the r
   assert.equal(response.headers["mcp-session-id"], SESSION);
   assert.equal(declarations[0]?.["mcp.session.id"], await hash(SESSION));
   assert.ok(!serialised.includes(SESSION));
+  const minted = await run(policy, { method: "POST", url: "https://api.acme.example/mcp", headers: { "content-type": "application/json" }, body: JSON.stringify(declare) }, { status: 500, headers: {}, body: "never forwarded" });
+  const handed = String(minted.response.headers["mcp-session-id"]);
+  assert.equal(minted.declarations[0]?.["mcp.session.id"], await hash(handed), "a session the gate handed out is the declaration's too, so the setup header carrying it joins");
 });
 
 test("an agent's declaration and intent header are redacted before they are recorded", async () => {

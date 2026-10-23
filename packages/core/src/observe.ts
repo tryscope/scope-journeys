@@ -137,7 +137,9 @@ export async function finish(state: State): Promise<SensorRecord[]> {
   }
   const requestBody = state.requestBody?.parsed ?? null;
   const responseBody = record["scope.body.response"] ?? null;
-  const authorizeClient = state.route.route === "oauth.authorize" ? state.url.searchParams.get("client_id") : null;
+  // Redacted as a body's client_id is, so the client is keyed the same on every route.
+  const authorizeQuery = state.route.route === "oauth.authorize" ? state.url.searchParams.get("client_id") : null;
+  const authorizeClient = authorizeQuery ? await redactString(authorizeQuery, policy, io) : null;
   const keys = await bodyKeys(state.route.route, policy.surfaces, requestBody, responseBody, authorizeClient, state.route.hookId, io);
   record["scope.key.device_code"] = keys.device_code;
   record["scope.key.user_code"] = keys.user_code;
@@ -407,7 +409,7 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
           for (const declared of split.declared) {
             // What the agent declared is redacted like any body before it is recorded: an agent may paste a key into it.
             const text = typeof declared.intent === "string" ? await redactString(declared.intent, policy, io) : JSON.stringify(await redact(declared, policy, io, "request"));
-            state.declarations.push(declaration(state, "gate", text, { task: await said(declared.task), found_via: await said(declared.found_via), agent: await said(declared.agent), "mcp.session.id": record["mcp.session.id"] }));
+            state.declarations.push(declaration(state, "gate", text, { task: await said(declared.task), found_via: await said(declared.found_via), agent: await said(declared.agent), "mcp.session.id": await io.hash(session) }));
           }
           record["scope.gateway"] = { declared: split.declared.length, forwarded: split.forward.length };
           if (split.forward.length === 0) {

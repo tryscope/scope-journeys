@@ -1,7 +1,7 @@
 // The Cloudflare form under the workerd pool: the platform facts from a synthetic request.cf, the
 // policy cache's states, delivery's batching and retry, the inner hop's headers on a request with a
 // body, and a hop that fails after the request left (never sent again).
-import { beforeAll, beforeEach, expect, test } from "vitest";
+import { beforeAll, beforeEach, expect, test, vi } from "vitest";
 
 import { DEFAULT_API_URL, loadPolicy, resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
 
@@ -219,9 +219,11 @@ test("without JOURNEYS_SALT nothing is fetched or recorded: the request reaches 
 
 test("without JOURNEYS_SALT a hop that fails after the request left is never sent again either: 502, one fetch to the origin, nothing left to passThroughOnException", async () => {
   let hops = 0;
-  const fetcher = (async (input: RequestInfo | URL) => {
+  let deadline: AbortSignal | null | undefined;
+  const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url.startsWith("https://origin.invalid")) hops += 1;
+    deadline = init?.signal;
     throw new Error("Network connection lost.");
   }) as typeof fetch;
   const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_ORIGIN: "https://origin.invalid" } });
@@ -229,6 +231,27 @@ test("without JOURNEYS_SALT a hop that fails after the request left is never sen
   const response = await handler.fetch(checkout, {}, { waitUntil: () => undefined, passThroughOnException: () => undefined });
   expect(response.status).toBe(502);
   expect(hops, "the origin is asked once").toBe(1);
+  expect(deadline, "the forward has the hop's 30-second deadline, so a silent origin answers 504").toBeInstanceOf(AbortSignal);
+});
+
+test("without JOURNEYS_SALT the forward's deadline is for the origin's answer only: a silent origin answers 504, a stream that started runs on", async () => {
+  vi.useFakeTimers();
+  try {
+    const env = { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_ORIGIN: "https://origin.invalid" };
+    const ctx = { waitUntil: () => undefined, passThroughOnException: () => undefined };
+    const silent = createHandler({ fetch: ((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)))) as typeof fetch, env });
+    const waiting = silent.fetch(new Request("https://acme.example/docs/quickstart"), {}, ctx);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect((await waiting).status).toBe(504);
+    let deadline: AbortSignal | null | undefined;
+    const streaming = createHandler({ fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => ((deadline = init?.signal), new Response(new ReadableStream({ pull: () => undefined }), { headers: { "content-type": "text/event-stream" } }))) as typeof fetch, env });
+    const stream = await streaming.fetch(new Request("https://acme.example/v1/events"), {}, ctx);
+    expect(stream.status).toBe(200);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(deadline?.aborted, "the started stream is not cut").toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("delivery on a 429: one retry after Retry-After (capped), then the batch is dropped and counted; a 429 then a 200 ships and clears the count", async () => {
