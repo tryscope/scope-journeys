@@ -15,7 +15,7 @@ hosts       api.example.com, docs.example.com
 files       server.mjs, .env.local
 env         JOURNEYS_INSTALL_ID (.env.local); JOURNEYS_SALT (.env.local); JOURNEYS_INSTALL_KEY (.env.local); JOURNEYS_ASSERTION_KEY (.env.local)
 pending     set on the deployment, from .env.local: JOURNEYS_INSTALL_ID, JOURNEYS_SALT, JOURNEYS_INSTALL_KEY, JOURNEYS_ASSERTION_KEY
-              JOURNEYS_TRUST_PROXY=1   # when a load balancer or a CDN sits in front of the app, so the client's address, scheme and host are read from x-forwarded-for, x-forwarded-proto and x-forwarded-host (the host on a mount)
+              JOURNEYS_TRUST_PROXY=1   # the number of proxies in front of the app (1: a load balancer or a CDN; 2: a CDN in front of a load balancer), so the client's address, scheme and host are read from x-forwarded-for, x-forwarded-proto and x-forwarded-host (the host on a mount)
               JOURNEYS_ORIGIN=http://127.0.0.1:<port>   # only when the app does not answer on the port the request arrived on
 claim       https://console.tryscope.com/journeys/claim/...
 next        start the app with the variables (node --env-file=.env.local server.mjs) and deploy; then run `journeys doctor --url https://api.example.com`; open the claim URL to bind the install to your account
@@ -60,7 +60,7 @@ Every mount reads the same variables from the process environment; each also tak
 
 ## The inner hop
 
-A mount sits inside the app, so the sensor forwards every observed request to the app's own listener (`http://127.0.0.1:<the port the request arrived on>`, or `JOURNEYS_ORIGIN`) with the header `x-journeys-inner: 1`, the request's own `Host`, `x-forwarded-for` and `x-forwarded-proto`; the request carrying the marker is handed to your routes untouched and never observed twice. Your app therefore runs each observed request once, as before, one hop later. The hop is one loopback round trip; the equivalent hop of the Next form measured +1 ms on pages and +14 ms on MCP calls at p50.
+A mount sits inside the app, so the sensor forwards every observed request to the app's own listener (`http://127.0.0.1:<the port the request arrived on>`, or `JOURNEYS_ORIGIN`) with the header `x-journeys-inner` (a value derived from `JOURNEYS_SALT`, so a visitor cannot produce it while the salt is set; while a rolling restart changes the salt, a hop between a process on the old salt and one on the new is observed twice), the request's own `Host`, `x-forwarded-for` and `x-forwarded-proto`; the request carrying the marker is handed to your routes untouched and never observed twice. Your app therefore runs each observed request once, as before, one hop later. The hop arrives from `127.0.0.1`, with the address the request came from appended to `x-forwarded-for`, while a request the sensor passes on reaches your app as before: for `req.ip` to name the visitor on both, trust the loopback and your proxies' own addresses rather than a count (`app.set("trust proxy", ["loopback", "10.0.0.0/8"])` on Express, `Fastify({ trustProxy: ["127.0.0.1", "10.0.0.0/8"] })` on Fastify, with your proxies' subnet in place of `10.0.0.0/8`; on Hono read the last `x-forwarded-for` entry that is neither), or localhost-only routes and IP rate limits see every visitor as `127.0.0.1`. The hop is one loopback round trip; the equivalent hop of the Next form measured +1 ms on pages and +14 ms on MCP calls at p50.
 
 ## The standalone proxy
 
@@ -84,7 +84,7 @@ needs `scope-journeys-node` installed beside the CLI (`npm install scope-journey
 | `JOURNEYS_HOST` | no | optional: observe only this host; other hosts pass to the app untouched |
 | `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
 | `JOURNEYS_ORIGIN` | no | where the hop goes, an http or https URL with no credentials in it: the app's own listener by default on a mount; required on the proxy (`--origin`), which refuses any other value at start |
-| `JOURNEYS_TRUST_PROXY` | no | `1` reads the client's address from the first `x-forwarded-for` and the scheme from `x-forwarded-proto`; on a mount also the host from `x-forwarded-host` (the record's `server.address`, the `{host}` the rules fill, what `JOURNEYS_HOST` is matched against; the hop still carries the `Host` as received), while the standalone proxy names the host it serves, the `Host` it receives. Unset, the socket's own address and scheme and the `Host` header, also when the request line names a full URL. Set it only behind a proxy you control, or any client can name its own address and host |
+| `JOURNEYS_TRUST_PROXY` | no | the number of proxies in front that append to `x-forwarded-for`: `1` for a load balancer or a CDN, `2` for a CDN in front of a load balancer. The client's address is the entry the outermost of them appended (never one the visitor wrote before it), the scheme comes from `x-forwarded-proto`; on a mount also the host from `x-forwarded-host` (the record's `server.address`, the `{host}` the rules fill, what `JOURNEYS_HOST` is matched against; the hop still carries the `Host` as received), while the standalone proxy names the host it serves, the `Host` it receives. Unset, the socket's own address and scheme and the `Host` header, also when the request line names a full URL. Set it only behind proxies you control, and count them all: too low a number records your CDN's addresses instead of your visitors'. A value that is not a number trusts none, with one warning |
 | `JOURNEYS_LISTEN` | no | the proxy's listen address (`host:port`, `:port` or `port`; `:8080` by default) |
 
 The variables load from `.env.local` with `node --env-file=.env.local server.mjs`; the deployment sets the four secrets itself (`init` prints their names, never their values, in the JSON output).
@@ -95,14 +95,15 @@ A socket knows the client's address, its family, the TLS version (when Node term
 
 ## What it does to your traffic
 
-On every request it forwards it adds a `Via` header naming itself, removes the hop-by-hop headers and the client's `accept-encoding` and `content-length` as a conforming gateway does, appends the caller's address to `x-forwarded-for`, and on a mount sets `x-journeys-inner: 1` and `x-forwarded-proto`. The hop carries no `accept-encoding` and no user agent of its own: the origin sees the client's agent string, uncompressed. A WebSocket upgrade is not proxied by the standalone proxy; a mount never sees one (the server's `upgrade` event bypasses middleware).
+On every request it forwards it adds a `Via` header naming itself, removes the hop-by-hop headers and the client's `accept-encoding` and `content-length` as a conforming gateway does, appends the caller's address to `x-forwarded-for`, and on a mount sets `x-journeys-inner` (the value derived from `JOURNEYS_SALT`) and `x-forwarded-proto`. The hop carries no `accept-encoding` and no user agent of its own: the origin sees the client's agent string, uncompressed. A WebSocket upgrade is not proxied by the standalone proxy; a mount never sees one (the server's `upgrade` event bypasses middleware).
 
 ## How it fails
 
 | failure | behaviour |
 |---|---|
-| the sensor throws, or the hop cannot connect (the origin refuses it, or its host does not resolve) | a mount hands the request to your routes untouched (`next`); the proxy forwards untouched, or answers 502 when the origin is unreachable; the log line names the cause |
+| the sensor throws, or the hop cannot connect (the origin refuses it, or its host does not resolve) | a hop that cannot connect is recorded as received, with no response; a mount hands the request to your routes untouched (`next`); the proxy forwards untouched, or answers 502 when the origin is unreachable; the log line names the cause |
 | the hop fails after the request left: the connection drops, or the origin stays silent for 30 seconds | the request is not sent again: the client gets a 502, or a 504 when the origin stayed silent; the record carries the status and the error's class. A GET, HEAD, OPTIONS, PUT or DELETE whose kept-alive connection was reset before any answer goes once more on a fresh connection |
+| on a mount, a request names this sensor in `Via` without its marker (a hop from a process on another salt, or a visitor's forgery) | recorded from its headers, with no response and no body (the finder and the gate record themselves skipped), and handed to your routes with its body unread, without a second hop, which could go back and forth between processes; one log line says so |
 | a `Host` header that is not a host name | the request is not observed: a mount hands it to your routes untouched, the proxy forwards it untouched |
 | a `TRACE` request, which the fetch API cannot carry | a mount hands it to your routes untouched; the proxy answers 501 |
 | no install id | one log line naming `journeys init --node`; every request passes through under the forward-only default |

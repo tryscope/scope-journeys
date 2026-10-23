@@ -6,10 +6,10 @@
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { forwardedUrl, isHost } from "scope-journeys";
+import { forwardedClient, forwardedUrl, isHost } from "scope-journeys";
 
 import { afterResponse, createNodeHandler, createSensor, requestHost, toRequest, type Exchange, type NodeOptions } from "./handler.js";
-import { forwardedAddress, socketFacts } from "./facts.js";
+import { socketFacts } from "./facts.js";
 
 export { createNodeHandler, createSensor, toRequest, requestHost, send, afterResponse, INNER_HEADER, type NodeOptions, type NodeHandler, type Sensor, type Exchange } from "./handler.js";
 export { createNodeIo, type NodeIoOptions } from "./io.js";
@@ -55,6 +55,11 @@ async function fastifyPlugin(instance: FastifyLikeInstance, options: NodeOptions
       done();
       return;
     }
+    // Recorded from its head, then handed to the route, with the body Fastify has yet to read.
+    if (handler.loops(request.raw)) {
+      void handler(request.raw, reply.raw, () => done());
+      return;
+    }
     reply.hijack();
     void handler(request.raw, reply.raw);
     done();
@@ -91,18 +96,22 @@ export function honoJourneys(options: NodeOptions = {}): (c: HonoLikeContext, ne
       await next();
       return undefined;
     }
+    // Observed from its head alone, so the route still reads the body (Sensor.loops).
+    const looped = sensor.loops(request.headers.get("x-journeys-inner"), request.headers.get("via"));
     try {
       const exchange: Exchange = {
-        request: incoming ? toRequest(incoming, sensor.trustProxy, sensor.forwardedHost) : url.href === request.url ? request : new Request(url, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit),
-        socket: incoming ? socketFacts(incoming, sensor.trustProxy) : { address: sensor.trustProxy ? forwardedAddress(request.headers.get("x-forwarded-for") ?? undefined) : null, peer: null, tls_protocol_version: null, network_protocol_version: null },
+        request: incoming ? toRequest(incoming, sensor.proxies !== null, sensor.forwardedHost, looped) : looped ? new Request(url, { method: request.method, headers: request.headers }) : url.href === request.url ? request : new Request(url, { method: request.method, headers: request.headers, body: request.body, redirect: "manual", ...(request.body ? { duplex: "half" } : {}) } as RequestInit),
+        socket: incoming ? socketFacts(incoming, sensor.proxies) : { address: sensor.proxies === null ? null : forwardedClient(request.headers.get("x-forwarded-for"), sensor.proxies), peer: null, tls_protocol_version: null, network_protocol_version: null },
         localPort: incoming?.socket?.localPort ?? null,
         afterResponse: outgoing ? afterResponse(outgoing) : (work) => work(),
+        head: looped && request.method !== "GET" && request.method !== "HEAD",
       };
-      return await sensor.sense(exchange);
+      const response = await sensor.sense(exchange);
+      if (response) return response;
     } catch (error) {
       sensor.log("error", `journeys: the sensor failed, passing the request on untouched: ${error instanceof Error ? error.message : String(error)}`);
-      await next();
-      return undefined;
     }
+    await next();
+    return undefined;
   };
 }

@@ -125,6 +125,7 @@ for (const name of ["node-express", "node-express-cjs", "node-hono-ts", "node-fa
       assert.equal(body.package.adapter, "node");
       assert.ok(typeof posts[0]?.headers["idempotency-key"] === "string");
       assert.ok(report.env_pending.some((l) => /JOURNEYS_TRUST_PROXY=1/.test(l)), "the deployment's trust-proxy line is printed");
+      assert.ok(report.warnings.some((w) => /127\.0\.0\.1/.test(w) && /x-forwarded-for/.test(w)), `the app's own trust line is printed: ${JSON.stringify(report.warnings)}`);
       assert.ok(!JSON.stringify(report).includes(KEY) && !JSON.stringify(report).includes("AQIDBAUGBwgJ"), "neither the key nor the salt in the report");
     }
     if (fixture.expected.exit_code === 3) {
