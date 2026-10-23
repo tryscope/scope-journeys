@@ -52,7 +52,7 @@ export async function initNode(options: InitNodeOptions, deps: InitDeps): Promis
   const project = detected.project;
   report.framework = project.framework;
   if (project.frameworks.length > 1) report.warnings.push(`the project depends on ${project.frameworks.join(" and ")}; the ${project.framework} mount was written (the others mount the same way, see the install guide)`);
-  report.warnings.push(`the mount's hop reaches your app from 127.0.0.1 with the visitor's address appended to x-forwarded-for; for your own code to see the visitor's address, trust one hop more than the proxies in front: ${project.framework === "express" ? 'app.set("trust proxy", "loopback") with none in front, app.set("trust proxy", 2) behind one load balancer' : project.framework === "fastify" ? 'Fastify({ trustProxy: "127.0.0.1" }) with none in front, Fastify({ trustProxy: 2 }) behind one load balancer' : "read the last x-forwarded-for entry with none in front, the one before it behind one load balancer"}`);
+  report.warnings.push(`the mount's hop reaches your app from 127.0.0.1 with the visitor's address appended to x-forwarded-for, while a request the sensor passes on arrives as before; for your own code to see the visitor's address on both, trust the loopback and your proxies' own addresses: ${project.framework === "express" ? 'app.set("trust proxy", ["loopback", "<your proxies\' addresses or subnet>"])' : project.framework === "fastify" ? 'Fastify({ trustProxy: ["127.0.0.1", "<your proxies\' addresses or subnet>"] })' : "the last x-forwarded-for entry that is neither 127.0.0.1 nor one of your proxies"}`);
 
   const hosts: string[] = [];
   if (options.hosts?.length) hosts.push(...options.hosts);

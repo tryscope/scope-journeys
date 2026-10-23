@@ -4,7 +4,7 @@ import type { TLSSocket } from "node:tls";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, finishUnsent, forwardObserved, forwardedUrl, isHost, loadPolicy, observe, originUrl, passHeaders, secureUrl, trustedProxies, type Environment, type LogLevel } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, finishLooped, finishUnsent, forwardObserved, forwardedUrl, isHost, loadPolicy, namesSensor, observe, originUrl, passHeaders, secureUrl, trustedProxies, type Environment, type LogLevel } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
 import { droppedSoFar } from "./deliver.js";
@@ -60,8 +60,10 @@ export interface Sensor {
   forwardedHost: boolean;
   /** Whether the request is the sensor's to observe: not the inner pass, and a host, the observed one. */
   observes(inner: string | null, host: string | null): boolean;
-  /** The response to send. Throws when the sensor could not run or its hop never left, and the caller passes the request on untouched. */
-  sense(exchange: Exchange): Promise<Response>;
+  /** Whether a mount's request names this sensor in Via without its marker: recorded from its head, handed on without a hop. */
+  loops(inner: string | null, via: string | null): boolean;
+  /** The response to send; null (the request recorded, no hop) or a throw (the sensor failed, or its hop never left) has the caller pass it on untouched. */
+  sense(exchange: Exchange): Promise<Response | null>;
   /** The hop with nothing of the sensor's on it (the marker aside, so a mount's app sees it once): the fail-open path. */
   untouched(exchange: Exchange): Promise<Response>;
   log: (level: LogLevel, line: string) => void;
@@ -99,6 +101,7 @@ export function createSensor(options: NodeOptions = {}): Sensor {
   const cache = memoryCache(now);
   let warnedNoInstall = false;
   let warnedNoSalt = false;
+  let warnedLoop = false;
 
   const targetFor = (exchange: Exchange): URL => {
     if (hopOrigin) return hopOrigin;
@@ -106,6 +109,8 @@ export function createSensor(options: NodeOptions = {}): Sensor {
     if (form === "proxy" || exchange.localPort === null) throw new Error("journeys: no origin to forward to (set JOURNEYS_ORIGIN)");
     return new URL(`http://127.0.0.1:${exchange.localPort}`);
   };
+  // A hop from a process on another salt, or a visitor's forgery: a second hop could go back and forth between processes.
+  const loops = (inner: string | null, via: string | null): boolean => form === "mount" && inner !== innerMarker && namesSensor(via, name);
   const hopHeaders = (request: Request): Record<string, string> => (form === "mount" ? { [INNER_HEADER]: innerMarker, "x-forwarded-proto": new URL(request.url).protocol.slice(0, -1) } : {});
 
   return {
@@ -114,6 +119,7 @@ export function createSensor(options: NodeOptions = {}): Sensor {
     forwardedHost: proxies !== null && form === "mount",
     log,
     observes: (inner, host) => inner !== innerMarker && host !== null && (!observeHost || host === observeHost),
+    loops,
     async sense(exchange) {
       const { request, socket } = exchange;
       const url = new URL(request.url);
@@ -138,6 +144,14 @@ export function createSensor(options: NodeOptions = {}): Sensor {
       const io = createNodeIo({ salt: salt ?? "", host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, now, afterResponse: exchange.afterResponse, track, log });
       const observed = await observe(request, policy, facts, io);
       if (observed.kind === "answer") return observed.response;
+      if (loops(request.headers.get(INNER_HEADER), request.headers.get("via"))) {
+        if (!warnedLoop) {
+          warnedLoop = true;
+          warn(`journeys: a request names this sensor ("1.1 ${name}") in Via without its marker; recording it and handing it to the app without the hop (the salt differs between processes, two sensors share the name, or a visitor sent it)`);
+        }
+        finishLooped(observed.state).catch((recordError: unknown) => warn(`journeys: the record of a request handed on could not be finished (${recordError instanceof Error ? recordError.message : String(recordError)})`));
+        return null;
+      }
       try {
         return (await forwardObserved(observed.request, observed.state)).response;
       } catch (error) {
@@ -164,6 +178,8 @@ export interface NodeHandler {
   (req: IncomingMessage, res: ServerResponse, next?: () => void): Promise<void>;
   /** Whether this request is the sensor's to observe; a Fastify hook asks before it hijacks the reply. */
   observes(req: IncomingMessage): boolean;
+  /** Whether it is observed from its head alone and handed on (`Sensor.loops`); the Fastify hook lets the route run it. */
+  loops(req: IncomingMessage): boolean;
 }
 
 const first = (value: string | string[] | undefined): string | null => (Array.isArray(value) ? (value[0] ?? null) : (value ?? null));
@@ -177,7 +193,7 @@ export function requestHost(req: IncomingMessage, forwardedHost = false): string
 }
 
 /** A Node request as a Request: the scheme from the socket (or the trusted x-forwarded-proto), the host from the Host header (or, with `forwardedHost`, x-forwarded-host), the headers as received, the body as a stream the core clones where it reads it. */
-export function toRequest(req: IncomingMessage, trustProxy: boolean, forwardedHost = false): Request {
+export function toRequest(req: IncomingMessage, trustProxy: boolean, forwardedHost = false, head = false): Request {
   const socket = req.socket;
   const encrypted = socket && "encrypted" in socket && Boolean((socket as TLSSocket).encrypted);
   const forwardedProto = trustProxy ? first(req.headers["x-forwarded-proto"])?.split(",")[0]?.trim() : null;
@@ -188,7 +204,8 @@ export function toRequest(req: IncomingMessage, trustProxy: boolean, forwardedHo
   const headers = headersOf(req);
   const own = new URL(`${scheme}://${host}${path.startsWith("/") ? path : `/${path}`}`);
   const url = forwardedHost ? forwardedUrl(own, headers) : own;
-  const bodyless = req.method === "GET" || req.method === "HEAD";
+  // `head`: the request without its body, which stays unread for the app.
+  const bodyless = head || req.method === "GET" || req.method === "HEAD";
   return new Request(url, { method: req.method ?? "GET", headers, body: bodyless ? null : (Readable.toWeb(req) as ReadableStream<Uint8Array>), redirect: "manual", ...(bodyless ? {} : { duplex: "half" }) } as RequestInit);
 }
 
@@ -237,6 +254,7 @@ export async function send(res: ServerResponse, response: Response): Promise<voi
 export function createNodeHandler(options: NodeOptions = {}): NodeHandler {
   const sensor = createSensor(options);
   // The fetch API refuses TRACE (CONNECT and TRACK never reach a request handler on node:http): never observed.
+  const loops = (req: IncomingMessage): boolean => sensor.loops(first(req.headers[INNER_HEADER]), first(req.headers.via));
   const observes = (req: IncomingMessage): boolean => req.method !== "TRACE" && sensor.observes(first(req.headers[INNER_HEADER]), requestHost(req, sensor.forwardedHost));
   const handler = async (req: IncomingMessage, res: ServerResponse, next?: () => void): Promise<void> => {
     // Decided before the request is built: building it starts reading the body, which `next` must get whole.
@@ -246,7 +264,7 @@ export function createNodeHandler(options: NodeOptions = {}): NodeHandler {
     if (req.method === "TRACE") return send(res, new Response("Not Implemented", { status: 501, headers: { "content-type": "text/plain" } }));
     let exchange: Exchange;
     try {
-      exchange = { request: toRequest(req, sensor.proxies !== null, sensor.forwardedHost), socket: socketFacts(req, sensor.proxies), localPort: req.socket?.localPort ?? null, afterResponse: afterResponse(res) };
+      exchange = { request: toRequest(req, sensor.proxies !== null, sensor.forwardedHost, observed && loops(req)), socket: socketFacts(req, sensor.proxies), localPort: req.socket?.localPort ?? null, afterResponse: afterResponse(res) };
     } catch (error) {
       sensor.log("error", `journeys: the request could not be read: ${error instanceof Error ? error.message : String(error)}`);
       if (next) return next();
@@ -271,7 +289,7 @@ export function createNodeHandler(options: NodeOptions = {}): NodeHandler {
     }
     await send(res, response);
   };
-  return Object.assign(handler, { observes });
+  return Object.assign(handler, { observes, loops });
 }
 
 export { canonicalAddress };

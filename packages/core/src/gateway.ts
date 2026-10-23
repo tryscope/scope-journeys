@@ -21,6 +21,12 @@ export function outboundHeaders(request: Request, policy: CompiledPolicy, name: 
   return h;
 }
 
+/** Whether a Via header holds this sensor's own entry, the one `outboundHeaders` appends. */
+export function namesSensor(via: string | null, name: string): boolean {
+  const entry = `1.1 ${name}`;
+  return (via ?? "").split(",").some((received) => received.trim() === entry);
+}
+
 export function passHeaders(headers: Headers): Headers {
   const out = new Headers(headers);
   for (const n of REBUILT_DROPS) out.delete(n);

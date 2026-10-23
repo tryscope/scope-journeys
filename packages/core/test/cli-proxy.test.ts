@@ -119,3 +119,25 @@ test("journeys proxy without --origin exits 2 with the usage", { skip: built ? f
   assert.equal(code, 2);
   assert.match(stderr, /journeys proxy --origin/);
 });
+
+test("journeys proxy --trust-proxy with a JOURNEYS_TRUST_PROXY that is not a count trusts none and says so, rather than one in silence", { skip: built ? false : "the core is not built" }, async () => {
+  const origin = createServer((_req, res) => res.end("origin"));
+  const originPort = await listen(origin);
+  const cwd = mkdtempSync(join(tmpdir(), "journeys-proxy-trust-"));
+  writeFileSync(join(cwd, ".env.local"), "JOURNEYS_TRUST_PROXY=2.0\n");
+  const child = spawn(process.execPath, [BIN, "proxy", "--origin", `http://127.0.0.1:${originPort}`, "--listen", "127.0.0.1:0", "--trust-proxy", "--json"], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
+  child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
+  try {
+    for (let i = 0; i < 300 && !/"listening"/.test(stdout); i += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+    const report = JSON.parse(stdout) as { trust_proxy: number | null };
+    assert.equal(report.trust_proxy, null, "the bad value is not quietly read as one proxy");
+    assert.match(stderr, /"2\.0" \(trustProxy or JOURNEYS_TRUST_PROXY\) is not a number of proxies/);
+  } finally {
+    if (child.exitCode === null) child.kill("SIGKILL");
+    origin.closeAllConnections();
+    await new Promise((resolve) => origin.close(resolve));
+  }
+});

@@ -61,7 +61,7 @@ export { onRequestError } from "scope-journeys-next/instrumentation"
 | `JOURNEYS_SALT` | yes | 32 random bytes you generate; every hash is salted with it and Scope never receives it |
 | `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
 | `JOURNEYS_HOST` | no | optional: observe only this host |
-| `JOURNEYS_TRUST_PROXY` | no | off Vercel, when no proxy in front sets `x-real-ip`: the number of proxies in front of `next start` that append to `x-forwarded-for`; `1` by default, `2` for a CDN in front of a load balancer |
+| `JOURNEYS_TRUST_PROXY` | no | off Vercel: the number of proxies in front of `next start` that append to `x-forwarded-for` (`1`, or `2` for a CDN in front of a load balancer). Set, the client's address is the entry they count to and `x-real-ip` is ignored; unset, `x-real-ip`, else the last `x-forwarded-for` entry. Set it when your proxy only appends to `x-forwarded-for`, or a visitor can name their own address in `x-real-ip` |
 | `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
 
 Without a key, the sensor authenticates with your Vercel project's OIDC token (`x-vercel-oidc-token`): turn on "Secure backend access with OIDC federation" in the project's settings and bind the subject at `init`. The audience to set is `JOURNEYS_OIDC_AUDIENCE` as the console shows it.
@@ -70,7 +70,7 @@ Without a key, the sensor authenticates with your Vercel project's OIDC token (`
 
 The sensor forwards every observed request to the app's own address with `x-journeys-inner` (a value derived from `JOURNEYS_SALT`, so a visitor cannot produce it while the salt is set); the inner pass is handed to your logic untouched and never observed twice. The address is the one Next built `request.url` on (your deployment's host on Vercel, `localhost:<port>` under `next start`), or `JOURNEYS_ORIGIN`; the hop's `Host` names it, and the agent's headers travel as received, `x-forwarded-host` and `x-forwarded-proto` among them. The hop asks for an uncompressed answer (`accept-encoding: identity`): the sensor reads and may rewrite the body, and your platform compresses the answer to the agent as before. The lab measured the hop at +1 ms on pages and +14 ms on MCP calls at p50.
 
-The host on every record (`server.address`, the `{host}` the rules fill, the authority a signature is verified against) is the one the agent spoke to: `x-forwarded-host` as Vercel's edge or the proxy in front of `next start` set it (Next fills it from `Host` when nothing did), never the listen address. The client's address is `x-real-ip` when the proxy in front sets it, else the `x-forwarded-for` entry the proxies in front appended (`JOURNEYS_TRUST_PROXY` counts them, one by default), never one the visitor wrote before it. `JOURNEYS_HOST` is matched against the same host.
+The host on every record (`server.address`, the `{host}` the rules fill, the authority a signature is verified against) is the one the agent spoke to: `x-forwarded-host` as Vercel's edge or the proxy in front of `next start` set it (Next fills it from `Host` when nothing did), never the listen address. The client's address is `x-real-ip` when the proxy in front sets it, else the last `x-forwarded-for` entry; with `JOURNEYS_TRUST_PROXY` set, the entry the proxies it counts appended, never one the visitor wrote. `JOURNEYS_HOST` is matched against the same host.
 
 ## How it fails
 

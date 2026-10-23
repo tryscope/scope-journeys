@@ -102,7 +102,7 @@ export async function forwardObserved(request: Request, state: State): Promise<R
  * no response, the `hop` decision saying why; a gate's split is skipped, since the request goes on
  * as received. A passthrough route records nothing, as it would with the hop.
  */
-export function finishUnhopped(state: State, reason: string): Promise<SensorRecord[]> {
+function finishUnhopped(state: State, reason: string): Promise<SensorRecord[]> {
   if (state.passthrough) return Promise.resolve([]);
   state.decisions.push({ rule: "hop", kind: "observe", mode: "live", outcome: "skipped", reason });
   if (state.gate) {
@@ -111,6 +111,11 @@ export function finishUnhopped(state: State, reason: string): Promise<SensorReco
     state.record["scope.gateway"] = null;
   }
   return finish(state);
+}
+
+/** The record of a request whose Via names this sensor without its marker, its own hop come back or a forgery, handed on without a hop that could loop. */
+export function finishLooped(state: State): Promise<SensorRecord[]> {
+  return finishUnhopped(state, "Via names this sensor without its marker: handed on without the hop");
 }
 
 /** The record of a hop that never left, the error `forwardObserved` threw back, named the same way by the Next and Node forms. */

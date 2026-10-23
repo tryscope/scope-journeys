@@ -889,3 +889,57 @@ test("a Host that is not a host name is passed on untouched and never observed: 
     await app.close();
   }
 });
+
+test("on a mount, a request naming this sensor in Via without its marker, a hop from a process on another salt or a visitor's forgery, is recorded from its head and handed to the app once, body whole, without a second hop: Express and Fastify", async () => {
+  const body = JSON.stringify({ hook: "orders" });
+  const send = (port: number): Promise<Response> => fetch(`http://127.0.0.1:${port}/api/v1/hooks`, { method: "POST", headers: { ...agent, "content-type": "application/json", via: "1.1 scope-journeys", "x-journeys-inner": "a-marker-from-another-salt" }, body });
+  const assertLooped = (w: World, seen: Seen[]): void => {
+    assert.equal(seen.length, 1, "the app runs it once, with no second hop");
+    assert.equal(seen[0]?.headers.via, "1.1 scope-journeys", "as received");
+    assert.equal(seen[0]?.body, body, "with its body whole");
+    const record = (w.shipped[0] ?? []).find((r) => r.schema === "scope.request/1");
+    assert.equal(record?.["http.response.status_code"], null);
+    assert.deepEqual((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "hop"), [{ rule: "hop", kind: "observe", mode: "live", outcome: "skipped", reason: "Via names this sensor without its marker: handed on without the hop" }]);
+  };
+
+  reset();
+  const w = world();
+  const seen: Seen[] = [];
+  const app = express();
+  app.use(journeys({ env, fetch: w.fetch, log: () => undefined }));
+  app.use(express.text({ type: "*/*" }));
+  app.post("/api/v1/hooks", (req, res) => {
+    seen.push({ path: req.url, headers: headersOf(req), body: typeof req.body === "string" ? req.body : "" });
+    res.status(201).end();
+  });
+  const server = createServer(app);
+  const port = await listen(server);
+  try {
+    assert.equal((await send(port)).status, 201);
+    await until(() => w.shipped.length === 1, "the request is recorded");
+    assertLooped(w, seen);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+
+  reset();
+  const fw = world();
+  const fseen: Seen[] = [];
+  const fastify = Fastify({ forceCloseConnections: true });
+  await fastify.register(fastifyJourneys, { env, fetch: fw.fetch, log: () => undefined });
+  fastify.addContentTypeParser("application/json", { parseAs: "string" }, (_req, text, done) => done(null, text));
+  fastify.post("/api/v1/hooks", (request, reply) => {
+    fseen.push({ path: request.url, headers: headersOf(request.raw), body: typeof request.body === "string" ? request.body : "" });
+    return reply.status(201).send();
+  });
+  await fastify.listen({ port: 0, host: "127.0.0.1" });
+  const address = fastify.server.address();
+  try {
+    assert.equal((await send(typeof address === "object" && address ? address.port : 0)).status, 201);
+    await until(() => fw.shipped.length === 1, "the request is recorded");
+    assertLooped(fw, fseen);
+  } finally {
+    await fastify.close();
+  }
+});

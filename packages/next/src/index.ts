@@ -1,4 +1,4 @@
-import { DEFAULT_API_URL, PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, finishUnhopped, finishUnsent, forwardObserved, forwardedUrl, hopUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, trustedProxies, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, finishLooped, finishUnsent, forwardObserved, forwardedUrl, hopUrl, loadPolicy, namesSensor, observe, originUrl, passHeaders, secureUrl, trustedProxies, type Environment, type Io, type SensorRecord } from "scope-journeys";
 import type { NextFetchEvent, NextRequest } from "next/server.js";
 import { NextResponse } from "next/server.js";
 
@@ -83,8 +83,9 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
   const fetchFn = options.fetch ?? ((input, init) => fetch(input, init));
   const now = options.now ?? (() => Date.now());
   const passTo = async (request: NextRequest, event: NextFetchEvent): Promise<Response> => (options.next ? options.next(request, event) : NextResponse.next());
-  // A proxy file sees no socket: the address is a forwarded one, behind one proxy unless JOURNEYS_TRUST_PROXY counts more.
+  // A proxy file sees no socket: the address is a forwarded one, counted once JOURNEYS_TRUST_PROXY is set (one for a value that is not a count).
   const trusted = trustedProxies(env.JOURNEYS_TRUST_PROXY);
+  const counted = env.JOURNEYS_TRUST_PROXY ? (trusted ?? 1) : null;
   // The inner hop's marker, derived from the salt: a visitor's own x-journeys-inner is observed like any request.
   const innerMarker = crypto.subtle.digest("SHA-256", encoder.encode(`${env.JOURNEYS_SALT ?? ""}:journeys-inner`)).then(hex);
   return async (request, event) => {
@@ -127,7 +128,7 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
       }
       const issuer = apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}` : null;
       const identity = { install: installId, name, environment: (loaded.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(env.JOURNEYS_ASSERTION_KEY, issuer) };
-      const facts = platformFacts(request.headers, identity, trusted ?? 1);
+      const facts = platformFacts(request.headers, identity, counted);
       // Where the hop goes: `next start` names its own listener (the origin its action handler
       // fetches), and the request URL's origin is the deployment's host on Vercel. Under `next
       // start` that URL carries the forwarded scheme on the listen host, so it is not the listener.
@@ -163,13 +164,12 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
       if (observed.kind === "answer") return observed.response;
       // A Via entry naming this sensor without its marker (RFC 9110 section 7.6.3) is its own hop come
       // back without it, or a visitor's forgery: recorded as received, and handed on without a hop that could loop.
-      const via = `1.1 ${name}`;
-      if ((request.headers.get("via") ?? "").split(",").some((entry) => entry.trim() === via)) {
+      if (namesSensor(request.headers.get("via"), name)) {
         if (!warnedLoop) {
           warnedLoop = true;
           log("warn", `journeys: a request names this sensor ("1.1 ${name}") in Via without its marker; recording it and handing it to the app without the hop (something between the hop and this host drops ${INNER_HEADER}, the salt differs between deployments, two sensors share the name, or a visitor sent it)`);
         }
-        const records = finishUnhopped(observed.state, "Via names this sensor without its marker: handed on without the hop");
+        const records = finishLooped(observed.state);
         ship(async () => {
           await records;
         });

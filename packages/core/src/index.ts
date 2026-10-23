@@ -3,14 +3,14 @@
  * effect goes through the `io` object the adapter supplies.
  */
 export { observe, finish, PROBE_PATH, PROBE_HEADER, type Observation, type State } from "./observe.js";
-export { finishUnhopped, finishUnsent, forwardObserved, observeResponse, type Responded } from "./respond.js";
+export { finishLooped, finishUnsent, forwardObserved, observeResponse, type Responded } from "./respond.js";
 export { verifyWebBotAuth, DIRECTORY_PATH, type SignatureReason, type SignatureResult } from "./webbotauth.js";
 export { agentName, assertionClaims, assertionFromEnv, importAssertionKey, resetAssertionKeys, signAssertion, ASSERTION_HEADER, AGENT_HEADER, ASSERTION_TYP, ASSERTION_TTL_SECONDS, type AgentName, type AssertionClaims } from "./assertion.js";
 export { compilePolicy, defaultPolicy, effectiveMode, fieldNames, fill, PolicyError, type BodyMatch, type CompiledPolicy, type CompiledRule, type CompiledSurfaces, type Face, type FieldNames, type Mode, type Route, type RuleKind } from "./policy.js";
 export { classifyRoute, classifyReader, isTextFace, requestedFace, servedFace, READER_TABLE, AGENT_READERS, type Reader, type RouteInfo, type FetchMetadata } from "./classify.js";
 export { mintReference, isReference, findReference, REFERENCE } from "./references.js";
 export { redact, redactString, hashedValue } from "./redact.js";
-export { outboundHeaders, passHeaders, forwardedClient, forwardedUrl, hopUrl, isHost, neverSent, originUrl, trustedProxies } from "./gateway.js";
+export { outboundHeaders, namesSensor, passHeaders, forwardedClient, forwardedUrl, hopUrl, isHost, neverSent, originUrl, trustedProxies } from "./gateway.js";
 export { readBody, uuidv7, uuidv4, RECORD_SCHEMA, DECLARATION_SCHEMA, POLICY_SCHEMA, BODY_LIMIT, type ReadBody } from "./record.js";
 export { bodyKeys, mcpFacts, oauthFacts, type BodyKeys, type McpFacts, type OauthFacts } from "./keys.js";
 export { DEFAULT_API_URL, loadPolicy, resetPolicyCache, secureUrl, trustPolicyKeyForTests, type LoadOptions, type PolicyState } from "./policy-loader.js";

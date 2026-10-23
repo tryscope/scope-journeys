@@ -514,13 +514,15 @@ test("shipping follows no redirect: a redirected batch is dropped and counted", 
   resetDelivery();
 });
 
-test("the client's address: x-real-ip when the proxy in front set it, else the x-forwarded-for entry the proxies in front count to, never the one the visitor wrote", () => {
+test("the client's address: with JOURNEYS_TRUST_PROXY unset, x-real-ip, else the last x-forwarded-for entry; with it set, the entry the proxies count to, whatever x-real-ip says", () => {
   const identity = { install: INSTALL, name: "n", environment: "production" as const, saltEpoch: 1, dropped: 0, version: "0.0.0-test" };
   // nginx sets only x-real-ip: next start fills x-forwarded-for with the socket, nginx's own address.
-  assert.equal(platformFacts(new Headers({ "x-forwarded-for": "10.0.0.2", "x-real-ip": "203.0.113.7" }), identity, 1).address, "203.0.113.7");
+  assert.equal(platformFacts(new Headers({ "x-forwarded-for": "10.0.0.2", "x-real-ip": "203.0.113.7" }), identity, null).address, "203.0.113.7");
   // No x-real-ip: the visitor wrote 1.2.3.4, the proxy in front appended the address it got the request from.
-  const forwarded = new Headers({ "x-forwarded-for": "1.2.3.4, 203.0.113.7" });
-  assert.equal(platformFacts(forwarded, identity, 1).address, "203.0.113.7");
-  assert.equal(platformFacts(forwarded, identity, 2).address, "1.2.3.4", "a CDN in front of the proxy");
-  assert.equal(platformFacts(new Headers(), identity, 1).address, null);
+  assert.equal(platformFacts(new Headers({ "x-forwarded-for": "1.2.3.4, 203.0.113.7" }), identity, null).address, "203.0.113.7");
+  // A proxy that only appends x-forwarded-for, the count set: a visitor's own x-real-ip names nothing.
+  const forged = new Headers({ "x-forwarded-for": "1.2.3.4, 203.0.113.7", "x-real-ip": "1.2.3.4" });
+  assert.equal(platformFacts(forged, identity, 1).address, "203.0.113.7");
+  assert.equal(platformFacts(forged, identity, 2).address, "1.2.3.4", "a CDN in front of the proxy");
+  assert.equal(platformFacts(new Headers(), identity, null).address, null);
 });

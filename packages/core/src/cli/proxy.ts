@@ -36,10 +36,10 @@ export async function runProxy(argv: readonly string[], json = false): Promise<n
     process.stderr.write(`journeys proxy needs ${NODE_ADAPTER} beside the CLI: npm install ${NODE_ADAPTER}\n`);
     return 2;
   }
-  // --trust-proxy trusts the count JOURNEYS_TRUST_PROXY names, one when it names none; a value that is not a count is left for the adapter to warn about.
-  const counted = trustedProxies(env.JOURNEYS_TRUST_PROXY);
-  const proxies = values["trust-proxy"] === true ? (counted ?? 1) : counted;
-  const running = await adapter.serveProxy({ origin, listen: typeof values.listen === "string" ? values.listen : (env.JOURNEYS_LISTEN ?? ":8080"), trustProxy: proxies ?? undefined, name: typeof values.name === "string" ? values.name : undefined, apiUrl: typeof values["api-url"] === "string" ? values["api-url"] : undefined, env, signals: true });
+  // --trust-proxy is one proxy while JOURNEYS_TRUST_PROXY is unset; a value set there is the adapter's to read, and to warn about when it is not a count.
+  const trustProxy = values["trust-proxy"] === true && !env.JOURNEYS_TRUST_PROXY ? 1 : undefined;
+  const proxies = trustProxy ?? trustedProxies(env.JOURNEYS_TRUST_PROXY);
+  const running = await adapter.serveProxy({ origin, listen: typeof values.listen === "string" ? values.listen : (env.JOURNEYS_LISTEN ?? ":8080"), trustProxy, name: typeof values.name === "string" ? values.name : undefined, apiUrl: typeof values["api-url"] === "string" ? values["api-url"] : undefined, env, signals: true });
   const report = { listening: running.url, origin, install: env.JOURNEYS_INSTALL_ID ?? null, trust_proxy: proxies, salt: Boolean(env.JOURNEYS_SALT) };
   if (json) emit(report, { json: true });
   else process.stdout.write(`journeys proxy: listening on ${running.url}, forwarding to ${origin}${report.install ? ` as ${report.install}` : " with no install (forward-only default; run journeys init --node)"}${proxies === null ? "" : `, trusting ${proxies} ${proxies === 1 ? "proxy" : "proxies"} in x-forwarded-for`}\n`);
