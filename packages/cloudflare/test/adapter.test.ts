@@ -1,11 +1,12 @@
 // The Cloudflare form under the workerd pool: the platform facts from a synthetic request.cf, the
-// policy cache's states, delivery's batching and retry, the inner hop's headers on a request with a
+// policy cache's states, delivery's batching and retries inside its window, the inner hop's headers on a request with a
 // body, and a hop that fails after the request left (never sent again).
 import { beforeAll, beforeEach, expect, test } from "vitest";
 
-import { DEFAULT_API_URL, loadPolicy, resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
+import { DEFAULT_API_URL, droppedSoFar, loadPolicy, resetPolicyCache, trustPolicyKeyForTests, type ShipTiming } from "scope-journeys";
 
 import { policySignature, signedNotModified, signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
+import { stored } from "../../core/test/ingest.js";
 
 import { createHandler, deliver, platformFacts, resetDelivery } from "../src/index.js";
 import type { RequestWithCf } from "../src/facts.js";
@@ -13,7 +14,9 @@ import policyDocument from "../../../fixtures/synthetic/policy.json" with { type
 import fixtureRequest from "../../../fixtures/synthetic/22-intent-header/request.json" with { type: "json" };
 import fixtureUpstream from "../../../fixtures/synthetic/22-intent-header/upstream.json" with { type: "json" };
 
-const identity = { install: "jin_test000000000000000000", name: "test-sensor", environment: "production" as const, saltEpoch: 1, dropped: 0, version: "0.0.0-test" };
+const identity = { install: "jin_test000000000000000000", name: "test-sensor", environment: "production" as const, saltEpoch: 1, version: "0.0.0-test" };
+// The production timing shortened, so a test runs in milliseconds.
+const FAST: ShipTiming = { intervalMs: 0, baseDelayMs: 1, maxDelayMs: 4, giveUpMs: 2_000, budgetBytes: 32 * 1024 * 1024, attemptTimeoutMs: 1_000 };
 
 // A Worker may not make keys while its module loads, so the test key is made and trusted here.
 beforeAll(async () => trustPolicyKeyForTests(TEST_POLICY_KID, (await testPolicyKeys()).publicKey));
@@ -69,21 +72,23 @@ test("the policy cache: a fresh fetch, a 304 on the second request, the last goo
   expect(log.at(-1)).toMatch(/embedded default/);
 });
 
-test("delivery batches 500 per body, retries once on a 5xx and counts a dropped batch", async () => {
-  const statuses = [503, 200, 503, 503];
+test("delivery in the Worker: batches of at most 500, a 503 sent again as the same bytes, a refused batch dropped and counted", async () => {
+  const statuses = [503, 202, 400];
   const bodies: number[] = [];
   const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
     const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
     bodies.push((JSON.parse(text) as unknown[]).length);
-    return new Response(null, { status: statuses.shift() ?? 200 });
+    const status = statuses.shift() ?? 202;
+    return status === 202 ? stored(0) : new Response(null, { status });
   }) as typeof fetch;
   const records = Array.from({ length: 501 }, (_, i) => ({ schema: "scope.declaration/1", id: String(i) }) as never);
   const log: string[] = [];
-  await deliver(records, { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
-  expect(bodies).toEqual([500, 500, 1, 1]);
-  expect(log.filter((l) => /retrying once/.test(l)).length).toBe(2);
-  expect(log.filter((l) => /dropping/.test(l)).length).toBe(1);
+  await deliver(records, { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), timing: FAST });
+  expect(bodies).toEqual([500, 500, 1]);
+  expect(log.filter((l) => /trying again/.test(l)).length).toBe(1);
+  expect(log.filter((l) => /refused with 400; dropping 1 record/.test(l)).length).toBe(1);
+  expect(droppedSoFar()).toBe(1);
 });
 
 test("the hop to the origin carries Via and the policy's headers, no accept-encoding and no content-length, on a request with a body", async () => {
@@ -95,7 +100,7 @@ test("the hop to the origin carries Via and the policy's headers, no accept-enco
       seen = new Request(url, init);
       return new Response(fixtureUpstream.body, { status: fixtureUpstream.status, headers: fixtureUpstream.headers });
     }
-    return new Response(null, { status: 202 });
+    return stored(0);
   }) as typeof fetch;
   const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "https://origin.invalid", JOURNEYS_API_URL: "https://api.invalid", JOURNEYS_NAME: "test-sensor" } });
   const pending: Promise<unknown>[] = [];
@@ -131,7 +136,7 @@ test("a hop that fails after the request left is never sent again: 504 on the ho
       }
       const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
       shipped.push(...(JSON.parse(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text()) as Array<Record<string, unknown>>));
-      return new Response(null, { status: 202 });
+      return stored(0);
     }) as typeof fetch;
     const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "https://origin.invalid", JOURNEYS_API_URL: "https://api.invalid" } });
     const pending: Promise<unknown>[] = [];
@@ -154,7 +159,7 @@ test("an origin that is not an http or https URL is refused before the hop: the 
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url.endsWith("/policy")) return signedPolicy(policyDocument, { install: "jin_test000000000000000000", issuedAt: Math.floor(Date.now() / 1000), etag: '"v3"' });
     if (!url.startsWith("https://api.invalid")) hops += 1;
-    return new Response(null, { status: 202 });
+    return stored(0);
   }) as typeof fetch;
   const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "origin.example.com", JOURNEYS_API_URL: "https://api.invalid" } });
   await expect(handler.fetch(new Request("https://acme.example/docs/quickstart", { headers: { accept: "text/html" } }), {}, { waitUntil: () => undefined, passThroughOnException: () => undefined })).rejects.toThrow(/JOURNEYS_ORIGIN is not an http or https URL/);
@@ -178,7 +183,7 @@ test("the policy never chooses where traffic or records go: the hop goes to JOUR
     urls.push(url);
     if (url.endsWith("/policy")) return signedPolicy({ ...policyDocument, origin: "https://evil.example", report: { url: "https://evil.example/ingest" } }, { install: "jin_test000000000000000000", issuedAt: Math.floor(Date.now() / 1000), etag: '"v3"' });
     if (url.startsWith("https://origin.invalid")) return new Response("<!doctype html><html><body><h1>Quickstart</h1></body></html>", { status: 200, headers: { "content-type": "text/html" } });
-    return new Response(null, { status: 202 });
+    return stored(0);
   }) as typeof fetch;
   const handler = createHandler({ fetch: fetcher, env: { JOURNEYS_INSTALL_ID: "jin_test000000000000000000", JOURNEYS_INSTALL_KEY: "sjk_test_k", JOURNEYS_SALT: "s", JOURNEYS_ORIGIN: "https://origin.invalid" } });
   const pending: Promise<unknown>[] = [];
@@ -196,25 +201,25 @@ test("the policy never chooses where traffic or records go: the hop goes to JOUR
   expect(urls, "no install, no key: the request reaches the origin and nothing reaches Scope").toEqual(["https://origin.invalid/docs/quickstart?email=a%40b.example"]);
 });
 
-test("delivery on a 429: one retry after Retry-After (capped), then the batch is dropped and counted; a 429 then a 200 ships and clears the count", async () => {
-  const answers: Array<{ status: number; headers?: Record<string, string> }> = [{ status: 429, headers: { "retry-after": "120" } }, { status: 429 }];
+test("delivery on a 429: a Retry-After inside the window is waited for; one past it drops the batch at once and counts it", async () => {
+  const answers: Array<{ status: number; headers?: Record<string, string> }> = [{ status: 429, headers: { "retry-after": "1" } }];
   const fetcher = (async () => {
-    const next = answers.shift() ?? { status: 200 };
-    return new Response(null, { status: next.status, headers: next.headers });
+    const next = answers.shift() ?? { status: 202 };
+    return next.status === 202 ? stored(0) : new Response(null, { status: next.status, headers: next.headers });
   }) as typeof fetch;
   const records = Array.from({ length: 3 }, (_, i) => ({ schema: "scope.declaration/1", id: String(i) }) as never);
   const log: string[] = [];
-  const started = Date.now();
-  await deliver(records, { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1, maxRetryAfterMs: 5 });
-  expect(Date.now() - started).toBeLessThan(1000);
-  expect(log).toEqual(["journeys: shipment answered 429, retrying once in 5 ms", "journeys: shipment answered 429, dropping the batch"]);
+  const waited = Date.now();
+  await deliver(records, { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), timing: FAST, windowMs: 5_000 });
+  expect(Date.now() - waited).toBeGreaterThanOrEqual(950);
   expect(answers.length).toBe(0);
-  const { droppedSoFar } = await import("../src/deliver.js");
-  expect(droppedSoFar()).toBe(3);
-  answers.push({ status: 429, headers: { "retry-after": new Date(Date.now() + 1000).toUTCString() } }, { status: 200 });
-  await deliver(records, { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1, maxRetryAfterMs: 5 });
-  expect(log.at(-1)).toBe("journeys: shipment answered 429, retrying once in 5 ms");
   expect(droppedSoFar()).toBe(0);
+  answers.push({ status: 429, headers: { "retry-after": new Date(Date.now() + 3_600_000).toUTCString() } });
+  const started = Date.now();
+  await deliver(records, { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), timing: FAST });
+  expect(Date.now() - started).toBeLessThan(1000);
+  expect(log.at(-1)).toMatch(/^journeys: shipment answered 429, asked to wait 3\d\d\d s, past the time limit; dropping 3 record\(s\)/);
+  expect(droppedSoFar()).toBe(3);
 });
 
 test("the policy answer's environment and salt epoch: taken from the signed headers, an answer without them refused and the last one's kept, none before any answer", async () => {
@@ -247,10 +252,9 @@ test("shipping follows no redirect: a redirected batch is dropped and counted", 
     return new Response(null, { status: 307, headers: { location: "https://other.example/v1/requests" } });
   }) as typeof fetch;
   const log: string[] = [];
-  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
+  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), timing: FAST });
   expect(redirects).toEqual(["manual"]);
-  expect(log).toEqual(["journeys: shipment refused with 307; dropping the batch"]);
-  const { droppedSoFar } = await import("../src/deliver.js");
+  expect(log).toEqual(["journeys: shipment refused with 307; dropping 1 record(s), counted into a later record"]);
   expect(droppedSoFar()).toBe(1);
   resetDelivery();
 });

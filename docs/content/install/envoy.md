@@ -90,7 +90,7 @@ On every request Envoy forwards, the processor asks for the `Via` header naming 
 | the sensor throws on a message | the processor answers `CONTINUE` for that message and logs the cause; the request proceeds untouched |
 | no install id or no salt | one log line naming `journeys init --envoy`; every request passes through under the forward-only default |
 | the policy fetch fails | the last good policy, or the embedded forward-only default |
-| Scope's ingest is down, or answers 429 | one retry (after `Retry-After`, capped at 60 seconds, on a 429), then the record is dropped and counted; nothing waits |
+| Scope's ingest is down, slow, or answers 429 | records wait in a queue of at most 32 MB and are sent again with growing waits, honouring `Retry-After`, for up to 15 minutes; past that, or when the queue is full, the oldest are dropped and counted, and a shipment Scope refuses (a revoked key) is dropped and counted at once; nothing waits in the request path |
 
 ## Remove it
 

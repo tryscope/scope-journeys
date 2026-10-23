@@ -1,6 +1,6 @@
 # scope-journeys
 
-The core of Scope Journeys: pure functions over `Request`, `Response` and a policy document, with no I/O except through one `io` object the adapter supplies, plus the `journeys` CLI. The adapters (`scope-journeys-cloudflare`, `scope-journeys-next`, `scope-journeys-node`, `scope-journeys-envoy`) bind this core to a platform; this package alone observes nothing.
+The core of Scope Journeys: pure functions over `Request`, `Response` and a policy document, with no I/O except through what the adapter supplies (the `io` object, and the fetch the policy loader and the shipping queue are given), plus the `journeys` CLI. The adapters (`scope-journeys-cloudflare`, `scope-journeys-next`, `scope-journeys-node`, `scope-journeys-envoy`) bind this core to a platform; this package alone observes nothing.
 
 ## What it exports
 
@@ -9,6 +9,7 @@ The core of Scope Journeys: pure functions over `Request`, `Response` and a poli
 - `forwardObserved(request, state)`: the hop through `io.forward`, then `observeResponse`. A hop that fails before the request left is thrown back, for the adapter to pass the request on untouched; one that may have reached the origin is answered 502, or 504 on a timeout, recorded as the observer's `hop` step, and never sent again. Returns `{ response, records }`.
 - `originUrl(value)`: the origin a hop may go to, an http or https URL with no credentials in it, or null.
 - `hopUrl(origin, url)`: the URL a hop to that origin goes to, the request's path and query under the origin's own path.
+- `createShipper({ fetch, log })` and `deliver(records, options)`: shipping to Scope's ingest. The queue a process ships from (one shipment at a time, a full batch at once and a smaller one after a one-second pause, 32 MB at most, a failed shipment sent again with backoff for up to 15 minutes, what never lands dropped and counted into a later record), and one request's records shipped on their own inside a window, for the Worker. `droppedSoFar()` is the count not yet reported.
 - `neverSent(error)`: whether a failed hop proves the origin never received the request (refused, a host that does not resolve, or a connect that timed out).
 - `compilePolicy(document)` and `defaultPolicy`: the policy compiled once (regexes, the surface map, the rule table) and the embedded forward-only default (version 0).
 - `classifyRoute`, `classifyReader`: the surface map's classifier and the reader families.
@@ -41,7 +42,7 @@ Output is a table on a terminal and one JSON object when stdout is not a TTY (or
 
 ## What it never does
 
-It performs no `fetch` (the adapter owns the forward and the shipment), it holds no secret, it keeps no raw address and no raw credential, it never throws to the adapter (a bug forwards the request untouched and is recorded in `scope.observer.errors`), and it hides nothing it does from the agent, the person or the customer.
+It performs no `fetch` of its own (the adapter hands it the fetch the policy loader and the shipping queue use, and owns the forward), it holds no secret beyond the install key the shipping queue sends with, it keeps no raw address and no raw credential, it never throws to the adapter (a bug forwards the request untouched and is recorded in `scope.observer.errors`), and it hides nothing it does from the agent, the person or the customer.
 
 ## Licence
 

@@ -97,7 +97,7 @@ On every request it forwards to your origin it adds a `Via` header naming itself
 | the sensor throws | `passThroughOnException`: the request reaches your origin untouched; the record carries the error's class |
 | the origin is down | the error is forwarded as received; the record carries the status |
 | the hop to your origin fails: the connection drops, or no answer within 30 seconds | the request is never sent again: the client gets a 502, or a 504 on the timeout; the record carries the status and the error's class |
-| Scope's ingest is down | the record is dropped after one retry and counted; nothing waits |
+| Scope's ingest is down, slow, or answers 429 | each request's records are sent again with growing waits within 25 of the 30 seconds the Worker keeps after the response; a 429 whose `Retry-After` is later than that, a shipment Scope refuses (a revoked key), and what is still failing at the end are dropped and counted; nothing waits |
 | the policy fetch fails | the last good policy, or the embedded forward-only default |
 | `JOURNEYS_SALT` is not set | the forward-only default policy, one log line, never an exception |
 

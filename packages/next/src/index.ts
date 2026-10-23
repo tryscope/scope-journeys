@@ -1,14 +1,13 @@
-import { DEFAULT_API_URL, PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, forwardObserved, forwardedUrl, hopUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, PROBE_HEADER, PROBE_PATH, VERSION, assertionFromEnv, createShipper, deliver as deliverRecords, forwardObserved, forwardedUrl, hopUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, type DeliveryOptions, type Environment, type Io, type SensorRecord } from "scope-journeys";
 import type { NextFetchEvent, NextRequest } from "next/server.js";
 import { NextResponse } from "next/server.js";
 
 import { memoryCache } from "./cache.js";
-import { deliver, droppedSoFar } from "./deliver.js";
 import { platformFacts } from "./facts.js";
 import { credential as credentialOf } from "./oidc.js";
 
 export { memoryCache, resetCache } from "./cache.js";
-export { deliver, resetDelivery } from "./deliver.js";
+export { resetDelivery } from "scope-journeys";
 export { platformFacts } from "./facts.js";
 export { credential, decodeClaims } from "./oidc.js";
 
@@ -44,6 +43,22 @@ let warnedNoSalt = false;
 let warnedLoop = false;
 
 type Shipper = (work: () => Promise<void>) => void;
+
+/** One request's records shipped on their own. */
+export function deliver(records: readonly SensorRecord[], options: Omit<DeliveryOptions, "key"> & ({ key: string | null } | { /** @deprecated The 0.1 name of `key`, read until 0.3.0 (DEPRECATION.md). */ credential: string | null })): Promise<void> {
+  return deliverRecords(records, { ...options, key: "key" in options ? options.key : options.credential });
+}
+
+/** The function kept running while its records ship, 10 seconds at most: an ingest outage must not hold every invocation open, and billed, for the queue's whole time limit. */
+function bounded(shipping: Promise<void>): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 10_000);
+    void shipping.then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
 
 /** `after()` when the Next version has it (the function keeps running after the response), else the event's waitUntil. */
 async function shipper(event: NextFetchEvent | undefined): Promise<Shipper> {
@@ -81,6 +96,12 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
   const env = options.env ?? (typeof process !== "undefined" ? (process.env as Record<string, string | undefined>) : {});
   const fetchFn = options.fetch ?? ((input, init) => fetch(input, init));
   const now = options.now ?? (() => Date.now());
+  const log = (level: "info" | "warn" | "error", line: string): void => {
+    if (level === "error") console.error(line);
+    else if (level === "warn") console.warn(line);
+    else console.log(line);
+  };
+  const queue = createShipper({ fetch: fetchFn, log: (line) => log("warn", line) });
   const passTo = async (request: NextRequest, event: NextFetchEvent): Promise<Response> => (options.next ? options.next(request, event) : NextResponse.next());
   return async (request, event) => {
     if (request.headers.get(INNER_HEADER)) return passTo(request, event);
@@ -89,11 +110,6 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
     const observeHost = options.host ?? env.JOURNEYS_HOST;
     if (observeHost && url.host !== observeHost) return passTo(request, event);
     const name = options.name ?? env.JOURNEYS_NAME ?? "scope-journeys";
-    const log = (level: "info" | "warn" | "error", line: string): void => {
-      if (level === "error") console.error(line);
-      else if (level === "warn") console.warn(line);
-      else console.log(line);
-    };
     // A Via entry naming this sensor is its own hop come back without the marker (RFC 9110 section
     // 7.6.3): forwarding it again would loop, so it goes to the app as the inner pass does.
     if ((request.headers.get("via") ?? "").split(",").some((entry) => entry.trim() === `1.1 ${name}`)) {
@@ -125,7 +141,7 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
         log("warn", "journeys: JOURNEYS_SALT is not set; running the forward-only default policy (run `npx scope-journeys init`)");
       }
       const issuer = apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}` : null;
-      const identity = { install: installId, name, environment: (loaded.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(env.JOURNEYS_ASSERTION_KEY, issuer) };
+      const identity = { install: installId, name, environment: (loaded.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, version: VERSION, assertion: await assertionFromEnv(env.JOURNEYS_ASSERTION_KEY, issuer) };
       const facts = platformFacts(request.headers, identity);
       // Where the hop goes: `next start` names its own listener (the origin its action handler
       // fetches), and the request URL's origin is the deployment's host on Vercel. Under `next
@@ -152,7 +168,7 @@ export function withJourneys(options: WithJourneysOptions = {}): (request: NextR
           return fetchFn(target, { method: outbound.method, headers, body: outbound.body, redirect: "manual", signal: AbortSignal.timeout(30_000), ...(outbound.body ? { duplex: "half" } : {}) } as RequestInit);
         },
         cache,
-        ship: (records: readonly SensorRecord[]) => ship(() => deliver(records, { apiUrl, credential: cred, fetch: fetchFn, log: (line) => log("warn", line) })),
+        ship: (records: readonly SensorRecord[]) => ship(() => bounded(queue.add(records, apiUrl, cred))),
         log,
       };
       // The request as the core observes it, on the URL the agent spoke to; the original keeps its

@@ -1,12 +1,11 @@
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, forwardObserved, hopUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, type CompiledPolicy, type Environment, type Io, type SensorRecord } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, deliver, forwardObserved, hopUrl, loadPolicy, observe, originUrl, passHeaders, secureUrl, type CompiledPolicy, type Environment, type Io, type SensorRecord } from "scope-journeys";
 
 import { platformFacts, type RequestWithCf } from "./facts.js";
 import { workerCache } from "./cache.js";
 
 export { workerCache, resetCache } from "./cache.js";
 export { platformFacts } from "./facts.js";
-export { deliver, resetDelivery } from "./deliver.js";
-import { deliver, droppedSoFar } from "./deliver.js";
+export { deliver, resetDelivery } from "scope-journeys";
 
 /** The Worker's bindings. The two secrets are `wrangler secret put`; the rest are `[vars]`. */
 export interface Bindings {
@@ -98,7 +97,7 @@ export function createHandler(options: HandlerOptions = {}): { fetch(request: Re
       if (!hopOrigin) throw new Error("journeys: JOURNEYS_ORIGIN is not an http or https URL with no credentials");
       const target = hopUrl(hopOrigin, url);
       const issuer = apiUrl && b.JOURNEYS_INSTALL_ID ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${b.JOURNEYS_INSTALL_ID}` : null;
-      const identity = { install: b.JOURNEYS_INSTALL_ID ?? null, name, environment: (loaded.environment ?? b.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(b.JOURNEYS_ASSERTION_KEY, issuer) };
+      const identity = { install: b.JOURNEYS_INSTALL_ID ?? null, name, environment: (loaded.environment ?? b.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, version: VERSION, assertion: await assertionFromEnv(b.JOURNEYS_ASSERTION_KEY, issuer) };
       const facts = platformFacts(request as RequestWithCf, identity);
       const io: Io = {
         now,

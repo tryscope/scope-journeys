@@ -81,6 +81,6 @@ The host on every record (`server.address`, the `{host}` the rules fill, the aut
 | no install id (and no policy URL) | one log line naming `journeys init`; every request goes to your logic with no inner hop, the probe is still answered |
 | no salt | one log line naming `journeys init`; every request passes through under the forward-only default |
 | the policy fetch fails | the last good policy, or the embedded forward-only default |
-| Scope's ingest is down, or answers 429 | one retry (after `Retry-After`, capped at 60 seconds, on a 429), then the record is dropped and counted; nothing waits |
+| Scope's ingest is down, slow, or answers 429 | records wait in a queue of at most 32 MB and are sent again with growing waits, honouring `Retry-After`, for up to 15 minutes; past that, or when the queue is full, the oldest are dropped and counted, and a shipment Scope refuses (a revoked key) is dropped and counted at once; nothing waits in the request path, and a function stays up at most 10 seconds after its response for its records |
 
 What it records is in `TELEMETRY.md` of `scope-journeys`; the data-handling statement is `SECURITY.md`.

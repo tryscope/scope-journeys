@@ -20,6 +20,7 @@ import { validateRecord } from "../../packages/core/src/validate.js";
 import { VERSION } from "../../packages/core/src/version.js";
 import { createNodeHandler, resetCache, resetDelivery } from "../../packages/node/src/index.js";
 import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../packages/core/test/signed.js";
+import { stored } from "../../packages/core/test/ingest.js";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
 const FIXTURES = join(ROOT, "fixtures", "synthetic");
@@ -89,7 +90,7 @@ function world(name: string, policy: unknown, facts: FixtureFacts, directory: Fi
       const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
       const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
       shipped.push(JSON.parse(text) as unknown[]);
-      return new Response(null, { status: 202 });
+      return stored(0);
     }
     if (directory && url === directory.url) {
       const headers: Record<string, string> = {};

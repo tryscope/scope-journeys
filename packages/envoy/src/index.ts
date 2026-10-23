@@ -8,4 +8,4 @@
 export { createProcessor, serveExtProc, parseHeaders, mutationBetween, ExternalProcessor, BODY_MODE, type Processor, type ProcessorOptions, type ServerOptions, type RunningServer, type ProcessingRequest, type ProcessingResponse, type HttpHeaders, type HttpBody, type HeaderMap, type HeaderValue, type HeaderMutation, type HeaderValueOption, type CommonResponse, type ProcessingMode } from "./server.js";
 export { platformFacts, type Identity } from "./facts.js";
 export { memoryCache, resetCache } from "./cache.js";
-export { deliver, droppedSoFar, resetDelivery, type DeliveryOptions } from "./deliver.js";
+export { deliver, droppedSoFar, resetDelivery, type DeliveryOptions } from "scope-journeys";

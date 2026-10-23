@@ -198,7 +198,6 @@ export function factsOf(fixture: FixtureFacts, identity?: Partial<Facts>): Facts
     observer: { package: "scope-journeys", version: "0.0.0-fixture", adapter: "fixture", name: "fixture-sensor" },
     salt_epoch: fixture.salt_epoch ?? 1,
     environment: fixture.environment ?? "production",
-    dropped: 0,
     ...identity,
   };
 }

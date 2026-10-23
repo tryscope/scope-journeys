@@ -107,7 +107,7 @@ On every request it forwards it adds a `Via` header naming itself, removes the h
 | a `TRACE` request, which the fetch API cannot carry | a mount hands it to your routes untouched; the proxy answers 501 |
 | no install id or no salt | one log line naming `journeys init --node`; every request passes through under the forward-only default |
 | the policy fetch fails | the last good policy, or the embedded forward-only default |
-| Scope's ingest is down, or answers 429 | one retry (after `Retry-After`, capped at 60 seconds, on a 429), then the record is dropped and counted; nothing waits in the request path |
+| Scope's ingest is down, slow, or answers 429 | records wait in a queue of at most 32 MB and are sent again with growing waits, honouring `Retry-After`, for up to 15 minutes; past that, or when the queue is full, the oldest are dropped and counted, and a shipment Scope refuses (a revoked key) is dropped and counted at once; nothing waits in the request path |
 
 ## Remove it
 
