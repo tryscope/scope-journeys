@@ -76,7 +76,7 @@ reads the variables from the environment and from `.env.local` in the working di
 
 ## What the stream gives
 
-The client's address from `x-envoy-external-address` when the listener sets it, else the first `x-forwarded-for`; `x-request-id`, which Envoy sets, as the platform's request id. The AS number, the organisation, the country, the colo, the JA4 digest, the TLS fingerprint and the TLS and HTTP versions are null on this form. Joins lose nothing; the behaviour columns lose the network kind.
+The client's address from `x-envoy-external-address` when the listener sets it, else the `x-forwarded-for` entry the proxies in front of Envoy appended (`JOURNEYS_TRUST_PROXY` counts them, one by default; `2` for a CDN in front of a load balancer), never one the visitor wrote before it; `x-request-id`, which Envoy sets, as the platform's request id. The AS number, the organisation, the country, the colo, the JA4 digest, the TLS fingerprint and the TLS and HTTP versions are null on this form. Joins lose nothing; the behaviour columns lose the network kind.
 
 ## What it does to your traffic
 

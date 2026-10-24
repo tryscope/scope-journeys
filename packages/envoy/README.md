@@ -30,11 +30,12 @@ Every install starts with every rule dry run, so the filter is written with `obs
 | `JOURNEYS_ASSERTION_KEY` | yes | the ES256 key that signs `x-scope-assertion` on the hop |
 | `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
 | `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
+| `JOURNEYS_TRUST_PROXY` | no | the number of proxies in front of Envoy that append to `x-forwarded-for`; `1` by default, `2` for a CDN in front of a load balancer |
 | `JOURNEYS_EXT_PROC_LISTEN` | no | the gRPC listen address; `0.0.0.0:9000` by default |
 
 ## What the stream gives
 
-The client's address from `x-envoy-external-address` when the listener sets it, else the first `x-forwarded-for`; `x-request-id` as the platform's request id. The AS number, the country, the colo, JA4, the TLS fingerprint and the TLS and HTTP versions are null on this form.
+The client's address from `x-envoy-external-address` when the listener sets it, else the `x-forwarded-for` entry the proxies in front of Envoy appended (`JOURNEYS_TRUST_PROXY` counts them, one by default), never one the visitor wrote before it; `x-request-id` as the platform's request id. The AS number, the country, the colo, JA4, the TLS fingerprint and the TLS and HTTP versions are null on this form.
 
 ## How it fails
 

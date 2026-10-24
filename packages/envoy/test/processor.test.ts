@@ -18,7 +18,7 @@ import { applyMask, canonical, maskResponse, maskText } from "../../../scripts/c
 import type { FixtureDirectory, FixtureFacts, FixtureRequest, FixtureUpstream } from "../../core/test/harness.js";
 import { validateRecord } from "../../core/src/validate.js";
 import { VERSION } from "../../core/src/version.js";
-import { BODY_MODE, ExternalProcessor, deliver, droppedSoFar, resetCache, resetDelivery, serveExtProc, type HeaderMutation, type HeaderValue, type ProcessingRequest, type ProcessingResponse } from "../src/index.js";
+import { BODY_MODE, ExternalProcessor, deliver, droppedSoFar, platformFacts, resetCache, resetDelivery, serveExtProc, type HeaderMutation, type HeaderValue, type ProcessingRequest, type ProcessingResponse } from "../src/index.js";
 import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
 import { stored } from "../../core/test/ingest.js";
 
@@ -313,4 +313,48 @@ test("shipping follows no redirect: a redirected batch is dropped and counted", 
   assert.deepEqual(log, ["journeys: shipment refused with 307; dropping 1 record(s), counted into a later record"]);
   assert.equal(droppedSoFar(), 1);
   resetDelivery();
+});
+
+test("the client's address: Envoy's own x-envoy-external-address, else the x-forwarded-for entry the trusted proxies count to, never the one the visitor wrote", () => {
+  const identity = { install: "jin_test0000000000000000000000", name: "n", environment: "production" as const, saltEpoch: 1, dropped: 0, version: "0.0.0-test" };
+  // The visitor wrote 1.2.3.4; the load balancer in front of Envoy appended the address it got the request from.
+  const forwarded = new Headers({ "x-forwarded-for": "1.2.3.4, 203.0.113.7" });
+  assert.equal(platformFacts(forwarded, identity, 1).address, "203.0.113.7");
+  assert.equal(platformFacts(forwarded, identity, 2).address, "1.2.3.4", "a CDN in front of the load balancer");
+  assert.equal(platformFacts(new Headers({ "x-envoy-external-address": "198.51.100.9", "x-forwarded-for": "1.2.3.4, 203.0.113.7" }), identity, 1).address, "198.51.100.9", "Envoy's own trusted address comes first");
+  assert.equal(platformFacts(new Headers(), identity, 1).address, null);
+});
+
+test("JOURNEYS_TRUST_PROXY reaches the processor's address: with 2, the entry before the load balancer's names the client", async () => {
+  const name = "01-html-page";
+  const dir = join(FIXTURES, name);
+  const fixture = JSON.parse(readFileSync(join(dir, "request.json"), "utf8")) as FixtureRequest;
+  const upstream = JSON.parse(readFileSync(join(dir, "upstream.json"), "utf8")) as FixtureUpstream;
+  const facts = JSON.parse(readFileSync(join(dir, "facts.json"), "utf8")) as FixtureFacts;
+  const policy: unknown = JSON.parse(readFileSync(join(FIXTURES, "policy.json"), "utf8"));
+  const hashes: unknown[] = [];
+  const run = async (count: string | undefined, forwardedFor: string): Promise<void> => {
+    resetPolicyCache();
+    resetDelivery();
+    resetCache();
+    const shipped: unknown[][] = [];
+    const env: Record<string, string> = { JOURNEYS_INSTALL_ID: INSTALL, JOURNEYS_INSTALL_KEY: "sjk_test_dddddddddddddddddddddddddddddddd", JOURNEYS_SALT: "fixture-salt", JOURNEYS_API_URL: API, JOURNEYS_POLICY_URL: `https://policy.fixture.example/${name}`, ...(count ? { JOURNEYS_TRUST_PROXY: count } : {}) };
+    const server = await serveExtProc({ listen: "127.0.0.1:0", env, fetch: world(name, policy, facts, undefined, shipped, []), now: () => Date.parse(facts.ts ?? "2026-10-10T12:00:00.000Z"), log: () => undefined, signals: false, drainMs: 2_000 });
+    const client = new ExternalProcessor(`127.0.0.1:${server.port}`, grpc.credentials.createInsecure());
+    try {
+      await drive(client, { request: { ...fixture, headers: { ...fixture.headers, "x-forwarded-for": forwardedFor } }, upstream }, []);
+      for (let i = 0; i < 100 && shipped.length === 0; i += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    } finally {
+      client.close();
+      await server.close();
+    }
+    hashes.push((shipped.flat() as Array<Record<string, unknown>>).find((r) => r.schema === "scope.request/1")?.["scope.client.address_hash"]);
+  };
+  // A CDN appended the visitor's address, then the load balancer appended the CDN's.
+  await run("2", "198.51.100.4, 203.0.113.7");
+  await run(undefined, "198.51.100.4");
+  await run(undefined, "198.51.100.4, 203.0.113.7");
+  assert.equal(hashes.filter((h) => typeof h === "string").length, 3, "three records shipped");
+  assert.equal(hashes[0], hashes[1], "with 2 the client is the visitor, as with one proxy and one entry");
+  assert.notEqual(hashes[2], hashes[0], "with the default 1 the client is the CDN");
 });

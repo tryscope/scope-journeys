@@ -21,6 +21,12 @@ export function outboundHeaders(request: Request, policy: CompiledPolicy, name: 
   return h;
 }
 
+/** Whether a Via header holds this sensor's own entry, the one `outboundHeaders` appends. */
+export function namesSensor(via: string | null, name: string): boolean {
+  const entry = `1.1 ${name}`;
+  return (via ?? "").split(",").some((received) => received.trim() === entry);
+}
+
 export function passHeaders(headers: Headers): Headers {
   const out = new Headers(headers);
   for (const n of REBUILT_DROPS) out.delete(n);
@@ -55,6 +61,18 @@ const HOST_SHAPE = /^(\[[0-9a-f:.]+\]|[a-z0-9._-]+)(:\d{1,5})?$/i;
 /** Whether `value` is a host in that shape that the URL parser also takes (a port past 65535 or a label it refuses is not). */
 export function isHost(value: string): boolean {
   return HOST_SHAPE.test(value) && URL.canParse(`http://${value}`);
+}
+
+/** JOURNEYS_TRUST_PROXY: how many proxies of the customer's sit in front of the sensor, each appending to x-forwarded-for; null when unset or not a whole number from 1 to 99. */
+export function trustedProxies(value: string | undefined): number | null {
+  const count = value?.trim() ?? "";
+  return /^[1-9][0-9]?$/.test(count) ? Number(count) : null;
+}
+
+/** The client's address in x-forwarded-for whose last `proxies` entries the customer's own proxies appended (the visitor writes any before them): that entry, or the first when the list is shorter; null for none. */
+export function forwardedClient(header: string | null, proxies: number): string | null {
+  const entries = (header ?? "").split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  return entries[Math.max(0, entries.length - proxies)] ?? null;
 }
 
 /**

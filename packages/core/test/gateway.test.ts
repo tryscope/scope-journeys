@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { createServer, request } from "node:http";
 import { test } from "node:test";
 
-import { forwardedUrl, hopUrl, isHost, neverSent, originUrl } from "../src/gateway.js";
+import { forwardedClient, forwardedUrl, hopUrl, isHost, neverSent, originUrl, trustedProxies } from "../src/gateway.js";
 
 const listen = new URL("http://localhost:3917/docs/quickstart?ref=ABCDEFGV");
 const at = (headers: Record<string, string>, url: URL = listen): string => forwardedUrl(url, new Headers(headers)).href;
@@ -94,4 +94,19 @@ test("hopUrl: the request's path and query under the origin's own path, on the o
   assert.equal(hopUrl(new URL("https://origin.example/base"), request).href, "https://origin.example/base/docs/quickstart?ref=ABCDEFGV");
   assert.equal(hopUrl(new URL("https://origin.example/?x=1#h"), request).href, "https://origin.example/docs/quickstart?ref=ABCDEFGV", "the origin's own query and fragment are not the request's");
   assert.equal(hopUrl(new URL("https://origin.example"), new URL("https://acme.example//evil.example/x")).host, "origin.example", "a path that looks like a host stays a path");
+});
+
+test("trustedProxies: JOURNEYS_TRUST_PROXY as a positive whole number of proxies, else null", () => {
+  assert.equal(trustedProxies("1"), 1);
+  assert.equal(trustedProxies(" 2 "), 2);
+  for (const value of [undefined, "", "0", "true", "yes", "-1", "1.5", "100"]) assert.equal(trustedProxies(value), null, String(value));
+});
+
+test("forwardedClient: the entry the outermost trusted proxy appended, counted from the end of x-forwarded-for", () => {
+  assert.equal(forwardedClient("1.2.3.4, 203.0.113.7", 1), "203.0.113.7", "the visitor wrote the first entry, the load balancer appended the last");
+  assert.equal(forwardedClient("1.2.3.4, 203.0.113.7, 198.51.100.2", 2), "203.0.113.7", "a CDN in front of the load balancer");
+  assert.equal(forwardedClient("203.0.113.7", 2), "203.0.113.7", "a list shorter than the count gives its first entry");
+  assert.equal(forwardedClient("2001:db8::1 ,, 203.0.113.7 ", 1), "203.0.113.7", "entries are trimmed, empty ones skipped");
+  assert.equal(forwardedClient("", 1), null);
+  assert.equal(forwardedClient(null, 1), null);
 });

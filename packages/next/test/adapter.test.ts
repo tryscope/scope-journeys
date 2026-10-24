@@ -14,7 +14,7 @@ import { DEFAULT_API_URL, droppedSoFar, resetPolicyCache, trustPolicyKeyForTests
 
 import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
 import { stored } from "../../core/test/ingest.js";
-import { INNER_HEADER, deliver, resetCache, resetDelivery, withJourneys } from "../src/index.js";
+import { INNER_HEADER, deliver, platformFacts, resetCache, resetDelivery, withJourneys } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const INSTALL = "jin_test0000000000000000000000";
@@ -90,7 +90,8 @@ test("a page read: the policy from the install's route, the inner hop marked and
   assert.equal(policy.headers.authorization, `Bearer ${env.JOURNEYS_INSTALL_KEY}`);
   const hop = w.calls.find((c) => c.url === "https://acme.example/docs/quickstart");
   assert.ok(hop, "the inner hop to the app's own host");
-  assert.equal(hop.headers[INNER_HEADER], "1", "the forward sets the marker the check reads");
+  // sha256("fixture-salt:journeys-inner"), the value the Node form's test expects too.
+  assert.equal(hop.headers[INNER_HEADER], "002943804e8e893d384fd7e2bb8795ade0b9d960fc29a190b2b25526c3aacece", "the forward sets the marker the check reads, derived from the salt");
   assert.match(hop.headers.via ?? "", /scope-journeys/);
   assert.equal(hop.headers["accept-encoding"], "identity", "the hop asks for an uncompressed answer: fetch would add gzip, deflate to a request without one");
   assert.equal(hop.headers["x-acme-key"], undefined, "the install key never goes to the origin, whatever the policy names");
@@ -161,15 +162,32 @@ test("the inner hop and a host the install does not observe go to the app's own 
     return new Response("mine", { status: 200 });
   };
   const handler = withJourneys({ now: () => NOW, env: { ...env, JOURNEYS_HOST: "acme.example" }, fetch: w.fetch, next });
-  const inner = await handler(request("https://acme.example/docs/quickstart", { [INNER_HEADER]: "1" }), w.event as never);
+  // The sensor's own hop, to learn the marker it sends.
+  const page = await handler(request("https://acme.example/docs/quickstart"), w.event as never);
+  await page.text();
+  await Promise.all(w.pending);
+  const marker = w.calls.find((c) => c.url === "https://acme.example/docs/quickstart")?.headers[INNER_HEADER] ?? "";
+  assert.match(marker, /^[0-9a-f]{64}$/);
+  const resalted = withJourneys({ now: () => NOW, env: { ...env, JOURNEYS_SALT: "another-salt", JOURNEYS_HOST: "acme.example" }, fetch: w.fetch, next });
+  await (await resalted(request("https://acme.example/docs/quickstart"), w.event as never)).text();
+  await Promise.all(w.pending);
+  const resaltedMarker = w.calls.filter((c) => c.url === "https://acme.example/docs/quickstart").at(-1)?.headers[INNER_HEADER];
+  assert.notEqual(resaltedMarker, marker, "the marker is derived from the salt");
+  w.calls.length = 0;
+  w.shipped.length = 0;
+  const inner = await handler(request("https://acme.example/docs/quickstart", { [INNER_HEADER]: marker }), w.event as never);
   assert.equal(await inner.text(), "mine");
   assert.equal(w.calls.length, 0, "the inner pass fetches nothing: no policy, no hop");
   const other = await handler(request("https://other.example/docs/quickstart"), w.event as never);
   assert.equal(await other.text(), "mine");
   await Promise.all(w.pending);
-  assert.deepEqual(seen, ["acme.example 1", "other.example -"]);
+  assert.deepEqual(seen, [`acme.example ${marker}`, "other.example -"]);
   assert.equal(w.calls.length, 0, "an unobserved host fetches nothing either");
   assert.equal(w.shipped.length, 0, "nothing observed, nothing shipped");
+  const forged = await handler(request("https://acme.example/docs/quickstart", { [INNER_HEADER]: "1" }), w.event as never);
+  assert.match(await forged.text(), /<h1>Quickstart<\/h1>/, "a visitor's own x-journeys-inner is observed and hopped like any request");
+  await Promise.all(w.pending);
+  assert.equal(w.shipped.length, 1, "and recorded");
 });
 
 test("a hop that fails after the request left is never sent again: 502 when the connection dropped, 504 on the hop's timeout, the app's logic not run a second time, the record shipped with the status; a hop refused before it left still goes to the app's logic", async () => {
@@ -177,7 +195,7 @@ test("a hop that fails after the request left is never sent again: 502 when the 
   const cases: Array<[string, unknown, number, number, string | null]> = [
     ["dropped", new TypeError("fetch failed", { cause: Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" }) }), 502, 0, "TypeError: answered 502, not sent again"],
     ["timed out", new DOMException("The operation was aborted due to timeout", "TimeoutError"), 504, 0, "TimeoutError: answered 504, not sent again"],
-    ["refused", new TypeError("fetch failed", { cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:3000"), { code: "ECONNREFUSED" }) }), 200, 1, null],
+    ["refused", new TypeError("fetch failed", { cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:3000"), { code: "ECONNREFUSED" }) }), 200, 1, "TypeError: the hop never left; handed on untouched"],
   ];
   for (const [what, failure, status, appRuns, reason] of cases) {
     reset();
@@ -204,10 +222,9 @@ test("a hop that fails after the request left is never sent again: 502 when the 
     assert.equal(hops, 1, `${what}: one hop`);
     assert.equal(runs, appRuns, `${what}: the app's logic runs only when the hop never left`);
     const record = w.shipped.flat().find((r) => (r as { schema?: string }).schema === "scope.request/1") as Record<string, unknown> | undefined;
-    if (reason) {
-      assert.equal(record?.["http.response.status_code"], status, `${what}: the record carries the status`);
-      assert.deepEqual((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "hop"), [{ rule: "hop", kind: "observe", mode: "live", outcome: "errored", reason }], `${what}: and the hop's step`);
-    } else assert.equal(record, undefined, `${what}: nothing observed when the app answered`);
+    const unsent = appRuns === 1;
+    assert.equal(record?.["http.response.status_code"], unsent ? null : status, unsent ? `${what}: the request side is recorded, with no response the sensor saw` : `${what}: the record carries the status`);
+    assert.deepEqual((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "hop"), [{ rule: "hop", kind: "observe", mode: "live", outcome: unsent ? "skipped" : "errored", reason }], `${what}: and the hop's step`);
   }
 });
 
@@ -346,21 +363,23 @@ test("the proxy's own URL names the listen address, not the host the client name
   assert.equal(response.status, 200);
   assert.equal(await response.text(), "# Scope Journeys\n");
   await Promise.all(w.pending);
-  assert.deepEqual(hops, [{ url: "http://localhost:3917/llms.txt", inner: "1", via: "1.1 scope-journeys" }], "exactly one hop, to the listen address, marked");
-  assert.deepEqual(seen, ["1 http://localhost:3917/llms.txt"], "the app saw the request once, as the inner pass");
+  const marker = hops[0]?.inner ?? "";
+  assert.match(marker, /^[0-9a-f]{64}$/);
+  assert.deepEqual(hops, [{ url: "http://localhost:3917/llms.txt", inner: marker, via: "1.1 scope-journeys" }], "exactly one hop, to the listen address, marked");
+  assert.deepEqual(seen, [`${marker} http://localhost:3917/llms.txt`], "the app saw the request once, as the inner pass");
   assert.equal(deepest, 1);
 });
 
 test("the host observed is the one the agent spoke to: under next start the forwarded host, never the listen address the request URL names, with the hop to the listen address once; on Vercel nothing changes; with neither forwarded header the URL's host; JOURNEYS_HOST matches the resolved host", async () => {
   reset();
   const w = world();
-  const hops: Array<{ url: string; inner: string | null; forwardedHost: string | null; proto: string | null }> = [];
+  const hops: Array<{ url: string; inner: boolean; forwardedHost: string | null; proto: string | null }> = [];
   // The app answers the hop as a product would: its MCP link names the host the agent spoke to, which the policy's inject rule matches on {host}.
   const app = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input instanceof Request ? input.url : input);
     if (url.startsWith(API)) return w.fetch(input, init);
     const headers = new Headers(init?.headers);
-    hops.push({ url, inner: headers.get(INNER_HEADER), forwardedHost: headers.get("x-forwarded-host"), proto: headers.get("x-forwarded-proto") });
+    hops.push({ url, inner: /^[0-9a-f]{64}$/.test(headers.get(INNER_HEADER) ?? ""), forwardedHost: headers.get("x-forwarded-host"), proto: headers.get("x-forwarded-proto") });
     const spoken = headers.get("x-forwarded-host") ?? new URL(url).host;
     return new Response(`<!doctype html><html><body><h1>Quickstart</h1><a href="https://${spoken}/mcp">MCP</a></body></html>`, { status: 200, headers: { "content-type": "text/html; charset=utf-8" } });
   }) as typeof fetch;
@@ -378,7 +397,7 @@ test("the host observed is the one the agent spoke to: under next start the forw
     assert.equal(response.status, 200, shape.name);
     assert.match(await response.text(), new RegExp(`href="https://${shape.host.replaceAll(".", "\\.")}/mcp\\?ref=[0-9A-HJKMNP-TV-Z]{8}"`), `${shape.name}: the inject rule's {host} is the host the agent spoke to`);
     await Promise.all(w.pending);
-    assert.deepEqual(hops, [{ url: shape.hop, inner: "1", forwardedHost: shape.headers["x-forwarded-host"] ?? null, proto: shape.proto }], `${shape.name}: exactly one hop, to the listen address, marked, carrying the forwarded headers as received`);
+    assert.deepEqual(hops, [{ url: shape.hop, inner: true, forwardedHost: shape.headers["x-forwarded-host"] ?? null, proto: shape.proto }], `${shape.name}: exactly one hop, to the listen address, marked, carrying the forwarded headers as received`);
     assert.equal(w.shipped.length, 1, `${shape.name}: one shipment`);
     const record = (w.shipped[0] as Array<Record<string, unknown>>).find((r) => r.schema === "scope.request/1");
     assert.equal(record?.["server.address"], shape.host, `${shape.name}: server.address is the host the agent spoke to`);
@@ -412,7 +431,7 @@ test("the host observed is the one the agent spoke to: under next start the forw
   assert.equal((w.shipped[0] as Array<Record<string, unknown>>).find((r) => r.schema === "scope.request/1")?.["server.address"], "docs.example");
 });
 
-test("a request already carrying this sensor's Via without the marker is its own hop come back: handed to the app with one warning, never forwarded again; another sensor's Via is observed as usual", async () => {
+test("a request naming this sensor in Via without its marker, its own hop come back or a visitor's forgery, is recorded as received and handed to the app without a second hop, with one warning; another sensor's Via is observed as usual", async () => {
   reset();
   const w = world();
   const seen: string[] = [];
@@ -425,13 +444,22 @@ test("a request already carrying this sensor's Via without the marker is its own
   console.warn = (line: string) => {
     warnings.push(line);
   };
+  const hops = (): number => w.calls.filter((c) => c.url === "https://acme.example/docs/quickstart").length;
   try {
     const handler = withJourneys({ now: () => NOW, env, fetch: w.fetch, next });
     for (const via of ["1.1 scope-journeys", "1.1 cdn-edge, 1.1 scope-journeys", "1.1 scope-journeys, 1.1 cdn-edge"]) {
       const looped = await handler(request("https://acme.example/docs/quickstart", { via }), w.event as never);
       assert.equal(await looped.text(), "mine", via);
     }
-    assert.equal(w.calls.length, 0, "a loop fetches nothing");
+    await Promise.all(w.pending);
+    assert.equal(hops(), 0, "never hopped, so it cannot loop");
+    const records = w.shipped.flat().filter((r) => (r as { schema?: string }).schema === "scope.request/1") as Array<Record<string, unknown>>;
+    assert.equal(records.length, 3, "each one recorded");
+    for (const record of records) {
+      assert.equal(record["http.response.status_code"], null, "with no response the sensor saw");
+      assert.equal(record["scope.reader"], "claude-code", "and the request side as received");
+      assert.deepEqual((record["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "hop"), [{ rule: "hop", kind: "observe", mode: "live", outcome: "skipped", reason: "Via names this sensor without its marker: handed on without the hop" }]);
+    }
     const fronted = await handler(request("https://acme.example/docs/quickstart", { via: "1.1 cdn-edge, 1.1 scope-journeys-edge" }), w.event as never);
     assert.equal(fronted.status, 200);
     assert.match(await fronted.text(), /<h1>Quickstart<\/h1>/);
@@ -442,8 +470,32 @@ test("a request already carrying this sensor's Via without the marker is its own
   assert.deepEqual(seen, ["1.1 scope-journeys", "1.1 cdn-edge, 1.1 scope-journeys", "1.1 scope-journeys, 1.1 cdn-edge"]);
   const hop = w.calls.find((c) => c.url === "https://acme.example/docs/quickstart");
   assert.equal(hop?.headers.via, "1.1 cdn-edge, 1.1 scope-journeys-edge, 1.1 scope-journeys", "another sensor's Via is kept and this one's appended");
-  assert.equal(hop?.headers[INNER_HEADER], "1");
-  assert.equal(warnings.filter((l) => /already carries "1.1 scope-journeys" in Via/.test(l)).length, 1, warnings.join("\n"));
+  assert.match(hop?.headers[INNER_HEADER] ?? "", /^[0-9a-f]{64}$/);
+  assert.equal(warnings.filter((l) => /names this sensor \("1\.1 scope-journeys"\) in Via without its marker/.test(l)).length, 1, warnings.join("\n"));
+});
+
+test("a gate batch on a request that names this sensor in Via: the app gets the batch as sent, the record keeps the agent's declaration and says the gate was skipped", async () => {
+  reset();
+  const w = world();
+  const bodies: string[] = [];
+  const next = async (r: NextRequest): Promise<Response> => {
+    bodies.push(await r.text());
+    return Response.json([]);
+  };
+  const handler = withJourneys({ now: () => NOW, env, fetch: w.fetch, next });
+  const batch = JSON.stringify([{ jsonrpc: "2.0", id: 2, method: "tools/list" }, { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "declare_intent", arguments: { intent: "Post to Slack when an order is added" } } }]);
+  const looped = new NextRequest("https://acme.example/mcp", { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "user-agent": "node", via: "1.1 scope-journeys" }, body: batch });
+  const response = await handler(looped, w.event as never);
+  assert.equal(response.status, 200);
+  await response.text();
+  await Promise.all(w.pending);
+  assert.deepEqual(bodies, [batch], "the app gets the batch as sent, the declaration call included");
+  const records = w.shipped.flat() as Array<Record<string, unknown>>;
+  const record = records.find((r) => r.schema === "scope.request/1");
+  assert.deepEqual((record?.["scope.decision"] as Array<Record<string, unknown>>).filter((d) => d.rule === "gate").map((d) => d.outcome), ["skipped"], "the gate did not answer");
+  assert.equal(record?.["scope.gateway"], null);
+  assert.equal(records.find((r) => r.schema === "scope.declaration/1")?.text, "Post to Slack when an order is added", "the agent's declaration is kept");
+  assert.equal(records.find((r) => r.schema === "scope.declaration/1")?.["mcp.session.id"], null, "naming no session: the one the gate would have answered with was never sent");
 });
 
 test("the OIDC form: the project's token is the bearer on the policy fetch and on the shipment", async () => {
@@ -493,4 +545,17 @@ test("shipping follows no redirect: a redirected batch is dropped and counted", 
   assert.deepEqual(log, ["journeys: shipment refused with 307; dropping 1 record(s), counted into a later record"]);
   assert.equal(droppedSoFar(), 1);
   resetDelivery();
+});
+
+test("the client's address: with JOURNEYS_TRUST_PROXY unset, x-real-ip, else the last x-forwarded-for entry; with it set, the entry the proxies count to, whatever x-real-ip says", () => {
+  const identity = { install: INSTALL, name: "n", environment: "production" as const, saltEpoch: 1, dropped: 0, version: "0.0.0-test" };
+  // nginx sets only x-real-ip: next start fills x-forwarded-for with the socket, nginx's own address.
+  assert.equal(platformFacts(new Headers({ "x-forwarded-for": "10.0.0.2", "x-real-ip": "203.0.113.7" }), identity, null).address, "203.0.113.7");
+  // No x-real-ip: the visitor wrote 1.2.3.4, the proxy in front appended the address it got the request from.
+  assert.equal(platformFacts(new Headers({ "x-forwarded-for": "1.2.3.4, 203.0.113.7" }), identity, null).address, "203.0.113.7");
+  // A proxy that only appends x-forwarded-for, the count set: a visitor's own x-real-ip names nothing.
+  const forged = new Headers({ "x-forwarded-for": "1.2.3.4, 203.0.113.7", "x-real-ip": "1.2.3.4" });
+  assert.equal(platformFacts(forged, identity, 1).address, "203.0.113.7");
+  assert.equal(platformFacts(forged, identity, 2).address, "1.2.3.4", "a CDN in front of the proxy");
+  assert.equal(platformFacts(new Headers(), identity, null).address, null);
 });

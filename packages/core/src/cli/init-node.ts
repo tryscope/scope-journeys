@@ -30,7 +30,7 @@ const installCommand = (pm: NodeProject["packageManager"], dependency: string): 
 };
 
 /** The variables a deployment needs beside the ones `init` wrote, which only the person knows. */
-export const DEPLOYMENT_LINES = ["JOURNEYS_TRUST_PROXY=1   # when a load balancer or a CDN sits in front of the app, so the client's address is read from x-forwarded-for", "JOURNEYS_ORIGIN=http://127.0.0.1:<port>   # only when the app does not answer on the port the request arrived on"];
+export const DEPLOYMENT_LINES = ["JOURNEYS_TRUST_PROXY=1   # the number of proxies in front of the app (1: a load balancer or a CDN; 2: a CDN in front of a load balancer), so the client's address is read from x-forwarded-for", "JOURNEYS_ORIGIN=http://127.0.0.1:<port>   # only when the app does not answer on the port the request arrived on"];
 
 /**
  * `journeys init --node`: the framework from package.json, the mount written
@@ -52,6 +52,7 @@ export async function initNode(options: InitNodeOptions, deps: InitDeps): Promis
   const project = detected.project;
   report.framework = project.framework;
   if (project.frameworks.length > 1) report.warnings.push(`the project depends on ${project.frameworks.join(" and ")}; the ${project.framework} mount was written (the others mount the same way, see the install guide)`);
+  report.warnings.push(`the mount's hop reaches your app from 127.0.0.1 with the visitor's address appended to x-forwarded-for, while a request the sensor passes on arrives as before; for your own code to see the visitor's address on both, trust the loopback and your proxies' own addresses: ${project.framework === "express" ? 'app.set("trust proxy", ["loopback", "<your proxies\' addresses or subnet>"])' : project.framework === "fastify" ? 'Fastify({ trustProxy: ["127.0.0.1", "<your proxies\' addresses or subnet>"] })' : "the last x-forwarded-for entry that is neither 127.0.0.1 nor one of your proxies"}`);
 
   const hosts: string[] = [];
   if (options.hosts?.length) hosts.push(...options.hosts);

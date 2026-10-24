@@ -56,7 +56,7 @@ export const config = {
 }
 ```
 
-An existing proxy keeps running exactly where it ran: the default export is wrapped as `next`, which runs for the inner hop (the request the sensor forwards to your own address, marked `x-journeys-inner: 1`) and for hosts the install does not observe, and the matcher is merged.
+An existing proxy keeps running exactly where it ran: the default export is wrapped as `next`, which runs for the inner hop (the request the sensor forwards to your own address, marked with `x-journeys-inner`, a value derived from `JOURNEYS_SALT`) and for hosts the install does not observe, and the matcher is merged.
 
 ```ts
 import { withJourneys } from "scope-journeys-next"
@@ -66,7 +66,7 @@ async function previous(request: NextRequest) { /* your logic */ }
 export default withJourneys({ next: previous })
 ```
 
-The hop goes to the address Next built `request.url` on (your deployment's host on Vercel, `localhost:<port>` under `next start`), or to `JOURNEYS_ORIGIN`, with the agent's headers as received, `x-forwarded-host` and `x-forwarded-proto` among them, and asks for an uncompressed answer (`accept-encoding: identity`; your platform compresses the answer to the agent as before). The host on every record (`server.address`, the `{host}` the rules fill, the authority a signature is verified against) is the one the agent spoke to: `x-forwarded-host` as Vercel's edge or the proxy in front of `next start` set it (Next fills it from `Host` when nothing did), never the listen address. `JOURNEYS_HOST` is matched against the same host.
+The hop goes to the address Next built `request.url` on (your deployment's host on Vercel, `localhost:<port>` under `next start`), or to `JOURNEYS_ORIGIN`, with the agent's headers as received, `x-forwarded-host` and `x-forwarded-proto` among them, and asks for an uncompressed answer (`accept-encoding: identity`; your platform compresses the answer to the agent as before). The host on every record (`server.address`, the `{host}` the rules fill, the authority a signature is verified against) is the one the agent spoke to: `x-forwarded-host` as Vercel's edge or the proxy in front of `next start` set it (Next fills it from `Host` when nothing did), never the listen address. The client's address is `x-real-ip` when the proxy in front sets it, else the last `x-forwarded-for` entry; with `JOURNEYS_TRUST_PROXY` set, the entry the proxies it counts appended, never one the visitor wrote. `JOURNEYS_HOST` is matched against the same host.
 
 `instrumentation.ts` gains one line, so an error in the sensor is reported with its class and never thrown at your app:
 
@@ -83,6 +83,7 @@ export { onRequestError } from "scope-journeys-next/instrumentation"
 | `JOURNEYS_SALT` | yes | 32 random bytes generated on your machine; every hash is salted with it and Scope never receives it |
 | `JOURNEYS_API_URL` | no | Scope's API (the default is the production host); https only, http only to the loopback (`localhost`, `127.0.0.1`, `[::1]`) |
 | `JOURNEYS_HOST` | no | optional: observe only this host |
+| `JOURNEYS_TRUST_PROXY` | no | off Vercel: the number of proxies in front of `next start` that append to `x-forwarded-for` (`1`, or `2` for a CDN in front of a load balancer). Set, the client's address is the entry they count to and `x-real-ip` is ignored; unset, `x-real-ip`, else the last `x-forwarded-for` entry. Set it when your proxy only appends to `x-forwarded-for`, or a visitor can name their own address in `x-real-ip` |
 | `JOURNEYS_NAME` | no | the `Via` pseudonym; default `scope-journeys` |
 
 `init` writes them to the Vercel project (production, preview, development) when the project is linked and you are logged in, and to `.env.local` when that file is ignored by git. Without a key, the sensor authenticates with your Vercel project's OIDC token (`x-vercel-oidc-token`): turn on "Secure backend access with OIDC federation" in the project's settings; `init` binds the subject.
@@ -106,7 +107,8 @@ registers a new public key, writes the new private key where `init` wrote the fi
 | failure | behaviour |
 |---|---|
 | the sensor throws | the request is handed to your app untouched; the record carries the error's class |
-| the hop to your app cannot connect | the request is handed to your app untouched; nothing is recorded; the log line names the cause |
+| the hop to your app cannot connect | the request is handed to your app untouched and recorded as received, with no response; the log line names the cause |
+| a request names this sensor in `Via` without its marker (its own hop come back without it, or a visitor's forgery) | the probe, the finder and a batch the gate answers whole are answered as usual; anything else is recorded as received, with no response, and handed to your app without a second hop, which could loop; one log line says so. When it is the sensor's own hop (something strips the marker, or the salt differs between two deployments), the request is recorded twice, once in full and once as received |
 | the hop to your app fails after the request left: the connection drops, or no answer within 30 seconds | the request is never handed to your app a second time: the client gets a 502, or a 504 on the timeout; the record carries the status and the error's class |
 | no install id (and no policy URL) | one log line naming `journeys init`; every request goes to your logic with no inner hop, the probe is still answered |
 | no salt | one log line naming `journeys init`; nothing is recorded or sent, every request goes to your app untouched, and the probe answers `x-journeys-probe: no-salt` |

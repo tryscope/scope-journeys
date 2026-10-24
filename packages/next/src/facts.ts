@@ -1,4 +1,4 @@
-import { familyOf, type Facts } from "scope-journeys";
+import { familyOf, forwardedClient, type Facts } from "scope-journeys";
 
 export interface Identity {
   install: string | null;
@@ -12,13 +12,13 @@ export interface Identity {
 }
 
 /**
- * What Vercel's edge tells the function about the client: the address from
- * x-real-ip or the first x-forwarded-for, the AS number, the country and the JA4 digest from the
- * platform's headers; x-vercel-id as the platform's request id; the TLS facts null, which the
- * record allows.
+ * What Vercel's edge tells the function about the client: the address from x-real-ip, else the last
+ * x-forwarded-for entry; with `proxies` counted, the entry they count to; the AS number, the country
+ * and the JA4 digest from the platform's headers; x-vercel-id as its request id; the TLS facts null.
  */
-export function platformFacts(headers: Headers, identity: Identity): Facts {
-  const address = headers.get("x-real-ip") ?? (headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? null;
+export function platformFacts(headers: Headers, identity: Identity, proxies: number | null): Facts {
+  // Uncounted, x-real-ip first: `next start` fills an absent x-forwarded-for with the socket, the proxy's own address.
+  const address = proxies === null ? headers.get("x-real-ip") || forwardedClient(headers.get("x-forwarded-for"), 1) : forwardedClient(headers.get("x-forwarded-for"), proxies);
   const asn = headers.get("x-vercel-ip-as-number");
   return {
     address: address || null,

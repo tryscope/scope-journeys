@@ -1,6 +1,6 @@
 import { isIP } from "node:net";
 
-import type { Facts } from "scope-journeys";
+import { forwardedClient, type Facts } from "scope-journeys";
 
 export interface Identity {
   install: string | null;
@@ -14,15 +14,13 @@ export interface Identity {
 }
 
 /**
- * The facts of the ext_proc form: the client's address from
- * `x-envoy-external-address` when the listener sets it, else the first `x-forwarded-for`; the
- * request id Envoy sets; nulls for what only a CDN knows and for the TLS and HTTP versions, which
- * the stream does not carry.
+ * The facts of the ext_proc form: the client's address from `x-envoy-external-address` when the
+ * listener sets it, else the `x-forwarded-for` entry the `proxies` in front count to; the request id
+ * Envoy sets; nulls for what only a CDN knows and for the TLS and HTTP versions, which the stream
+ * does not carry.
  */
-export function platformFacts(headers: Headers, identity: Identity): Facts {
-  const external = headers.get("x-envoy-external-address");
-  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const address = external || forwarded || null;
+export function platformFacts(headers: Headers, identity: Identity, proxies: number): Facts {
+  const address = headers.get("x-envoy-external-address") || forwardedClient(headers.get("x-forwarded-for"), proxies);
   const family = address ? isIP(address) : 0;
   return {
     address,

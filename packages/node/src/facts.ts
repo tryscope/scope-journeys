@@ -2,7 +2,7 @@ import type { IncomingMessage } from "node:http";
 import { isIP, isIPv4 } from "node:net";
 import type { TLSSocket } from "node:tls";
 
-import type { Facts } from "scope-journeys";
+import { forwardedClient, type Facts } from "scope-journeys";
 
 export interface Identity {
   install: string | null;
@@ -24,11 +24,10 @@ export interface SocketFacts {
   network_protocol_version: string | null;
 }
 
-/** The first address of an x-forwarded-for header, or null when the header is absent or empty. */
+/** @deprecated The first x-forwarded-for entry, which the visitor writes; use `forwardedClient` from scope-journeys (DEPRECATION.md). */
 export function forwardedAddress(header: string | string[] | undefined): string | null {
   const value = Array.isArray(header) ? header[0] : header;
-  const first = value?.split(",")[0]?.trim();
-  return first || null;
+  return value?.split(",")[0]?.trim() || null;
 }
 
 /** A dual-stack listener reports an IPv4 client as `::ffff:a.b.c.d`; the record keeps the address the client has, so the hash matches the other forms' for the same client. */
@@ -39,9 +38,11 @@ export function canonicalAddress(address: string | null | undefined): string | n
   return address;
 }
 
-export function socketFacts(req: IncomingMessage, trustProxy: boolean): SocketFacts {
+/** `proxies`: how many proxies in front append to x-forwarded-for (JOURNEYS_TRUST_PROXY); null trusts none and names the peer. */
+export function socketFacts(req: IncomingMessage, proxies: number | null): SocketFacts {
   const socket = req.socket;
-  const forwarded = trustProxy ? forwardedAddress(req.headers["x-forwarded-for"]) : null;
+  const header = req.headers["x-forwarded-for"];
+  const forwarded = proxies === null ? null : forwardedClient(Array.isArray(header) ? header.join(",") : (header ?? null), proxies);
   const tls = socket && "encrypted" in socket && (socket as TLSSocket).encrypted ? (socket as TLSSocket).getProtocol() : null;
   const peer = canonicalAddress(socket?.remoteAddress ?? null);
   return {

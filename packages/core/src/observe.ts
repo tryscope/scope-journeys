@@ -241,7 +241,7 @@ function emptyRecord(state: Omit<State, "record">, io: Io, facts: Facts, policy:
  * the finder, the gate, the outbound request. Never throws to the adapter: a bug forwards the
  * request untouched and the record carries the error's class.
  */
-export async function observe(request: Request, policy: CompiledPolicy, facts: Facts, io: Io): Promise<Observation> {
+export async function observe(request: Request, policy: CompiledPolicy, facts: Facts, io: Io, head = false): Promise<Observation> {
   const startedAt = io.now();
   const url = new URL(request.url);
   const host = url.host;
@@ -336,7 +336,8 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
       return { kind: "answer", response: probed, state, records };
     }
 
-    if (route.observed && !bodyless) {
+    // `head`: built from its head alone, the request left its body unread for the app; nothing is read or answered from it.
+    if (route.observed && !bodyless && !head) {
       const text = await request.clone().text();
       state.requestBody = await readBody(text, reqType, policy, io, "request");
       record["scope.body.request"] = state.requestBody.parsed as ScopeRequest1["scope.body.request"];
@@ -378,26 +379,30 @@ export async function observe(request: Request, policy: CompiledPolicy, facts: F
     if (finder) {
       // The finder answers a JSON task as sent, not its redacted copy; only the declaration is redacted.
       const text = finderText(state.messages && !state.batch ? state.messages[0] : (state.requestBody?.parsed ?? {}), url).trim();
-      const token = mintReference(io);
-      const guides = text ? finderAnswer(finder, text, host, prefix, token) : null;
-      const answer: unknown = guides ?? { error: { code: "missing_task", message: "Post a JSON object with a one-sentence task." } };
-      const reason = guides ? `finder answered ${guides.guides.length} links` : "finder refused: missing task";
-      if (isLive(finder, facts.environment)) {
-        decide(state.decisions, finder, facts.environment, "applied", reason);
-        record["http.response.status_code"] = text ? 200 : 400;
-        record["scope.reference_minted"] = text ? token : null;
-        record["scope.gateway"] = { declared: text ? 1 : 0, forwarded: 0 };
-        if (text) state.declarations.push(declaration(state, "finder", await redactString(text, policy, io), { "scope.reference_minted": token }));
-        state.answered = true;
-        state.returnedAt = io.now();
-        const records = finish(state);
-        return { kind: "answer", response: Response.json(answer, { status: record["http.response.status_code"] ?? 200 }), state, records };
+      if (head && !text) decide(state.decisions, finder, facts.environment, "skipped", "the body was left unread for the app");
+      else {
+        const token = mintReference(io);
+        const guides = text ? finderAnswer(finder, text, host, prefix, token) : null;
+        const answer: unknown = guides ?? { error: { code: "missing_task", message: "Post a JSON object with a one-sentence task." } };
+        const reason = guides ? `finder answered ${guides.guides.length} links` : "finder refused: missing task";
+        if (isLive(finder, facts.environment)) {
+          decide(state.decisions, finder, facts.environment, "applied", reason);
+          record["http.response.status_code"] = text ? 200 : 400;
+          record["scope.reference_minted"] = text ? token : null;
+          record["scope.gateway"] = { declared: text ? 1 : 0, forwarded: 0 };
+          if (text) state.declarations.push(declaration(state, "finder", await redactString(text, policy, io), { "scope.reference_minted": token }));
+          state.answered = true;
+          state.returnedAt = io.now();
+          const records = finish(state);
+          return { kind: "answer", response: Response.json(answer, { status: record["http.response.status_code"] ?? 200 }), state, records };
+        }
+        decide(state.decisions, finder, facts.environment, "would_apply", reason);
       }
-      decide(state.decisions, finder, facts.environment, "would_apply", reason);
     }
 
     const gate = policy.rules.find((r) => r.kind === "gate" && r.route === path && r.tool !== null) ?? null;
     let forwardBody: BodyInit | undefined = bodyless ? undefined : await request.clone().arrayBuffer();
+    if (gate && head) decide(state.decisions, gate, facts.environment, "skipped", "the body was left unread for the app");
     if (gate && state.messages) {
       state.gate = gate;
       state.gateLive = isLive(gate, facts.environment);
