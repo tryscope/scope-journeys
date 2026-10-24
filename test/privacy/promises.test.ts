@@ -184,11 +184,11 @@ test("a record made under the built-in default says so in its decisions, with th
   assert.deepEqual(fetched.record["scope.decision"], []);
 });
 
-test("the shipping promises are the ones the code keeps: no claim of signed or batched records", () => {
+test("the shipping promises are the ones the code keeps: batches from a queue, one call per request on the Worker, no claim of signed records", () => {
   for (const path of ["SECURITY.md", join("docs", "content", "data-handling.md"), "README.md", join("packages", "core", "TELEMETRY.md")]) {
     const text = readFileSync(join(ROOT, path), "utf8");
-    assert.doesNotMatch(text, /batched after the response|signed with the installation's key|after the response, signed/, path);
-    if (path !== "README.md") assert.match(text, /one call per request/, `${path}: says how records travel`);
+    assert.doesNotMatch(text, /one call per request[,;]|signed with the installation's key|after the response, signed/, path);
+    if (path !== "README.md") assert.match(text, /in batches \(on the Worker, one call per request\)/, `${path}: says how records travel`);
     if (path !== "README.md") assert.match(text, /observe\.bodies\.allow_fields/, `${path}: names the allowlist that decides which body fields leave`);
   }
 });

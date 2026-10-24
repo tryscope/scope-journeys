@@ -326,3 +326,81 @@ test("a quota spent past the time limit holds the queue: later batches are dropp
   assert.equal(w.attempts.length, 1, "the second batch was not sent against the spent quota");
   assert.equal(droppedSoFar(), 5);
 });
+
+test("each record ships with the key its own request came with: a later add's key never sends or retries earlier records", async () => {
+  resetDelivery();
+  const w = ingest([{ status: 503 }]);
+  const shipper = createShipper({ fetch: w.fetch, log: () => undefined, timing: { ...FAST, intervalMs: 80 } });
+  const first = shipper.add(records(2), API, "key_a");
+  // The first send failed and waits to be tried again when the second request's records arrive.
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const second = shipper.add(records(1), API, "key_b");
+  await Promise.all([first, second]);
+  assert.deepEqual(w.attempts.map((a) => [a.authorization, a.records.length]), [["Bearer key_a", 2], ["Bearer key_a", 2], ["Bearer key_b", 1]]);
+
+  // Records of two keys waiting together never share a send, and a key's records go together however
+  // the two interleave, in the order they came.
+  const mixed = ingest([], 20);
+  const queue = createShipper({ fetch: mixed.fetch, log: () => undefined, timing: FAST });
+  const keys = ["key_a", "key_b", "key_a", "key_b", "key_a", "key_b", "key_a"];
+  await Promise.all(keys.map((key, i) => queue.add([request({ id: `m${i}` })] as never[], API, key)));
+  assert.deepEqual(mixed.attempts.map((a) => [a.authorization, a.records.map((r) => r.id).join(" ")]), [["Bearer key_a", "m0"], ["Bearer key_b", "m1 m3 m5"], ["Bearer key_a", "m2 m4 m6"]]);
+});
+
+test("deliver never runs a try past its window: a later batch gets only the time left, and none once it is spent", async () => {
+  resetDelivery();
+  let attempts = 0;
+  // A fetch that takes a moment to give up once aborted, as a real connection does.
+  const slow = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    attempts += 1;
+    return await new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => setTimeout(() => reject(init.signal?.reason), 50)));
+  }) as typeof fetch;
+  // Three records of about 1.5 MB: a batch each, quick to build.
+  const large = Array.from({ length: 3 }, () => request({ pad: "x".repeat(1_500_000) })) as never[];
+  const log: string[] = [];
+  const started = performance.now();
+  await deliver(large, { apiUrl: API, key: "k", fetch: slow, log: (l) => log.push(l), timing: { ...FAST, attemptTimeoutMs: 400 }, windowMs: 600 });
+  const took = performance.now() - started;
+  assert.ok(log.some((l) => /out of time before it could be sent; dropping 1 record/.test(l)), log.join("\n"));
+  assert.ok(took < 800, `the delivery ended near its window (${Math.round(took)} ms)`);
+  assert.equal(attempts, 2, "the second batch tried in the time left; the third, reached after the window ran out, not sent");
+  assert.equal(droppedSoFar(), 3);
+});
+
+test("one add of many records queues them all", async () => {
+  resetDelivery();
+  const w = ingest([]);
+  await createShipper({ fetch: w.fetch, log: () => undefined, timing: FAST }).add(Array.from({ length: 200_000 }, declaration) as never[], API, "k");
+  assert.equal(w.attempts.reduce((n, a) => n + a.records.length, 0), 200_000);
+  assert.equal(droppedSoFar(), 0);
+});
+
+test("the limits count the bytes of the records' UTF-8 JSON, not characters", async () => {
+  resetDelivery();
+  // About 300 KB each: a character outside ASCII takes up to three bytes.
+  const wide = (chars: number): never => request({ "scope.body.response": { text: "漢".repeat(chars) } }) as never;
+  const w = ingest([]);
+  await createShipper({ fetch: w.fetch, log: () => undefined, timing: FAST }).add(Array.from({ length: 10 }, () => wide(100_000)), API, "k");
+  assert.deepEqual(w.attempts.map((a) => a.records.length), [6, 4], "about 2 MB of UTF-8 a send");
+
+  resetDelivery();
+  const tight = ingest([]);
+  await createShipper({ fetch: tight.fetch, log: () => undefined, timing: { ...FAST, budgetBytes: 1_000_000 } }).add([wide(400_000)], API, "k");
+  assert.equal(tight.attempts.length, 0, "1.2 MB of UTF-8 does not fit a 1 MB budget");
+  assert.equal(droppedSoFar(), 1);
+});
+
+test("a batch that fills while the queue waits for the rhythm goes at once", async () => {
+  resetDelivery();
+  const w = ingest([]);
+  const shipper = createShipper({ fetch: w.fetch, log: () => undefined, timing: { ...FAST, intervalMs: 400 } });
+  await shipper.add(records(1), API, "k");
+  const waiting = shipper.add(records(1), API, "k");
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const filled = performance.now();
+  const rest = shipper.add(records(499), API, "k");
+  await Promise.all([waiting, rest]);
+  assert.equal(w.attempts[1]?.records.length, 500);
+  const gap = (w.attempts[1]?.at ?? Infinity) - filled;
+  assert.ok(gap < 200, `the full batch went at once (${Math.round(gap)} ms after it filled)`);
+});
