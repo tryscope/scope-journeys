@@ -39,6 +39,6 @@ The client's address from `x-envoy-external-address` when the listener sets it, 
 
 ## How it fails
 
-The filter is written with `failure_mode_allow: true` and `message_timeout: 2s`: a processor that is down, slow or wrong lets the request through untouched. Inside the processor every failure on a message answers `CONTINUE` and is logged. Shipping is the Worker's contract: one retry (after `Retry-After`, capped, on a 429), then the batch is dropped and counted.
+The filter is written with `failure_mode_allow: true` and `message_timeout: 2s`: a processor that is down, slow or wrong lets the request through untouched. Inside the processor every failure on a message answers `CONTINUE` and is logged. Records ship through one queue per processor: one shipment at a time, a full batch at once and a smaller one after a one-second pause, 32 MB at most, a failed shipment sent again with growing waits for up to 15 minutes, and what never lands dropped and counted.
 
 What it records is in `TELEMETRY.md` of `scope-journeys`; the data-handling statement is `SECURITY.md`. The guide: https://journeys.tryscope.com/install/envoy. The protos under `proto/` are trimmed from Envoy's api tree (Apache License 2.0, `proto/LICENSE`).

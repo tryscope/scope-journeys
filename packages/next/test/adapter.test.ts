@@ -2,18 +2,18 @@
 // the install's route with its environment header, the facts from Vercel's headers, the inner hop
 // to the app's own host marked as such, the records shipped after the response with the install
 // key or the OIDC token as the bearer, the pass-throughs (the inner hop, a host not observed, no
-// install id), a hop that fails after the request left (never sent again), and the shipper's 429
-// (one retry after Retry-After, capped, then a counted drop).
+// install id), a hop that fails after the request left (never sent again), and the shipping queue
+// (records that wait go together, a dropped count carried once by the next record).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { NextRequest } from "next/server.js";
 
-import { droppedSoFar } from "../src/deliver.js";
-import { DEFAULT_API_URL, resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
+import { DEFAULT_API_URL, droppedSoFar, resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
 
 import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
+import { stored } from "../../core/test/ingest.js";
 import { INNER_HEADER, deliver, platformFacts, resetCache, resetDelivery, withJourneys } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
@@ -57,7 +57,7 @@ function world(options: { policyStatus?: number; ship?: Array<{ status: number; 
         w.calls.push({ url, method, headers, body: text });
         w.shipped.push(JSON.parse(text) as unknown[]);
         const answer = options.ship?.shift() ?? { status: 202 };
-        return new Response(null, { status: answer.status, headers: answer.headers });
+        return answer.status === 202 ? stored(0) : new Response(null, { status: answer.status, headers: answer.headers });
       }
       // The app's own host: the inner hop, answered as the origin would.
       w.calls.push({ url, method, headers, body: init?.body ? await new Response(init.body as BodyInit).text() : null });
@@ -511,25 +511,25 @@ test("the OIDC form: the project's token is the bearer on the policy fetch and o
   assert.ok(w.calls.some((c) => c.url === "https://acme.example/docs/quickstart"), "the inner hop to the app");
 });
 
-test("the shipper on a 429: one retry after Retry-After (capped), then the batch is dropped and counted into the next record", async () => {
+test("the shipping queue: a refused batch is counted and the next record carries the count once; records that wait for the one-second rhythm go out together", async () => {
   reset();
-  const answers: Array<{ status: number; headers?: Record<string, string> }> = [{ status: 429, headers: { "retry-after": "120" } }, { status: 429 }];
-  const fetcher = (async () => {
-    const next = answers.shift() ?? { status: 202 };
-    return new Response(null, { status: next.status, headers: next.headers });
+  const bearers: Array<string | null> = [];
+  const refused = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    bearers.push(new Headers(init?.headers).get("authorization"));
+    return new Response(null, { status: 400 });
   }) as typeof fetch;
-  const records = Array.from({ length: 2 }, (_, i) => ({ schema: "scope.declaration/1", id: String(i) }) as never);
-  const log: string[] = [];
-  await deliver(records, { apiUrl: API, credential: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1, maxRetryAfterMs: 5 });
-  assert.deepEqual(log, ["journeys: shipment answered 429, retrying once in 5 ms", "journeys: shipment answered 429, dropping the batch"]);
+  // `credential` is the deprecated name of `key`, still read.
+  await deliver([{ schema: "scope.declaration/1", id: "0" }, { schema: "scope.declaration/1", id: "1" }] as never[], { apiUrl: API, credential: "k", fetch: refused, log: () => undefined });
+  assert.deepEqual(bearers, ["Bearer k"], "the deprecated name still names the bearer");
   assert.equal(droppedSoFar(), 2);
   const w = world();
   const handler = withJourneys({ now: () => NOW, env, fetch: w.fetch });
-  await (await handler(request("https://acme.example/docs/quickstart"), w.event as never)).text();
+  for (const path of ["/docs/quickstart", "/docs/install", "/docs/api"]) await (await handler(request(`https://acme.example${path}`), w.event as never)).text();
   await Promise.all(w.pending);
-  const record = (w.shipped[0] as Array<Record<string, unknown>>).find((r) => r.schema === "scope.request/1");
-  assert.equal(record?.["scope.observer.dropped"], 2, "the next record carries the drop count");
-  assert.equal(droppedSoFar(), 0, "a successful shipment clears it");
+  const shipments = w.shipped.map((batch) => (batch as Array<Record<string, unknown>>).filter((r) => r.schema === "scope.request/1"));
+  assert.deepEqual(shipments.map((batch) => batch.map((r) => r["url.path"])), [["/docs/quickstart"], ["/docs/install", "/docs/api"]], "the second and third requests waited for the rhythm and went together");
+  assert.deepEqual(shipments.flat().map((r) => r["scope.observer.dropped"]), [2, 0, 0], "the count rides on one record only");
+  assert.equal(droppedSoFar(), 0, "a stored shipment reported it");
 });
 
 test("shipping follows no redirect: a redirected batch is dropped and counted", async () => {
@@ -540,9 +540,9 @@ test("shipping follows no redirect: a redirected batch is dropped and counted", 
     return new Response(null, { status: 307, headers: { location: "https://other.example/v1/requests" } });
   }) as typeof fetch;
   const log: string[] = [];
-  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", credential: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
+  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l) });
   assert.deepEqual(redirects, ["manual"]);
-  assert.deepEqual(log, ["journeys: shipment refused with 307; dropping the batch"]);
+  assert.deepEqual(log, ["journeys: shipment refused with 307; dropping 1 record(s), counted into a later record"]);
   assert.equal(droppedSoFar(), 1);
   resetDelivery();
 });

@@ -1,8 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import type { Io, IoCache, SensorRecord } from "scope-journeys";
+import { deliver, type Io, type IoCache, type SensorRecord, type Shipper } from "scope-journeys";
 
-import { deliver } from "./deliver.js";
 import { hop } from "./hop.js";
 
 export interface NodeIoOptions {
@@ -22,6 +21,8 @@ export interface NodeIoOptions {
   apiUrl: string | null;
   cache: IoCache;
   fetch: typeof fetch;
+  /** The queue every request of this sensor ships through. Optional until 0.3.0 (DEPRECATION.md): without one, a request's records ship on their own, as the Worker's do. */
+  shipper?: Shipper;
   now: () => number;
   /** Runs the delivery once the response has gone out; the adapter binds the response's finish. */
   afterResponse: (work: () => void) => void;
@@ -53,7 +54,7 @@ export function createNodeIo(options: NodeIoOptions): Io {
     cache: options.cache,
     ship: (records: readonly SensorRecord[]) => {
       options.afterResponse(() => {
-        options.track(deliver(records, { apiUrl: options.apiUrl, key: options.key, fetch: options.fetch, log: (line) => options.log("warn", line) }).catch((error: unknown) => options.log("warn", `journeys: shipment failed (${error instanceof Error ? error.message : String(error)})`)));
+        options.track(options.shipper ? options.shipper.add(records, options.apiUrl, options.key) : deliver(records, { apiUrl: options.apiUrl, key: options.key, fetch: options.fetch, log: (line) => options.log("warn", line) }));
       });
     },
     log: options.log,

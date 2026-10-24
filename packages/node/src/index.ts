@@ -16,7 +16,7 @@ export { createNodeIo, type NodeIoOptions } from "./io.js";
 export { hop, headersOf, HOP_BY_HOP, type HopOptions } from "./hop.js";
 export { platformFacts, socketFacts, canonicalAddress, forwardedAddress, type Identity, type SocketFacts } from "./facts.js";
 export { memoryCache, resetCache } from "./cache.js";
-export { deliver, droppedSoFar, resetDelivery, type DeliveryOptions } from "./deliver.js";
+export { deliver, droppedSoFar, resetDelivery, type DeliveryOptions } from "scope-journeys";
 export { serveProxy, parseListen, type ProxyOptions, type RunningProxy } from "./proxy.js";
 
 /**

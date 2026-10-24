@@ -9,8 +9,9 @@ export interface Identity {
   name: string;
   environment: Facts["environment"];
   saltEpoch: number;
-  dropped: number;
   version: string;
+  /** @deprecated Accepted and ignored until 0.3.0 (DEPRECATION.md): the shipper reports drops on the record that carries them. */
+  dropped?: number;
   assertion?: Facts["assertion"];
 }
 
@@ -79,7 +80,6 @@ export function platformFacts(socket: SocketFacts, requestId: string | null, ide
     observer: { package: "scope-journeys-node", version: identity.version, adapter: "node", name: identity.name },
     salt_epoch: identity.saltEpoch,
     environment: identity.environment,
-    dropped: identity.dropped,
     assertion: identity.assertion ?? null,
   };
 }

@@ -79,7 +79,6 @@ export async function doctorLocal(options: LocalDoctorOptions): Promise<LocalDoc
     observer: { package: "scope-journeys", version: VERSION, adapter: "doctor-local", name: "journeys-doctor" },
     salt_epoch: 1,
     environment: "development" as const,
-    dropped: 0,
   };
   const request = new Request(url, { method: "GET", headers: { accept: "text/html, text/markdown;q=0.9", "user-agent": `scope-journeys-doctor/${VERSION}` } });
   const observed = await observe(request, policy, facts, io);

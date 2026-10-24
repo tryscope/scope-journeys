@@ -2,10 +2,9 @@ import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import { createHash, randomBytes } from "node:crypto";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, loadPolicy, probeAnswer, secureUrl, trustedProxies, classifyRoute, effectiveMode, isTextFace, observe, observeResponse, type CompiledPolicy, type Environment, type Io, type LogLevel, type Observation, type Responded, type ScopeDecision1, type SensorRecord, type State } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, createShipper, loadPolicy, probeAnswer, secureUrl, trustedProxies, classifyRoute, effectiveMode, isTextFace, observe, observeResponse, type CompiledPolicy, type Environment, type Io, type LogLevel, type Observation, type Responded, type ScopeDecision1, type SensorRecord, type State } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
-import { deliver, droppedSoFar } from "./deliver.js";
 import { platformFacts } from "./facts.js";
 
 // The wire messages (proto/envoy/..., trimmed from Envoy's api tree): the fields this processor reads and writes.
@@ -173,6 +172,7 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
   const issuer = apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}` : null;
   const cache = memoryCache(now);
   const warn = (line: string): void => log("warn", line);
+  const shipper = createShipper({ fetch: fetchFn, log: warn });
   let warnedNoInstall = false;
   if (!salt) warn("journeys: JOURNEYS_SALT is not set; recording nothing and letting every request through untouched (run `npx scope-journeys init --envoy`)");
 
@@ -196,7 +196,7 @@ export function createProcessor(options: ProcessorOptions = {}): Processor {
     },
     cache,
     ship: (records: readonly SensorRecord[]) => {
-      track(deliver(records, { apiUrl, key, fetch: fetchFn, log: warn }).catch((error: unknown) => warn(`journeys: shipment failed (${error instanceof Error ? error.message : String(error)})`)));
+      track(shipper.add(records, apiUrl, key));
     },
     log,
   });
@@ -329,7 +329,7 @@ class Exchange {
     const url = this.url ?? new URL("http://localhost/");
     const policy = loaded.policy;
     const io = this.deps.io(url.host);
-    const identity = { install: this.deps.installId, name: this.deps.name, environment: loaded.environment, saltEpoch: loaded.saltEpoch, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(this.deps.env.JOURNEYS_ASSERTION_KEY, this.deps.issuer) };
+    const identity = { install: this.deps.installId, name: this.deps.name, environment: loaded.environment, saltEpoch: loaded.saltEpoch, version: VERSION, assertion: await assertionFromEnv(this.deps.env.JOURNEYS_ASSERTION_KEY, this.deps.issuer) };
     const facts = platformFacts(this.requestHeaders, identity, this.deps.proxies);
     const request = new Request(url, { method: this.method, headers: this.requestHeaders, body: body && !bodyless(this.method) ? new Uint8Array(body) : null, redirect: "manual" });
     const observed: Observation = await observe(request, policy, facts, io);
@@ -499,7 +499,7 @@ export async function serveExtProc(options: ServerOptions = {}): Promise<Running
         });
       });
       await Promise.race([Promise.allSettled([...pending]), new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now())))]);
-      if (pending.size > 0) log("warn", `journeys-ext-proc: ${pending.size} shipment(s) still pending at the drain's end; dropped`);
+      if (pending.size > 0) log("warn", `journeys-ext-proc: the records of ${pending.size} request(s) still unshipped at the drain's end; lost`);
       resolveClosed();
     })();
     return closing;

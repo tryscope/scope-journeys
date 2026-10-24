@@ -87,7 +87,7 @@ export async function serveProxy(options: ProxyOptions): Promise<RunningProxy> {
       server.closeAllConnections();
       const remaining = Math.max(0, deadline - Date.now());
       await Promise.race([Promise.allSettled([...pending]), sleep(remaining)]);
-      if (pending.size > 0) log("warn", `journeys proxy: ${pending.size} shipment(s) still pending at the drain's end; dropped`);
+      if (pending.size > 0) log("warn", `journeys proxy: the records of ${pending.size} request(s) still unshipped at the drain's end; lost`);
       resolveClosed();
     })();
     return closing;

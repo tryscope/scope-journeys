@@ -15,9 +15,9 @@ export interface IoCache {
 }
 
 /**
- * Everything the core needs from the world, supplied by the adapter. The core performs no I/O of
- * its own: no fetch, no clock, no entropy, no shipping. The fixtures fix every member, which is
- * what makes a record reproducible to the byte on two runtimes.
+ * Everything the record path needs from the world, supplied by the adapter: it performs no I/O of
+ * its own, no fetch, no clock, no entropy. The fixtures fix every member, which is what makes a
+ * record reproducible to the byte on two runtimes.
  */
 export interface Io {
   /** Epoch milliseconds. */
@@ -70,8 +70,8 @@ export interface Facts {
   salt_epoch: number;
   /** The install's environment, which decides where a live rule is live. */
   environment: Environment;
-  /** Records the adapter failed to ship since its last successful shipment. */
-  dropped: number;
+  /** @deprecated Accepted and ignored until 0.3.0 (DEPRECATION.md): the shipper reports drops on the record that carries them. */
+  dropped?: number;
   /** The install's own assertion signing key (`JOURNEYS_ASSERTION_KEY`), its `kid` and the issuer URL; null when none is configured. */
   assertion?: { kid: string; key: CryptoKey; issuer: string } | null;
 }

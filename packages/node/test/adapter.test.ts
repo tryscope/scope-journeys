@@ -3,9 +3,12 @@
 // the hop to the app's own listener marked and carrying exactly the gateway's headers, the pass
 // paths (the inner hop, an unobserved host, a hop that cannot connect), a hop that fails after the request left
 // (never sent again), the standalone proxy's drain (a request in flight when close is called
-// completes and its record ships), and the listen address parser.
+// completes and its record ships), the shipping queue (one shipment at a time under a slow ingest, a
+// clean shutdown ships what is queued), and the listen address parser.
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { test } from "node:test";
@@ -18,8 +21,9 @@ import { Hono } from "hono";
 import { DEFAULT_API_URL, resetPolicyCache, trustPolicyKeyForTests } from "scope-journeys";
 
 import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
+import { stored } from "../../core/test/ingest.js";
 
-import { canonicalAddress, createNodeHandler, createSensor, forwardedAddress, deliver, droppedSoFar, fastifyJourneys, honoJourneys, hop, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler, type RunningProxy } from "../src/index.js";
+import { canonicalAddress, createNodeHandler, createNodeIo, createSensor, forwardedAddress, deliver, droppedSoFar, fastifyJourneys, honoJourneys, hop, journeys, parseListen, platformFacts, resetCache, resetDelivery, serveProxy, socketFacts, type NodeHandler, type RunningProxy } from "../src/index.js";
 
 const POLICY = JSON.parse(readFileSync(new URL("../../../fixtures/synthetic/policy.json", import.meta.url), "utf8")) as Record<string, unknown>;
 const INSTALL = "jin_test0000000000000000000000";
@@ -48,7 +52,7 @@ function world(policy: Record<string, unknown> = POLICY, api = API): World {
         const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
         const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
         w.shipped.push(JSON.parse(text) as Array<Record<string, unknown>>);
-        return new Response(null, { status: 202 });
+        return stored(0);
       }
       throw new Error(`the sensor fetched ${url}, which the test does not serve`);
     }) as typeof fetch,
@@ -135,7 +139,7 @@ test("the socket's facts: the peer by default, the x-forwarded-for entry the tru
   assert.equal(canonicalAddress("::ffff:203.0.113.7"), "203.0.113.7");
   assert.equal(canonicalAddress("2001:db8::1"), "2001:db8::1");
   assert.equal(canonicalAddress(null), null);
-  const identity = { install: INSTALL, name: "n", environment: "production" as const, saltEpoch: 1, dropped: 0, version: "0.0.0-test" };
+  const identity = { install: INSTALL, name: "n", environment: "production" as const, saltEpoch: 1, version: "0.0.0-test" };
   const v6 = platformFacts({ address: "2001:db8::1", peer: "2001:db8::1", tls_protocol_version: "TLSv1.3", network_protocol_version: "HTTP/1.1" }, "req-1", identity);
   assert.equal(v6.family, "ipv6");
   assert.equal(v6.tls_protocol_version, "TLSv1.3");
@@ -736,7 +740,7 @@ test("with no JOURNEYS_API_URL the policy and the records go to Scope's producti
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
   assert.deepEqual(calls(), [], "no install key: nothing goes to Scope, not even a policy fetch the route would refuse");
-  assert.equal(unkeyed.filter((l) => /JOURNEYS_INSTALL_KEY is not set; nothing ships/.test(l)).length, 1, "said once");
+  assert.equal(unkeyed.filter((l) => /no install key \(JOURNEYS_INSTALL_KEY, or on Vercel the project's OIDC token\); nothing ships/.test(l)).length, 1, "said once");
 });
 
 test("the policy's report address and key header are ignored: records go to JOURNEYS_API_URL with the install key as the bearer", async () => {
@@ -857,6 +861,58 @@ test("parseListen: host:port, :port, port, a bracketed IPv6 host; refuses the re
   assert.throws(() => parseListen(":70000"), /out of range/);
 });
 
+test("the shipping queue under a slow ingest: one shipment open at a time, every record delivered, and close() waits for what is queued", async () => {
+  reset();
+  const origin = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end('{"ok":true}');
+  });
+  const originPort = await listen(origin);
+  let open = 0;
+  let peak = 0;
+  const paths: string[] = [];
+  const slow = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.endsWith("/policy")) return signedPolicy(POLICY, { install: INSTALL, issuedAt: Math.floor(Date.now() / 1000), saltEpoch: "2", etag: '"3"' });
+    open += 1;
+    peak = Math.max(peak, open);
+    const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
+    const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
+    for (const r of JSON.parse(text) as Array<Record<string, unknown>>) if (r.schema === "scope.request/1") paths.push(String(r["url.path"]));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    open -= 1;
+    return stored(0);
+  }) as typeof fetch;
+  const proxy = await serveProxy({ origin: `http://127.0.0.1:${originPort}`, listen: "127.0.0.1:0", env, fetch: slow, drainMs: 5_000, signals: false, log: () => undefined });
+  try {
+    await Promise.all(Array.from({ length: 100 }, (_, i) => fetch(`${proxy.url}/api/v1/items/${i}`, { headers: agent }).then((r) => r.text())));
+    await proxy.close();
+    assert.equal(peak, 1, "never more than one shipment open");
+    assert.equal(paths.length, 100, "every record delivered before close() returned");
+    assert.equal(new Set(paths).size, 100, "each once");
+  } finally {
+    await proxy.close();
+    origin.closeAllConnections();
+    await new Promise((resolve) => origin.close(resolve));
+  }
+});
+
+test("a mount that shuts down cleanly ships what it queued before the process ends", () => {
+  // Its own process, so the process can end by itself: only the waits that hold it open keep the records.
+  const shipped = execFileSync(process.execPath, ["--import", "tsx", fileURLToPath(new URL("./clean-shutdown.child.ts", import.meta.url))], { encoding: "utf8", timeout: 30_000 });
+  assert.equal(shipped, "3", "all three records shipped before the process ended");
+});
+
+test("createNodeIo without a shipper, the deprecated form, still ships a request's records", async () => {
+  reset();
+  const w = world();
+  const tracked: Promise<void>[] = [];
+  const io = createNodeIo({ salt: "s", host: "acme.example", target: new URL("http://127.0.0.1:1"), hopHost: "acme.example", hopHeaders: {}, forwardedFor: null, key: KEY, apiUrl: API, cache: { get: async () => null, put: async () => undefined }, fetch: w.fetch, now: () => Date.now(), afterResponse: (work) => work(), track: (p) => tracked.push(p), log: () => undefined });
+  io.ship([{ schema: "scope.request/1", id: "1", "scope.observer.dropped": 0 } as never]);
+  await Promise.all(tracked);
+  assert.equal(w.shipped.length, 1);
+});
+
 test("shipping follows no redirect: a redirected batch is dropped and counted", async () => {
   resetDelivery();
   const redirects: Array<RequestRedirect | undefined> = [];
@@ -865,9 +921,9 @@ test("shipping follows no redirect: a redirected batch is dropped and counted", 
     return new Response(null, { status: 307, headers: { location: "https://other.example/v1/requests" } });
   }) as typeof fetch;
   const log: string[] = [];
-  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
+  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l) });
   assert.deepEqual(redirects, ["manual"]);
-  assert.deepEqual(log, ["journeys: shipment refused with 307; dropping the batch"]);
+  assert.deepEqual(log, ["journeys: shipment refused with 307; dropping 1 record(s), counted into a later record"]);
   assert.equal(droppedSoFar(), 1);
   resetDelivery();
 });

@@ -4,10 +4,9 @@ import type { TLSSocket } from "node:tls";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { DEFAULT_API_URL, VERSION, assertionFromEnv, failedHop, finishLooped, finishUnsent, forwardObserved, forwardedUrl, isHost, loadPolicy, namesSensor, observe, originUrl, passHeaders, probeAnswer, secureUrl, trustedProxies, type Environment, type LogLevel } from "scope-journeys";
+import { DEFAULT_API_URL, VERSION, assertionFromEnv, createShipper, failedHop, finishLooped, finishUnsent, forwardObserved, forwardedUrl, isHost, loadPolicy, namesSensor, observe, originUrl, passHeaders, probeAnswer, secureUrl, trustedProxies, type Environment, type LogLevel } from "scope-journeys";
 
 import { memoryCache } from "./cache.js";
-import { droppedSoFar } from "./deliver.js";
 import { canonicalAddress, platformFacts, socketFacts, type SocketFacts } from "./facts.js";
 import { HOP_BY_HOP, headersOf, hop } from "./hop.js";
 import { createNodeIo } from "./io.js";
@@ -101,6 +100,7 @@ export function createSensor(options: NodeOptions = {}): Sensor {
   const policyUrl = options.policyUrl ?? env.JOURNEYS_POLICY_URL ?? (apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}/policy` : null);
   const issuer = apiUrl && installId ? `${apiUrl.replace(/\/$/, "")}/v1/installs/${installId}` : null;
   const cache = memoryCache(now);
+  const shipper = createShipper({ fetch: fetchFn, log: (line) => log("warn", line) });
   let warnedNoInstall = false;
   let warnedNoSalt = false;
   let warnedLoop = false;
@@ -142,10 +142,10 @@ export function createSensor(options: NodeOptions = {}): Sensor {
       const loaded = await loadPolicy({ url: policyUrl, installId, credential: key, fetch: fetchFn, now: now(), cache, log: warn });
       const { policy } = loaded;
       const target = targetFor(exchange);
-      const identity = { install: installId, name, environment: (loaded.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, dropped: droppedSoFar(), version: VERSION, assertion: await assertionFromEnv(env.JOURNEYS_ASSERTION_KEY, issuer) };
+      const identity = { install: installId, name, environment: (loaded.environment ?? options.environment ?? env.JOURNEYS_ENVIRONMENT ?? "production") as Environment, saltEpoch: loaded.saltEpoch ?? 1, version: VERSION, assertion: await assertionFromEnv(env.JOURNEYS_ASSERTION_KEY, issuer) };
       const facts = platformFacts(socket, request.headers.get("x-request-id"), identity);
       // A mount's hop carries the Host as received (the forwarded host is the record's, not the app's view); the proxy's carries the origin's.
-      const io = createNodeIo({ salt, host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, now, afterResponse: exchange.afterResponse, track, log });
+      const io = createNodeIo({ salt, host: url.host, target, hopHost: form === "proxy" ? target.host : (request.headers.get("host") ?? url.host), hopHeaders: hopHeaders(request), forwardedFor: socket.peer, key, apiUrl, cache, fetch: fetchFn, shipper, now, afterResponse: exchange.afterResponse, track, log });
       const observed = await observe(request, policy, facts, io, exchange.head === true);
       if (observed.kind === "answer") return observed.response;
       if (loops(request.headers.get(INNER_HEADER), request.headers.get("via"))) {

@@ -1,6 +1,7 @@
 /**
  * Scope Journeys: the sensor core. Pure functions over Request, Response and a policy; every
- * effect goes through the `io` object the adapter supplies.
+ * effect goes through what the adapter supplies: the `io` object, and the fetch the policy loader
+ * and the shipping queue are given.
  */
 export { observe, finish, probeAnswer, PROBE_PATH, PROBE_HEADER, type Observation, type State } from "./observe.js";
 export { failedHop, finishLooped, finishUnsent, forwardObserved, observeResponse, type Responded } from "./respond.js";
@@ -20,4 +21,5 @@ export type { ScopeRequest1 } from "./generated/request.js";
 export type { ScopeDeclaration1 } from "./generated/declaration.js";
 export type { ScopeDecision1 } from "./generated/decision.js";
 export type { ScopePolicy1 } from "./generated/policy.js";
+export { createShipper, deliver, droppedSoFar, resetDelivery, type DeliveryOptions, type Shipper, type ShipTiming } from "./ship.js";
 export { VERSION } from "./version.js";

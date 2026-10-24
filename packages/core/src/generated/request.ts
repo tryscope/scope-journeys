@@ -331,7 +331,7 @@ export interface ScopeRequest1 {
    */
   "scope.observer.errors"?: string[];
   /**
-   * records the sensor failed to ship since its last successful shipment
+   * records the sensor dropped that no stored record has reported yet; only the first request record of each shipment carries the count, so the counts add up across records; records lost when a process stops are not counted
    */
   "scope.observer.dropped"?: number;
 }

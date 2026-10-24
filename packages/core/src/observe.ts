@@ -231,7 +231,8 @@ function emptyRecord(state: Omit<State, "record">, io: Io, facts: Facts, policy:
     "scope.decision": [],
     "scope.gateway": null,
     "scope.observer.errors": [],
-    "scope.observer.dropped": facts.dropped,
+    // The shipper writes the count on the one record of a shipment that carries it.
+    "scope.observer.dropped": 0,
   };
 }
 

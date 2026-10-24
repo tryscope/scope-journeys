@@ -20,6 +20,7 @@ import { validateRecord } from "../../core/src/validate.js";
 import { VERSION } from "../../core/src/version.js";
 import { BODY_MODE, ExternalProcessor, deliver, droppedSoFar, platformFacts, resetCache, resetDelivery, serveExtProc, type HeaderMutation, type HeaderValue, type ProcessingRequest, type ProcessingResponse } from "../src/index.js";
 import { signedPolicy, TEST_POLICY_KID, testPolicyKeys } from "../../core/test/signed.js";
+import { stored } from "../../core/test/ingest.js";
 
 const ROOT = new URL("../../../", import.meta.url).pathname;
 const FIXTURES = join(ROOT, "fixtures", "synthetic");
@@ -47,7 +48,7 @@ function world(name: string, policy: unknown, facts: FixtureFacts, directory: Fi
       const bytes = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
       const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
       shipped.push(JSON.parse(text) as unknown[]);
-      return new Response(null, { status: 202 });
+      return stored(0);
     }
     if (directory && url === directory.url) {
       const headers: Record<string, string> = {};
@@ -227,7 +228,7 @@ test("with no JOURNEYS_API_URL the processor fetches its policy from and ships i
   const fetcher = (async (input: RequestInfo | URL) => {
     const url = String(input instanceof Request ? input.url : input);
     urls.push(url);
-    return url.endsWith("/policy") ? signedPolicy(policy, { install: INSTALL, issuedAt: Math.floor(Date.now() / 1000), etag: '"3"' }) : new Response(null, { status: 202 });
+    return url.endsWith("/policy") ? signedPolicy(policy, { install: INSTALL, issuedAt: Math.floor(Date.now() / 1000), etag: '"3"' }) : stored(0);
   }) as typeof fetch;
   for (const key of ["sjk_test_dddddddddddddddddddddddddddddddd", null]) {
     resetPolicyCache();
@@ -307,9 +308,9 @@ test("shipping follows no redirect: a redirected batch is dropped and counted", 
     return new Response(null, { status: 307, headers: { location: "https://other.example/v1/requests" } });
   }) as typeof fetch;
   const log: string[] = [];
-  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l), retryDelayMs: 1 });
+  await deliver([{ schema: "scope.declaration/1", id: "1" } as never], { apiUrl: "https://api.invalid", key: "k", fetch: fetcher, log: (l) => log.push(l) });
   assert.deepEqual(redirects, ["manual"]);
-  assert.deepEqual(log, ["journeys: shipment refused with 307; dropping the batch"]);
+  assert.deepEqual(log, ["journeys: shipment refused with 307; dropping 1 record(s), counted into a later record"]);
   assert.equal(droppedSoFar(), 1);
   resetDelivery();
 });
